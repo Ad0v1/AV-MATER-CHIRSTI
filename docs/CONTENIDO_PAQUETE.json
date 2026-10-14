@@ -1,0 +1,74 @@
+{
+  "package": "AV-MATER-CHIRSTI Sprint 0 Maestro",
+  "version": "0.1 DRAFT",
+  "files": [
+    {
+      "path": "README.md",
+      "bytes": 3056
+    },
+    {
+      "path": "docs/00_INICIO_Y_MAPA.md",
+      "bytes": 2866
+    },
+    {
+      "path": "docs/01_ARQUITECTURA.md",
+      "bytes": 3423
+    },
+    {
+      "path": "docs/02_MODELO_ENTIDADES.md",
+      "bytes": 5770
+    },
+    {
+      "path": "docs/03_CONTRATOS.md",
+      "bytes": 4801
+    },
+    {
+      "path": "docs/04_REGLAS_ESTADOS.md",
+      "bytes": 4339
+    },
+    {
+      "path": "docs/05_AUTORIZACION.md",
+      "bytes": 3126
+    },
+    {
+      "path": "docs/06_GIT_CALIDAD.md",
+      "bytes": 2316
+    },
+    {
+      "path": "docs/07_PLAN_SPRINT0.md",
+      "bytes": 3253
+    },
+    {
+      "path": "docs/08_DECISIONES.md",
+      "bytes": 3096
+    },
+    {
+      "path": "docs/09_QA_BASE.md",
+      "bytes": 3062
+    },
+    {
+      "path": "docs/10_TRAZABILIDAD.md",
+      "bytes": 2083
+    },
+    {
+      "path": "docs/diagramas/erd.mmd",
+      "bytes": 2532
+    },
+    {
+      "path": "docs/fuentes/ERS_Aula_Virtual_Secundaria.pdf",
+      "bytes": 80292
+    },
+    {
+      "path": "docs/fuentes/Plan_Trabajo_Aula_Virtual.pdf",
+      "bytes": 80169
+    },
+    {
+      "path": "docs/plantillas/PR.md",
+      "bytes": 690
+    },
+    {
+      "path": "docs/propuestas/schema.propuesto.prisma",
+      "bytes": 11767
+    }
+  ]
+}
