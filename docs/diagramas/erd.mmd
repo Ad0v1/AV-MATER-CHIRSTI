@@ -1,0 +1,104 @@
+erDiagram
+    USER ||--o{ ENROLLMENT : "se matricula"
+    USER ||--o{ COURSE_SECTION : "dicta"
+    USER ||--o{ GUARDIAN_STUDENT : "apoderado"
+    USER ||--o{ GUARDIAN_STUDENT : "estudiante"
+    ACADEMIC_YEAR ||--|{ ACADEMIC_PERIOD : "contiene"
+    ACADEMIC_YEAR ||--o{ SECTION : "agrupa"
+    SECTION ||--o{ ENROLLMENT : "recibe"
+    SECTION ||--o{ COURSE_SECTION : "ofrece"
+    COURSE ||--o{ COURSE_SECTION : "se dicta en"
+    COURSE_SECTION ||--o{ MATERIAL : "publica"
+    COURSE_SECTION ||--o{ ASSIGNMENT : "crea"
+    ACADEMIC_PERIOD ||--o{ ASSIGNMENT : "programa"
+    ASSIGNMENT ||--o{ SUBMISSION : "recibe"
+    ENROLLMENT ||--o{ SUBMISSION : "realiza"
+    SUBMISSION ||--o{ SUBMISSION_VERSION : "contiene"
+    STORED_FILE ||--o{ SUBMISSION_VERSION : "respalda"
+    STORED_FILE ||--o{ MATERIAL : "respalda"
+    STORED_FILE ||--o{ ASSIGNMENT : "adjunto"
+    ASSIGNMENT ||--o{ GRADE : "evalua"
+    ENROLLMENT ||--o{ GRADE : "obtiene"
+    USER {
+      string id PK
+      string email UK
+      string role
+      string status
+    }
+    ACADEMIC_YEAR {
+      string id PK
+      int year UK
+      boolean isActive
+    }
+    ACADEMIC_PERIOD {
+      string id PK
+      string academicYearId FK
+      int sequence
+      string label
+      datetime closedAt
+    }
+    SECTION {
+      string id PK
+      string academicYearId FK
+      int gradeLevel
+      string code
+    }
+    COURSE {
+      string id PK
+      string name
+    }
+    COURSE_SECTION {
+      string id PK
+      string sectionId FK
+      string courseId FK
+      string teacherId FK
+    }
+    ENROLLMENT {
+      string id PK
+      string sectionId FK
+      string studentId FK
+    }
+    GUARDIAN_STUDENT {
+      string guardianId FK
+      string studentId FK
+    }
+    MATERIAL {
+      string id PK
+      string courseSectionId FK
+      string fileId FK
+      string type
+      boolean reusable
+    }
+    ASSIGNMENT {
+      string id PK
+      string courseSectionId FK
+      string periodId FK
+      datetime dueAt
+      decimal noSubmissionGrade
+      boolean allowLate
+    }
+    STORED_FILE {
+      string id PK
+      string objectKey UK
+      int sizeBytes
+      string scanStatus
+    }
+    SUBMISSION {
+      string id PK
+      string assignmentId FK
+      string enrollmentId FK
+    }
+    SUBMISSION_VERSION {
+      string id PK
+      string submissionId FK
+      string fileId FK
+      int versionNumber
+      datetime receivedAt
+    }
+    GRADE {
+      string id PK
+      string assignmentId FK
+      string enrollmentId FK
+      string state
+      decimal value
+    }
