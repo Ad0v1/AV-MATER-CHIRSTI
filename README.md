@@ -4,6 +4,33 @@
 
 Proyecto: **Aula Virtual Institucional (Secundaria)**. Alcance único: `docs/fuentes/ERS_Aula_Virtual_Secundaria.pdf` (v1.0, borrador) y `docs/fuentes/Plan_Trabajo_Aula_Virtual.pdf` (13/10/2026). Las decisiones técnicas adicionales se identifican como **PROPUESTA**, no como requisitos de la institución.
 
+## Instalación local
+
+Requisitos: **Node 24**, **pnpm 12** (`corepack enable`), **Docker Desktop** y **Git**.
+
+```bash
+git clone https://github.com/sxxntoz/AV-MATER-CHIRSTI.git
+cd AV-MATER-CHIRSTI
+git switch features/<tu-nombre>      # tu rama de trabajo
+git merge origin/develop             # traer lo último
+cp .env.example .env                 # en PowerShell: Copy-Item .env.example .env
+pnpm install
+docker compose up -d                 # MySQL, Redis, MinIO, ClamAV y Mailpit
+```
+
+ClamAV tarda unos 2–3 minutos en quedar `healthy` la primera vez (`docker compose ps`).
+
+| Qué | Comando | URL |
+|---|---|---|
+| API (NestJS) | `pnpm --filter api start:dev` | http://localhost:4000/api/v1/health |
+| Web (Next.js) | `pnpm --filter web dev` | http://localhost:3000 |
+| Consola MinIO | — | http://localhost:9001 |
+| Correos de prueba (Mailpit) | — | http://localhost:8025 |
+
+Calidad antes de abrir un PR: `pnpm format:check`, `pnpm lint`, `pnpm test` y `pnpm build`. El CI ejecuta los mismos cuatro pasos.
+
+Detener los servicios: `docker compose down` (añade `-v` para borrar también los datos locales).
+
 ## Si acabas de entrar al proyecto
 
 1. Lee [00 — Inicio y mapa del Sprint 0](docs/00_INICIO_Y_MAPA.md) (5 minutos).
