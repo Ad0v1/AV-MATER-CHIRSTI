@@ -1,0 +1,14 @@
+{
+  "name": "worker",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsc -p tsconfig.json --watch",
+    "lint": "tsc -p tsconfig.json --noEmit",
+    "test": "echo \"sin tests aun\""
+  },
+  "devDependencies": {
+    "typescript": "^5.9.0"
+  }
+}
