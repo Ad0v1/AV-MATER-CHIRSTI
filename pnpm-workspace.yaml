@@ -6,3 +6,7 @@ packages:
 allowBuilds:
   sharp: false
   unrs-resolver: false
+  esbuild: false
+  workerd: false
+  prisma: true
+  '@prisma/engines': true

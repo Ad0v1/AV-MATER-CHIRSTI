@@ -1,0 +1,11 @@
+// Configuracion comun del esquema. Mantenida por Dev 1.
+// Cada modulo agrega sus modelos en su propio archivo (auth.prisma, academic.prisma, ...).
+
+generator client {
+  provider = "prisma-client"
+  output   = "../../apps/api/src/generated/prisma"
+}
+
+datasource db {
+  provider = "mysql"
+}

@@ -27,6 +27,16 @@ ClamAV tarda unos 2–3 minutos en quedar `healthy` la primera vez (`docker comp
 | Consola MinIO | — | http://localhost:9001 |
 | Correos de prueba (Mailpit) | — | http://localhost:8025 |
 
+Base de datos (Prisma 7, esquema dividido en `prisma/schema/*.prisma`, un archivo por módulo):
+
+| Qué | Comando |
+|---|---|
+| Crear y aplicar una migración en local | `pnpm db:migrate --name <descripcion>` |
+| Aplicar migraciones existentes (CI/producción) | `pnpm db:deploy` |
+| Regenerar el cliente (se hace solo en `pnpm install`) | `pnpm db:generate` |
+
+Reglas: sincroniza con `develop` **antes** de generar una migración y sube **una sola migración por PR**. Si tu modelo se relaciona con `User`, agrega la relación inversa en el archivo de `User` en tu mismo PR (Prisma exige ambos lados).
+
 Calidad antes de abrir un PR: `pnpm format:check`, `pnpm lint`, `pnpm test` y `pnpm build`. El CI ejecuta los mismos cuatro pasos.
 
 Detener los servicios: `docker compose down` (añade `-v` para borrar también los datos locales).

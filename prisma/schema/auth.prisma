@@ -1,0 +1,71 @@
+// Modulo de autenticacion y auditoria. Dueño: Dev 1.
+// Los modelos de otros modulos agregan sus relaciones inversas a User en su propio PR
+// (Prisma exige ambos lados de una relacion).
+
+enum UserRole {
+  STUDENT
+  TEACHER
+  ADMIN
+  GUARDIAN
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  WITHDRAWN
+}
+
+// Una identidad por persona (D-012: un solo rol). Dev 2 gestiona altas y edicion (RF-18..23);
+// Dev 1 usa este modelo para autenticar y bloquear inactivos (RF-03, RF-08).
+model User {
+  id                 String     @id @default(uuid())
+  institutionalEmail String     @unique
+  fullName           String
+  role               UserRole
+  status             UserStatus @default(ACTIVE)
+  createdAt          DateTime   @default(now())
+  updatedAt          DateTime   @updatedAt
+
+  localCredential   LocalCredential?
+  policyAcceptances PolicyAcceptance[]
+  auditLogs         AuditLog[]
+
+  @@index([role, status])
+}
+
+// Cuenta local de respaldo, solo para el administrador (RF-04).
+// El secreto TOTP se guarda cifrado; nunca en claro.
+model LocalCredential {
+  userId              String  @id
+  passwordHash        String
+  totpSecretEncrypted String?
+  user                User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// Aceptacion de politica y terminos por version (RF-07).
+model PolicyAcceptance {
+  id            String   @id @default(uuid())
+  userId        String
+  policyVersion String
+  acceptedAt    DateTime @default(now())
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, policyVersion])
+}
+
+// Bitacora (RNF-14/15). Append-only: la aplicacion solo inserta, nunca actualiza ni borra.
+// Se conserva aunque se purguen los PDF (RF-66, RN-14), por eso actorId no tiene cascada.
+model AuditLog {
+  id          String   @id @default(uuid())
+  actorId     String?
+  action      String
+  module      String
+  ip          String?
+  beforeState Json?
+  afterState  Json?
+  occurredAt  DateTime @default(now())
+  actor       User?    @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([actorId, occurredAt])
+  @@index([module, action])
+}
