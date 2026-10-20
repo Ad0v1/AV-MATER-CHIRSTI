@@ -1,29 +1,15 @@
-import { Test } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { App } from 'supertest/types.js';
-import { AppModule } from './../src/app.module.js';
-import { configureApp } from './../src/app.setup.js';
 import { SESSION_COOKIE } from './../src/common/session/session-cookie.js';
 import { SessionService } from './../src/common/session/session.service.js';
-import { MemorySessionStore, SessionStore } from './../src/common/session/session.store.js';
-
-async function createApp(): Promise<INestApplication<App>> {
-  const moduleFixture = await Test.createTestingModule({ imports: [AppModule] })
-    .overrideProvider(SessionStore)
-    .useValue(new MemorySessionStore())
-    .compile();
-  const app = moduleFixture.createNestApplication<INestApplication<App>>();
-  configureApp(app);
-  await app.init();
-  return app;
-}
+import { createTestApp } from './helpers.js';
 
 describe('Sesion (e2e)', () => {
   let app: INestApplication<App>;
 
   beforeEach(async () => {
-    app = await createApp();
+    app = await createTestApp();
   });
 
   afterEach(async () => {
@@ -71,7 +57,7 @@ describe('Rate limiting (e2e)', () => {
 
   beforeEach(async () => {
     process.env.RATE_LIMIT_PER_MINUTE = '3';
-    app = await createApp();
+    app = await createTestApp();
   });
 
   afterEach(async () => {

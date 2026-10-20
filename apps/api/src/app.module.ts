@@ -4,6 +4,7 @@ import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { AuditModule } from './common/audit/audit.module.js';
 import { RolesGuard } from './common/auth/roles.guard.js';
 import { ApiExceptionFilter } from './common/errors/api-exception.filter.js';
+import { PrismaModule } from './common/prisma/prisma.module.js';
 import { SessionMiddleware } from './common/session/session.middleware.js';
 import { SessionModule } from './common/session/session.module.js';
 import { ConfigModule, ENV, type Env } from './config/config.module.js';
@@ -17,6 +18,7 @@ import { AuthController } from './modules/auth/auth.controller.js';
       inject: [ENV],
       useFactory: (env: Env) => [{ ttl: 60_000, limit: env.RATE_LIMIT_PER_MINUTE }],
     }),
+    PrismaModule,
     AuditModule,
     SessionModule,
   ],
