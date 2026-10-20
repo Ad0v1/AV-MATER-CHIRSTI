@@ -6,6 +6,6 @@ import { SessionStore } from './session.store.js';
 @Global()
 @Module({
   providers: [{ provide: SessionStore, useClass: RedisSessionStore }, SessionService],
-  exports: [SessionService],
+  exports: [SessionService, SessionStore],
 })
 export class SessionModule {}

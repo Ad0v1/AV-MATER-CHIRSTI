@@ -37,6 +37,14 @@ Base de datos (Prisma 7, esquema dividido en `prisma/schema/*.prisma`, un archiv
 
 Reglas: sincroniza con `develop` **antes** de generar una migración y sube **una sola migración por PR**. Si tu modelo se relaciona con `User`, agrega la relación inversa en el archivo de `User` en tu mismo PR (Prisma exige ambos lados).
 
+Primer administrador (cuenta local de respaldo, RF-04). La contraseña va por variable de entorno, mínimo 12 caracteres:
+
+```bash
+ADMIN_PASSWORD='<contraseña>' pnpm --filter api admin:create -- correo@colegio.edu.pe "Nombre Completo"
+```
+
+En PowerShell: `$env:ADMIN_PASSWORD='<contraseña>'; pnpm --filter api admin:create -- correo@colegio.edu.pe "Nombre Completo"`. Luego se inicia sesión en `POST /api/v1/auth/login` y el 2FA se activa con `POST /api/v1/auth/2fa/setup` y `/2fa/enable`.
+
 Calidad antes de abrir un PR: `pnpm format:check`, `pnpm lint`, `pnpm test` y `pnpm build`. El CI ejecuta los mismos cuatro pasos.
 
 Detener los servicios: `docker compose down` (añade `-v` para borrar también los datos locales).

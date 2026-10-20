@@ -9,7 +9,7 @@ describe('Sesion (e2e)', () => {
   let app: INestApplication<App>;
 
   beforeEach(async () => {
-    app = await createTestApp();
+    app = (await createTestApp()).app;
   });
 
   afterEach(async () => {
@@ -30,7 +30,7 @@ describe('Sesion (e2e)', () => {
       .get('/api/v1/auth/me')
       .set('Cookie', `${SESSION_COOKIE}=${token}`)
       .expect(200)
-      .expect({ id: 'u1', role: 'TEACHER' });
+      .expect({ id: 'u1', role: 'TEACHER', mustAcceptPolicy: true });
   });
 
   it('GET /auth/me rechaza un token inventado', () => {
@@ -57,7 +57,7 @@ describe('Rate limiting (e2e)', () => {
 
   beforeEach(async () => {
     process.env.RATE_LIMIT_PER_MINUTE = '3';
-    app = await createTestApp();
+    app = (await createTestApp()).app;
   });
 
   afterEach(async () => {

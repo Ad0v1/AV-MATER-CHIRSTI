@@ -10,6 +10,9 @@ import { SessionModule } from './common/session/session.module.js';
 import { ConfigModule, ENV, type Env } from './config/config.module.js';
 import { HealthController } from './health/health.controller.js';
 import { AuthController } from './modules/auth/auth.controller.js';
+import { AuthService } from './modules/auth/auth.service.js';
+import { PasswordService } from './modules/auth/password.service.js';
+import { TotpService } from './modules/auth/totp.service.js';
 
 @Module({
   imports: [
@@ -24,6 +27,9 @@ import { AuthController } from './modules/auth/auth.controller.js';
   ],
   controllers: [HealthController, AuthController],
   providers: [
+    AuthService,
+    PasswordService,
+    TotpService,
     // Orden: primero el limite de peticiones, luego los permisos por rol.
     { provide: APP_GUARD, useClass: ThrottlerGuard },
     { provide: APP_GUARD, useClass: RolesGuard },

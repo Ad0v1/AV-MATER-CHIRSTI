@@ -10,3 +10,4 @@ allowBuilds:
   workerd: false
   prisma: true
   '@prisma/engines': true
+  argon2: true
