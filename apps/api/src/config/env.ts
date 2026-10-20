@@ -5,6 +5,15 @@ const envSchema = z.object({
   API_PORT: z.coerce.number().int().min(1).max(65535).default(4000),
   // Origen permitido del frontend (CORS). Se ampliara con los dominios reales.
   WEB_ORIGIN: z.string().default('http://localhost:3000'),
+  REDIS_URL: z.string().default('redis://localhost:6379'),
+  // Duracion de la sesion. Valor por defecto provisional: pendiente de decision del equipo (RF-05).
+  SESSION_TTL_SECONDS: z.coerce
+    .number()
+    .int()
+    .min(60)
+    .default(8 * 60 * 60),
+  // Limite global de peticiones por IP en una ventana de 60 s (RNF-08).
+  RATE_LIMIT_PER_MINUTE: z.coerce.number().int().min(1).default(100),
 });
 
 export type Env = z.infer<typeof envSchema>;

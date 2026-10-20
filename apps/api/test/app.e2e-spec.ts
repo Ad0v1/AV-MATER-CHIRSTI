@@ -4,6 +4,7 @@ import request from 'supertest';
 import { App } from 'supertest/types.js';
 import { AppModule } from './../src/app.module.js';
 import { configureApp } from './../src/app.setup.js';
+import { MemorySessionStore, SessionStore } from './../src/common/session/session.store.js';
 
 describe('API (e2e)', () => {
   let app: INestApplication<App>;
@@ -11,7 +12,10 @@ describe('API (e2e)', () => {
   beforeEach(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
-    }).compile();
+    })
+      .overrideProvider(SessionStore)
+      .useValue(new MemorySessionStore())
+      .compile();
 
     app = moduleFixture.createNestApplication();
     configureApp(app);
