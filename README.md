@@ -43,7 +43,7 @@ Primer administrador (cuenta local de respaldo, RF-04). La contraseña va por va
 ADMIN_PASSWORD='<contraseña>' pnpm --filter api admin:create -- correo@colegio.edu.pe "Nombre Completo"
 ```
 
-En PowerShell: `$env:ADMIN_PASSWORD='<contraseña>'; pnpm --filter api admin:create -- correo@colegio.edu.pe "Nombre Completo"`. Luego se inicia sesión en `POST /api/v1/auth/login` y el 2FA se activa con `POST /api/v1/auth/2fa/setup` y `/2fa/enable`.
+En PowerShell: `$env:ADMIN_PASSWORD='<contraseña>'; pnpm --filter api admin:create -- correo@colegio.edu.pe "Nombre Completo"`. Luego entra por http://localhost:3000/login (la web reenvía `/api/v1` a la API, así que no hay CORS; la API debe correr con `TRUST_PROXY=1`, que ya viene en `.env.example`). Por API: `POST /api/v1/auth/login` y el 2FA se activa con `POST /api/v1/auth/2fa/setup` y `/2fa/enable`.
 
 Calidad antes de abrir un PR: `pnpm format:check`, `pnpm lint`, `pnpm test` y `pnpm build`. El CI ejecuta los mismos cuatro pasos.
 

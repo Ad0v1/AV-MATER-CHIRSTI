@@ -6,9 +6,12 @@ const envSchema = z
     API_PORT: z.coerce.number().int().min(1).max(65535).default(4000),
     // Origen permitido del frontend (CORS). Se ampliara con los dominios reales.
     WEB_ORIGIN: z.string().default('http://localhost:3000'),
+    // Cantidad de proxies de confianza delante de la API (0 = ninguno). Con la web reenviando
+    // las peticiones debe ser 1; asi el limite de intentos y la bitacora ven la IP real del usuario.
+    TRUST_PROXY: z.coerce.number().int().min(0).max(5).default(0),
     // Valor por defecto solo para desarrollo local (coincide con .env.example).
-    DATABASE_URL: z.string().default('mysql://aula:aula_dev_change_me@localhost:3306/aula_virtual'),
-    REDIS_URL: z.string().default('redis://localhost:6379'),
+    DATABASE_URL: z.string().default('mysql://aula:aula_dev_change_me@127.0.0.1:3306/aula_virtual'),
+    REDIS_URL: z.string().default('redis://127.0.0.1:6379'),
     // Duracion de la sesion. Valor por defecto provisional: pendiente de decision del equipo (RF-05).
     SESSION_TTL_SECONDS: z.coerce
       .number()
