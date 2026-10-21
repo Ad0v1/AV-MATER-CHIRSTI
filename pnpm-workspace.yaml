@@ -1,0 +1,12 @@
+packages:
+  - 'apps/*'
+  - 'packages/*'
+
+# Scripts de build de dependencias: solo se permiten los aprobados explicitamente.
+allowBuilds:
+  sharp: false
+  unrs-resolver: false
+  esbuild: false
+  workerd: false
+  prisma: true
+  '@prisma/engines': true

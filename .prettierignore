@@ -1,0 +1,10 @@
+node_modules
+dist
+.next
+.turbo
+pnpm-lock.yaml
+docs/fuentes
+*.pdf
+docs
+README.md
+.github
