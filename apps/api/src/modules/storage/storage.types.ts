@@ -1,10 +1,10 @@
-import { OBJECT_SCOPES } from './storage.constants';
+import type { OBJECT_SCOPES } from './storage.constants.js';
 
 /** Prefijo del objeto: materiales (clases/lecturas), adjuntos de tarea o entregas. */
 export type ObjectScope = (typeof OBJECT_SCOPES)[number];
 
 export interface StorageConfig {
-  /** Vacío para AWS; http://minio:9000 en local; https://<cuenta>.r2.cloudflarestorage.com en R2. */
+  /** http://localhost:9000 con MinIO local; https://<cuenta>.r2.cloudflarestorage.com con R2. */
   endpoint?: string;
   /** "us-east-1" con MinIO, "auto" con R2. */
   region: string;

@@ -25,15 +25,19 @@ import {
   PDF_MAGIC_BYTES,
   STORAGE_CLIENT,
   STORAGE_CONFIG,
-} from './storage.constants';
-import {
+} from './storage.constants.js';
+import type {
   DownloadUrlOptions,
   SignedUrl,
   StorageConfig,
   StoredObjectInfo,
   UploadUrlRequest,
-} from './storage.types';
-import { assertValidObjectKey, buildContentDisposition, safeDownloadFileName } from './object-key.util';
+} from './storage.types.js';
+import {
+  assertValidObjectKey,
+  buildContentDisposition,
+  safeDownloadFileName,
+} from './object-key.util.js';
 
 /**
  * Servicio de almacenamiento privado (RNF-03, RNF-18).
@@ -53,7 +57,7 @@ export class StorageService {
     @Inject(STORAGE_CONFIG) private readonly config: StorageConfig,
   ) {}
 
-  /** Calcula el límite efectivo: el de la tarea, sin superar nunca el tope absoluto (RF-35). */
+  /** Límite efectivo: el de la tarea, sin superar nunca el tope absoluto (RF-35). */
   effectiveMaxSize(maxSizeBytes?: number): number {
     const requested = maxSizeBytes ?? DEFAULT_MAX_SIZE_BYTES;
     return Math.min(requested, ABSOLUTE_MAX_SIZE_BYTES);
@@ -63,8 +67,8 @@ export class StorageService {
    * URL firmada para subir un PDF con PUT.
    *
    * Se usa PUT (y no POST con política) porque Cloudflare R2 no admite POST.
-   * El tamaño y el tipo declarados quedan firmados: si el navegador envía otros, S3/MinIO
-   * rechaza la subida. Aun así, inspectObject() vuelve a verificar todo al confirmar.
+   * El tamaño y el tipo declarados quedan firmados: si el navegador envía otros, el
+   * almacenamiento rechaza la subida. Aun así, inspectObject() vuelve a verificar todo.
    */
   async createUploadUrl(request: UploadUrlRequest): Promise<SignedUrl> {
     assertValidObjectKey(request.key);
@@ -107,12 +111,12 @@ export class StorageService {
   }
 
   /**
-   * Verifica un objeto ya subido, antes de aceptarlo (paso "complete" del contrato).
+   * Verifica un objeto ya subido antes de aceptarlo (paso "complete" del contrato).
    * Comprueba que exista, que no supere el límite y que realmente sea un PDF.
    *
-   * Pendiente para sprints siguientes (no es Sprint 0):
-   *  - validación completa del PDF (no cifrado, legible) — RF-34
-   *  - escaneo con ClamAV — RF-40
+   * Pendiente para sprints siguientes:
+   *  - validación completa del PDF (no cifrado, legible): RF-34
+   *  - escaneo con ClamAV: RF-40
    */
   async inspectObject(key: string, maxSizeBytes?: number): Promise<StoredObjectInfo> {
     assertValidObjectKey(key);
@@ -184,7 +188,7 @@ export class StorageService {
       await this.s3.send(new HeadBucketCommand({ Bucket: this.config.bucket }));
       return true;
     } catch (error) {
-      this.logger.warn(`Bucket "${this.config.bucket}" no disponible: ${(error as Error).message}`);
+      this.logger.warn(`Bucket "${this.config.bucket}" no disponible: ${this.describe(error)}`);
       return false;
     }
   }
@@ -216,7 +220,7 @@ export class StorageService {
     try {
       return await getSignedUrl(this.s3, command, { expiresIn, signableHeaders });
     } catch (error) {
-      this.logger.error(`No se pudo firmar la URL: ${(error as Error).message}`);
+      this.logger.error(`No se pudo firmar la URL: ${this.describe(error)}`);
       throw this.unavailable();
     }
   }
@@ -232,14 +236,20 @@ export class StorageService {
           message: 'El archivo no existe o todavía no se terminó de subir.',
         });
       }
-      this.logger.error(`Error de almacenamiento con "${key}": ${(error as Error).message}`);
+      this.logger.error(`Error de almacenamiento con "${key}": ${this.describe(error)}`);
       throw this.unavailable();
     }
   }
 
   private isNotFound(error: unknown): boolean {
-    const e = error as { name?: string; $metadata?: { httpStatusCode?: number } };
-    return e?.name === 'NotFound' || e?.name === 'NoSuchKey' || e?.$metadata?.httpStatusCode === 404;
+    const e = error as { name?: string; $metadata?: { httpStatusCode?: number } } | null;
+    return (
+      e?.name === 'NotFound' || e?.name === 'NoSuchKey' || e?.$metadata?.httpStatusCode === 404
+    );
+  }
+
+  private describe(error: unknown): string {
+    return error instanceof Error ? error.message : String(error);
   }
 
   private tooLarge(maxSize: number): PayloadTooLargeException {
@@ -247,14 +257,14 @@ export class StorageService {
     return new PayloadTooLargeException({
       code: 'FILE_TOO_LARGE',
       message: `El archivo supera el límite de ${mb} MB.`,
-      details: [{ maxSizeBytes: maxSize }],
     });
   }
 
   private unavailable(): ServiceUnavailableException {
     return new ServiceUnavailableException({
       code: 'STORAGE_UNAVAILABLE',
-      message: 'El almacenamiento no está disponible en este momento. Intenta de nuevo en unos minutos.',
+      message:
+        'El almacenamiento no está disponible en este momento. Intenta de nuevo en unos minutos.',
     });
   }
 

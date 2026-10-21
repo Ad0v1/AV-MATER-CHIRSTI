@@ -1,13 +1,13 @@
 import { Module } from '@nestjs/common';
 import { S3Client } from '@aws-sdk/client-s3';
-import { STORAGE_CLIENT, STORAGE_CONFIG } from './storage.constants';
-import { loadStorageConfig } from './storage.config';
-import { StorageService } from './storage.service';
-import { StorageConfig } from './storage.types';
+import { STORAGE_CLIENT, STORAGE_CONFIG } from './storage.constants.js';
+import { loadStorageConfig } from './storage.config.js';
+import { StorageService } from './storage.service.js';
+import type { StorageConfig } from './storage.types.js';
 
 /**
- * Módulo de almacenamiento (Dev 3). Lo importan contents, submissions y, más adelante,
- * los módulos de Dev 4 (visor PDF) y Dev 5 (ZIP masivo, purga).
+ * Módulo de almacenamiento (Dev 3). No se registra en AppModule: lo importan los módulos
+ * que lo necesitan (contents, submissions y, más adelante, los de Dev 4 y Dev 5).
  */
 @Module({
   providers: [

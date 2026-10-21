@@ -1,35 +1,68 @@
-import { StorageConfig } from './storage.types';
-
-function required(env: NodeJS.ProcessEnv, name: string): string {
-  const value = env[name];
-  if (!value || value.trim() === '') {
-    throw new Error(`Falta la variable de entorno ${name} (módulo storage).`);
-  }
-  return value.trim();
-}
-
-function positiveInt(value: string | undefined, fallback: number, name: string): number {
-  if (value === undefined || value.trim() === '') return fallback;
-  const parsed = Number(value);
-  if (!Number.isInteger(parsed) || parsed <= 0) {
-    throw new Error(`${name} debe ser un entero positivo (recibido: "${value}").`);
-  }
-  return parsed;
-}
+import { z } from 'zod';
+import type { StorageConfig } from './storage.types.js';
 
 /**
- * Lee la configuración desde variables de entorno.
- * Cuando Dev 1 defina el sistema de configuración común, esta función se adapta a él.
+ * Variables S3_* definidas en .env.example (Dev 1).
+ * Mismo estilo que apps/api/src/config/env.ts: valores por defecto solo para desarrollo
+ * y fallo al arrancar si algo es inválido.
  */
-export function loadStorageConfig(env: NodeJS.ProcessEnv = process.env): StorageConfig {
+const storageEnvSchema = z.object({
+  NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
+  S3_ENDPOINT: z.string().optional(),
+  S3_REGION: z.string().min(1).default('us-east-1'),
+  S3_BUCKET: z.string().min(1).default('aula-privado'),
+  // En producción (R2) se usan credenciales propias. En local se reutilizan las de MinIO.
+  S3_ACCESS_KEY: z.string().optional(),
+  S3_SECRET_KEY: z.string().optional(),
+  MINIO_ROOT_USER: z.string().optional(),
+  MINIO_ROOT_PASSWORD: z.string().optional(),
+  S3_FORCE_PATH_STYLE: z.enum(['true', 'false']).default('true'),
+  S3_UPLOAD_URL_TTL_SECONDS: z.coerce.number().int().min(30).max(3600).default(300),
+  S3_DOWNLOAD_URL_TTL_SECONDS: z.coerce.number().int().min(30).max(3600).default(120),
+});
+
+// Valores de desarrollo; coinciden con .env.example.
+const DEV_ENDPOINT = 'http://localhost:9000';
+const DEV_ACCESS_KEY = 'minio_dev';
+const DEV_SECRET_KEY = 'minio_dev_change_me';
+
+function nonEmpty(value: string | undefined): string | undefined {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : undefined;
+}
+
+export function loadStorageConfig(source: NodeJS.ProcessEnv = process.env): StorageConfig {
+  const result = storageEnvSchema.safeParse(source);
+  if (!result.success) {
+    const problems = result.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`);
+    throw new Error(`Configuracion de almacenamiento invalida: ${problems.join('; ')}`);
+  }
+  const env = result.data;
+  const isProduction = env.NODE_ENV === 'production';
+
+  const accessKeyId =
+    nonEmpty(env.S3_ACCESS_KEY) ??
+    nonEmpty(env.MINIO_ROOT_USER) ??
+    (isProduction ? undefined : DEV_ACCESS_KEY);
+  const secretAccessKey =
+    nonEmpty(env.S3_SECRET_KEY) ??
+    nonEmpty(env.MINIO_ROOT_PASSWORD) ??
+    (isProduction ? undefined : DEV_SECRET_KEY);
+
+  if (!accessKeyId || !secretAccessKey) {
+    throw new Error(
+      'Configuracion de almacenamiento invalida: faltan S3_ACCESS_KEY y S3_SECRET_KEY en produccion',
+    );
+  }
+
   return {
-    endpoint: env.STORAGE_ENDPOINT?.trim() || undefined,
-    region: env.STORAGE_REGION?.trim() || 'us-east-1',
-    bucket: required(env, 'STORAGE_BUCKET'),
-    accessKeyId: required(env, 'STORAGE_ACCESS_KEY'),
-    secretAccessKey: required(env, 'STORAGE_SECRET_KEY'),
-    forcePathStyle: (env.STORAGE_FORCE_PATH_STYLE ?? 'true').trim() === 'true',
-    uploadUrlTtlSeconds: positiveInt(env.STORAGE_UPLOAD_URL_TTL, 300, 'STORAGE_UPLOAD_URL_TTL'),
-    downloadUrlTtlSeconds: positiveInt(env.STORAGE_DOWNLOAD_URL_TTL, 120, 'STORAGE_DOWNLOAD_URL_TTL'),
+    endpoint: nonEmpty(env.S3_ENDPOINT) ?? (isProduction ? undefined : DEV_ENDPOINT),
+    region: env.S3_REGION,
+    bucket: env.S3_BUCKET,
+    accessKeyId,
+    secretAccessKey,
+    forcePathStyle: env.S3_FORCE_PATH_STYLE === 'true',
+    uploadUrlTtlSeconds: env.S3_UPLOAD_URL_TTL_SECONDS,
+    downloadUrlTtlSeconds: env.S3_DOWNLOAD_URL_TTL_SECONDS,
   };
 }

@@ -6,20 +6,27 @@ import {
   UnsupportedMediaTypeException,
 } from '@nestjs/common';
 import { GetObjectCommand, HeadObjectCommand, S3Client } from '@aws-sdk/client-s3';
-import { StorageService } from './storage.service';
-import { StorageConfig } from './storage.types';
-import { ABSOLUTE_MAX_SIZE_BYTES, BYTES_PER_MB, DEFAULT_MAX_SIZE_BYTES } from './storage.constants';
+import { describe, expect, it, vi, type MockInstance } from 'vitest';
+import { StorageService } from './storage.service.js';
+import type { StorageConfig } from './storage.types.js';
+import {
+  ABSOLUTE_MAX_SIZE_BYTES,
+  BYTES_PER_MB,
+  DEFAULT_MAX_SIZE_BYTES,
+} from './storage.constants.js';
 import {
   buildContentDisposition,
   buildObjectKey,
   isValidObjectKey,
   safeDownloadFileName,
-} from './object-key.util';
+} from './object-key.util.js';
+
+type SendMock = MockInstance<(command: unknown) => Promise<unknown>>;
 
 const config: StorageConfig = {
   endpoint: 'http://localhost:9000',
   region: 'us-east-1',
-  bucket: 'aula-virtual-test',
+  bucket: 'aula-privado',
   accessKeyId: 'test-key',
   secretAccessKey: 'test-secret',
   forcePathStyle: true,
@@ -28,26 +35,34 @@ const config: StorageConfig = {
 };
 
 // Firmar URLs es un cálculo local: no hace falta que MinIO esté levantado.
-function createService() {
+function createService(): { service: StorageService; send: SendMock } {
   const s3 = new S3Client({
     endpoint: config.endpoint,
     region: config.region,
     forcePathStyle: true,
     credentials: { accessKeyId: config.accessKeyId, secretAccessKey: config.secretAccessKey },
   });
-  const send = jest.spyOn(s3, 'send');
+  const send = vi.spyOn(s3, 'send') as unknown as SendMock;
   return { service: new StorageService(s3, config), send };
 }
 
-const KEY = buildObjectKey('submissions', new Date('2026-10-15T12:00:00Z'), '3f2c1a9e-8b7d-4c6e-9f10-1a2b3c4d5e6f');
+const KEY = buildObjectKey(
+  'submissions',
+  new Date('2026-10-15T12:00:00Z'),
+  '3f2c1a9e-8b7d-4c6e-9f10-1a2b3c4d5e6f',
+);
 
-function mockStoredPdf(send: jest.SpyInstance, sizeBytes: number, firstBytes = '%PDF-') {
+function mockStoredPdf(send: SendMock, sizeBytes: number, firstBytes = '%PDF-'): void {
   send.mockImplementation(async (command: unknown) => {
     if (command instanceof HeadObjectCommand) {
       return { ContentLength: sizeBytes, ContentType: 'application/pdf', ETag: '"abc"' };
     }
     if (command instanceof GetObjectCommand) {
-      return { Body: { transformToByteArray: async () => new Uint8Array(Buffer.from(firstBytes, 'latin1')) } };
+      return {
+        Body: {
+          transformToByteArray: async () => new Uint8Array(Buffer.from(firstBytes, 'latin1')),
+        },
+      };
     }
     throw new Error('Comando no esperado');
   });
@@ -62,12 +77,15 @@ describe('object-key.util', () => {
   it('rechaza claves con rutas o prefijos no permitidos', () => {
     expect(isValidObjectKey('../secreto.pdf')).toBe(false);
     expect(isValidObjectKey('otros/2026/10/3f2c1a9e-8b7d-4c6e-9f10-1a2b3c4d5e6f.pdf')).toBe(false);
-    expect(isValidObjectKey('submissions/2026/13/3f2c1a9e-8b7d-4c6e-9f10-1a2b3c4d5e6f.pdf')).toBe(false);
+    expect(isValidObjectKey('submissions/2026/13/3f2c1a9e-8b7d-4c6e-9f10-1a2b3c4d5e6f.pdf')).toBe(
+      false,
+    );
   });
 
   it('limpia nombres de descarga peligrosos y agrega .pdf', () => {
     expect(safeDownloadFileName('Tarea 1 / Matemática')).toBe('Tarea 1 _ Matemática.pdf');
     expect(safeDownloadFileName('../../etc/passwd')).toBe('.._.._etc_passwd.pdf');
+    expect(safeDownloadFileName('nombre\u0000raro')).toBe('nombreraro.pdf');
     expect(safeDownloadFileName('')).toBe('archivo.pdf');
     expect(safeDownloadFileName('...')).toBe('archivo.pdf');
   });
@@ -90,7 +108,7 @@ describe('StorageService.createUploadUrl', () => {
     });
     expect(result.method).toBe('PUT');
     expect(result.url).toContain('X-Amz-Signature=');
-    expect(result.url).toContain('aula-virtual-test');
+    expect(result.url).toContain('aula-privado');
     expect(result.headers['Content-Type']).toBe('application/pdf');
     expect(new Date(result.expiresAt).getTime()).toBeGreaterThan(Date.now());
   });
@@ -132,7 +150,11 @@ describe('StorageService.createUploadUrl', () => {
       service.createUploadUrl({ key: KEY, contentType: 'application/pdf', sizeBytes: 0 }),
     ).rejects.toBeInstanceOf(BadRequestException);
     await expect(
-      service.createUploadUrl({ key: 'mi tarea.pdf', contentType: 'application/pdf', sizeBytes: 10 }),
+      service.createUploadUrl({
+        key: 'mi tarea.pdf',
+        contentType: 'application/pdf',
+        sizeBytes: 10,
+      }),
     ).rejects.toBeInstanceOf(BadRequestException);
   });
 });
