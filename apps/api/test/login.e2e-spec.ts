@@ -110,6 +110,16 @@ describe('Login local del admin (e2e)', () => {
       expect(res.body.error.code).toBe('TOTP_INVALID');
     });
 
+    it('rechaza reutilizar un codigo ya aceptado', async () => {
+      await addAdmin(t, { totp: secret });
+      const code = generateSync({ secret });
+      const body = { email: 'admin@colegio.edu.pe', password: PASSWORD, totp: code };
+
+      await login(body).expect(200);
+      const replay = await login(body).expect(401);
+      expect(replay.body.error.code).toBe('TOTP_INVALID');
+    });
+
     it('acepta el codigo correcto', async () => {
       await addAdmin(t, { totp: secret });
       await login({

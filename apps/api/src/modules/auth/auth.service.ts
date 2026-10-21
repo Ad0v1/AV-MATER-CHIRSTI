@@ -63,10 +63,10 @@ export class AuthService {
         });
       }
       const secret = this.totp.decrypt(credential.totpSecretEncrypted);
-      if (!this.totp.verify(secret, dto.totp)) {
+      if (!(await this.totp.verifyOnce(found.id, secret, dto.totp))) {
         await this.fail('auth.login_failed', found.id, ip);
         throw new UnauthorizedException({
-          message: 'Codigo de verificacion invalido',
+          message: 'Codigo de verificacion invalido o ya utilizado',
           code: 'TOTP_INVALID',
         });
       }
@@ -117,7 +117,7 @@ export class AuthService {
     if (!secret) {
       throw new BadRequestException('La configuracion del 2FA expiro. Inicia de nuevo');
     }
-    if (!this.totp.verify(secret, code)) {
+    if (!(await this.totp.verifyOnce(userId, secret, code))) {
       throw new BadRequestException('Codigo de verificacion invalido');
     }
     await this.prisma.localCredential.update({
