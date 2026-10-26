@@ -9,6 +9,7 @@ import { SessionMiddleware } from './common/session/session.middleware.js';
 import { SessionModule } from './common/session/session.module.js';
 import { ConfigModule, ENV, type Env } from './config/config.module.js';
 import { HealthController } from './health/health.controller.js';
+import { AcademicModule } from './modules/academic/academic.module.js';
 import { AuthController } from './modules/auth/auth.controller.js';
 
 @Module({
@@ -21,6 +22,7 @@ import { AuthController } from './modules/auth/auth.controller.js';
     PrismaModule,
     AuditModule,
     SessionModule,
+    AcademicModule,
   ],
   controllers: [HealthController, AuthController],
   providers: [

@@ -61,7 +61,9 @@ El máximo por defecto es 20 MB y el tope configurable por tarea es 50 MB (RF-28
 | `submission.accepted.v1` | Dev 3 | Dev 4/5 | assignmentId, enrollmentId, submissionId, versionId, receivedAt, isLate |
 | `submission.rejected.v1` | Dev 3 | Dev 5 | uploadId, reason, studentId |
 | `grade.updated.v1` | Dev 4 | Dev 5 | assignmentId, enrollmentId, gradeStatus |
-| `period.closed.v1` | Dev 2 | Dev 3/4/5 | periodId, closedAt |
+| `period.closed.v1` | Dev 2 | Dev 3/4/5 | periodId, academicYearId, closedAt |
+| `period.reopened.v1` | Dev 2 (en proceso, D-031) | Dev 3/4/5 | periodId, academicYearId, reopenedAt |
+| `academic-year.closed.v1` | Dev 2 (en proceso, D-031) | Dev 3/4/5 | academicYearId, year, closedAt |
 | `file.purge-requested.v1` | Dev 5 | Dev 3 | fileId, reason, academicYearId |
 
 **Esto es un catálogo recomendado, no una obligación de tecnología event-driven**. En Sprint 0 basta con tipos/contratos y mocks; Dev 1 y Dev 5 aprueban el bus/cola y la semántica de entrega (al menos una vez, reintentos, idempotencia).
@@ -155,3 +157,170 @@ Errores: `GradingError` con `code` (`INVALID_GRADE`, `INVALID_STATE` o `INVALID_
 - Un promedio sin notas que cuenten es `NO_GRADES`, nunca `0` (D-026). La interfaz muestra "sin nota".
 - `toLiteral` recibe el `rounded` de `calculateAverage`, nunca un promedio sin redondear.
 - `apps/api` todavía no declara `@aula/shared` como dependencia: se añade con la tarea de la API de grading.
+
+## API académica (Dev 2, RF-09..14 y RF-17)
+
+> **Estado: PROPUESTA.** Implementado en `apps/api/src/modules/academic/` (rama `features/adolfo`, sin PR aún) y aprobado por `revisor-pr` el 26/10/2026. Depende de la aceptación del dueño de Dev 2 y de D-021 (FK hacia `User` en `CHAR(36)`). Las pantallas son de la fase 5. Esta sección sigue el código: si cambia una firma, un error o un campo, se actualiza aquí.
+
+### Convenciones
+
+- Prefijo `/api/v1`. Todos los endpoints requieren sesión: sin ella, 401.
+- Roles: se comprueban a nivel de clase (`@Roles`). Un rol que no aparece en la fila recibe 403.
+- Fechas solo-día: `YYYY-MM-DD`. Timestamps: ISO-8601 en UTC. Ids: UUID (400 si no es UUID).
+- Marcadores TRUE/NULL de la BD se exponen como `boolean` (ver "Regla de marcadores").
+- Listas: `{ items, total }`. No hay paginación en F2.
+- Errores: el código sale del status: 400 `VALIDATION_ERROR`, 401 `UNAUTHENTICATED`, 403 `FORBIDDEN`, 404 `NOT_FOUND`, 409 `CONFLICT`, 422 `BUSINESS_RULE_VIOLATION`. Cuando el error trae una lista de problemas (validación Zod o fechas de períodos), `message` es `"Solicitud invalida"` y `details` es `[{ path, message }]`. Pendiente de Dev 1: códigos de error propios por regla de negocio.
+
+### Endpoints
+
+Los cuerpos son JSON. La columna Rol lista quién puede llamar, según `@Roles` de cada controlador.
+
+| Método y ruta | Rol | Cuerpo | Respuesta | Errores |
+| --- | --- | --- | --- | --- |
+| `GET /academic-years` | ADMIN | — | 200 `{ items: YearSummary[], total }`, año descendente | 403 |
+| `POST /academic-years` | ADMIN | `{ year: 2000..2100, periods: [4 × { sequence: 1..4, startDate, endDate }] }`, sin secuencias repetidas | 201 `YearDetail` | 400; 409 si el año ya existe; 422 fechas (details) |
+| `GET /academic-years/:id` | ADMIN | — | 200 `YearDetail` | 404 |
+| `PATCH /academic-years/:id` | ADMIN | `{ year }` | 200 `YearDetail` | 400; 404; 409 solo lectura, año activo, con secciones o año existente; 422 fechas que no existen en el nuevo año |
+| `POST /academic-years/:id/activate` | ADMIN | — | 200 `YearDetail` | 404; 409 si está cerrado o hay concurrencia. Si ya es el activo, 200 sin cambios ni bitácora |
+| `POST /academic-years/:id/close` | ADMIN | — | 200 `YearDetail` | 404; 409 ya cerrado; 422 hay períodos abiertos |
+| `PATCH /academic-periods/:id` | ADMIN | `{ startDate?, endDate? }` (al menos uno) | 200 `PeriodView` | 400; 404; 409 año de solo lectura o período cerrado; 422 fechas |
+| `POST /academic-periods/:id/close` | ADMIN | `{ reason? }` (1..500 caracteres) | 200 `PeriodView` | 400; 404; 409 ya cerrado o año de solo lectura |
+| `POST /academic-periods/:id/reopen` | ADMIN | `{ reason }` obligatorio (10..500 caracteres) | 200 `PeriodView` | 400 sin motivo; 404; 409 no cerrado, año no activo o año cerrado |
+| `GET /academic-years/:yearId/sections` | ADMIN | — | 200 `{ items: SectionView[], total }` | 400; 404 año |
+| `POST /academic-years/:yearId/sections` | ADMIN | `{ gradeLevel: 1..5, code }` (`[A-Z0-9]{1,8}`, se pasa a mayúsculas) | 201 `SectionView` | 400; 404; 409 solo lectura o sección duplicada |
+| `PATCH /sections/:id` | ADMIN | `{ code?, isActive? }` (al menos uno) | 200 `SectionView` | 400; 404; 409 solo lectura, código duplicado o desactivar con matrículas vigentes |
+| `GET /courses` | ADMIN | Query `includeInactive` (`true` o `false`; por defecto `false`) | 200 `{ items: CourseView[], total }` | 400 |
+| `POST /courses` | ADMIN | `{ name }` (1..120 caracteres) | 201 `CourseView` | 400; 409 nombre duplicado |
+| `PATCH /courses/:id` | ADMIN | `{ name?, isActive? }` (al menos uno) | 200 `CourseView` | 400; 404; 409 nombre duplicado |
+| `GET /sections/:sectionId/course-sections` | ADMIN | — | 200 `{ items: CourseSectionView[], total }` | 400; 404 sección |
+| `POST /sections/:sectionId/course-sections` | ADMIN | `{ courseId, teacherId? }` (`teacherId` puede ser null) | 201 `CourseSectionView` | 400; 404 sección o curso; 409 solo lectura, sección inactiva o curso duplicado; 422 curso inactivo o docente no válido |
+| `PATCH /course-sections/:id` | ADMIN | `{ isActive }` | 200 `CourseSectionView` | 400; 404; 409 solo lectura |
+| `PUT /course-sections/:id/teacher` | ADMIN | `{ teacherId }` (uuid o null, D-029) | 200 `CourseSectionView` | 400; 404; 409 solo lectura; 422 docente no válido. Mismo docente: 200 sin cambios ni bitácora |
+| `GET /course-sections/:id/context` | ADMIN, TEACHER, STUDENT, GUARDIAN (con pertenencia) | — | 200 `CourseSectionContext` | 400; 403 sin pertenencia o usuario no activo; 404 |
+| `GET /me/course-sections` | TEACHER, STUDENT | — | 200 `{ items: MyCourseSection[], total }` | 403 para GUARDIAN y ADMIN |
+
+Formas de respuesta comunes:
+
+- `YearSummary`: `{ id, year, isActive: boolean, closedAt, readOnly }`. `YearDetail` es `YearSummary` más `periods: PeriodView[]`.
+- `PeriodView`: `{ id, academicYearId, sequence, kind, label, startDate, endDate, closedAt, isOpen }`. `kind` y `label` según D-002: `FIRST_BIMESTER` "I Bimestre", `SECOND_BIMESTER` "II Bimestre", `THIRD_TRIMESTER` "III Trimestre", `FOURTH_TRIMESTER` "IV Trimestre".
+- `SectionView`: `{ id, academicYearId, gradeLevel, code, isActive }`.
+- `CourseView`: `{ id, name, isActive }`.
+- `CourseSectionView`: `{ id, sectionId, course: { id, name }, teacher: { id, fullName } | null, isActive }`.
+
+`readOnly` de `YearSummary` aplica D-030 (año cerrado, o no activo y anterior al activo). Un año futuro no cerrado se puede preparar.
+
+### GET /course-sections/:id/context
+
+Roles ADMIN, TEACHER, STUDENT y GUARDIAN. ADMIN siempre; los demás solo si tienen pertenencia (`assertCanAccessCourseSection`, ver más abajo).
+
+```json
+{
+  "id": "uuid",
+  "isActive": true,
+  "readOnly": false,
+  "academicYear": { "id": "uuid", "year": 2026, "isActive": true, "closedAt": null },
+  "section": { "id": "uuid", "gradeLevel": 3, "code": "A", "isActive": true },
+  "course": { "id": "uuid", "name": "Matemática" },
+  "teacher": { "id": "uuid", "fullName": "Nombre del docente" },
+  "periods": [
+    {
+      "id": "uuid",
+      "academicYearId": "uuid",
+      "sequence": 1,
+      "kind": "FIRST_BIMESTER",
+      "label": "I Bimestre",
+      "startDate": "2026-03-01",
+      "endDate": "2026-04-30",
+      "closedAt": null,
+      "isOpen": true
+    }
+  ],
+  "currentPeriodId": "uuid"
+}
+```
+
+- `teacher` es `null` si la sección no tiene docente.
+- `readOnly` es `true` si el año está cerrado; o no es el activo y es anterior al activo (D-030); o el año no está activo, también si es futuro, porque ahí no se escriben notas ni tareas; o la sección o el curso-sección están inactivos. El campo puede confundirse con D-030: ver D-030 en `08_DECISIONES.md`.
+- `currentPeriodId` es el período cuyo rango incluye hoy en `America/Lima`; `null` si cae en un hueco o fuera del año.
+- No incluye correos ni datos de estudiantes.
+
+### GET /me/course-sections
+
+Roles TEACHER y STUDENT. GUARDIAN y ADMIN reciben 403.
+
+```json
+{
+  "items": [
+    {
+      "id": "uuid",
+      "course": { "id": "uuid", "name": "Matemática" },
+      "section": { "id": "uuid", "gradeLevel": 3, "code": "A" },
+      "academicYear": { "id": "uuid", "year": 2026 },
+      "teacher": { "id": "uuid", "fullName": "Nombre del docente" },
+      "enrollmentId": "uuid"
+    }
+  ],
+  "total": 1
+}
+```
+
+- Solo cuenta el año activo y los curso-sección y secciones activos.
+- TEACHER: los cursos que dicta (`teacherId` es él). No aparece `enrollmentId`.
+- STUDENT: los cursos de la sección de su matrícula vigente en el año activo, con `enrollmentId`.
+- Sin año activo, o con usuario no ACTIVE: `items: []`.
+- Los años anteriores quedan fuera (F3).
+
+### AcademicAccessService (contrato para Dev 3, 4 y 5)
+
+Exportado por `AcademicModule`. Lo usan los servicios de otros módulos; no es HTTP. Las firmas están en `apps/api/src/modules/academic/academic-access.service.ts`.
+
+| Método | Devuelve | Errores | Semántica |
+| --- | --- | --- | --- |
+| `getActiveYear()` | `{ id, year }` o `null` | — | Año activo; a lo sumo uno (RN-11). |
+| `isYearReadOnly(year)` | `boolean` | — | Auxiliar: aplica D-030 con el año activo si hace falta. |
+| `getCourseSectionContext(courseSectionId, now?)` | `CourseSectionContext` | 404 | No comprueba permisos: llamar antes a `assertCanAccessCourseSection`. |
+| `assertCanAccessCourseSection(user, courseSectionId)` | `void` | 404; 403 | El usuario debe estar ACTIVE en la BD (la sesión solo trae `id` y `role`). ADMIN siempre; TEACHER si es el docente asignado; STUDENT con matrícula vigente en la sección; GUARDIAN si algún estudiante vinculado tiene matrícula vigente en la sección. |
+| `assertTeacherOf(userId, courseSectionId)` | `void` | 404; 403 | Pasa solo si es el docente asignado y está ACTIVE. Sin docente (`teacherId` null) → 403. |
+| `isPeriodOpen(periodId)` | `boolean` | 404 | `true` solo si el período no está cerrado y su año está activo y sin cerrar. Año inactivo → `false`. |
+| `assertCourseSectionWritable(courseSectionId, periodId?)` | `void` | 404; 409; 422 | Para notas, tareas y materiales. 404 si no existe; 409 si el año no está activo o está cerrado, o si la sección o el curso-sección están inactivos. Con `periodId`: 404 si el período no existe; 422 si es de otro año; 409 si está cerrado. |
+| `listCurrentEnrollments(sectionId)` | `CurrentEnrollment[]` | 404 sección | Matrículas vigentes (incluye estudiantes INACTIVE), por nombre. |
+| `listEnrollmentsOfStudent(studentId, academicYearId)` | `StudentEnrollment[]` | — | Matrículas vigentes y cerradas del año, por `effectiveFrom`. Vacío si no hay. |
+| `getLinkedStudentIds(guardianId)` | `string[]` | — | Ids de los estudiantes vinculados al apoderado. |
+
+Tipos:
+
+- `CurrentEnrollment`: `{ enrollmentId, studentId, fullName, status, effectiveFrom }`.
+- `StudentEnrollment`: `{ enrollmentId, sectionId, academicYearId, isCurrent: boolean, effectiveFrom, effectiveTo, endReason }`.
+- `CourseSectionContext` y `PeriodView`: como en la sección de endpoints.
+
+> **Advertencia (seguridad).** `listCurrentEnrollments` y `listEnrollmentsOfStudent` **no validan permisos**. El llamador debe comprobar antes que el actor puede ver esa sección o ese estudiante (por ejemplo, con `assertCanAccessCourseSection` o el rol ADMIN) y **nunca debe devolver estas listas a STUDENT ni a GUARDIAN**, porque exponen a otros estudiantes.
+
+**Regla de marcadores TRUE/NULL**
+
+- En la BD, `AcademicYear.isActive` y `Enrollment.isCurrent` valen `TRUE` o `NULL`, nunca `FALSE` (CHECK; MySQL rechaza el `FALSE` con el error 3819). Año activo = `TRUE`; año inactivo o cerrado = `NULL`. Matrícula vigente = `TRUE`; matrícula cerrada = `NULL`.
+- Al cerrar un año o una matrícula se escribe `NULL`, nunca `FALSE`.
+- En la API y en el servicio, el marcador se expone como `boolean` con `marker(valor) = valor === true`. `NULL` se ve como `false`.
+- `Section.isActive`, `Course.isActive` y `CourseSection.isActive` son booleanos normales: desactivar escribe `false`.
+
+### Eventos del módulo académico (D-031)
+
+> **Estado: PROPUESTA.** Se publican en proceso con `AcademicEventPublisher` (`node:events`). Solo llegan a suscriptores del mismo proceso de la API: no hay cola, reintentos ni persistencia. Se publican después del commit y de la bitácora. Un handler que falla se registra en el log y no cambia la respuesta.
+
+```ts
+type AcademicEventMap = {
+  'period.closed.v1': { periodId: string; academicYearId: string; closedAt: string };
+  'period.reopened.v1': { periodId: string; academicYearId: string; reopenedAt: string };
+  'academic-year.closed.v1': { academicYearId: string; year: number; closedAt: string };
+};
+```
+
+- Todas las fechas van en ISO-8601 UTC.
+- Cerrar un año emite solo `academic-year.closed.v1`; no emite un `period.closed.v1` por cada período.
+- Suscripción: `publisher.on(type, handler)` devuelve la función para desuscribirse.
+
+### Bitácora del módulo académico
+
+- Acciones `academic.<entidad>.<verbo>` con `module: 'academic'`: `year.create|update|activate|deactivate|close`, `period.update|close|reopen`, `section.create|update`, `course.create|update`, `course_section.create|update|assign_teacher`.
+- Solo ids y campos cambiados (`before`/`after`); nunca nombres ni correos. Las lecturas no se registran.
+- Se escribe después del commit. Si falla, el cambio no se revierte y el fallo queda en el log (pendiente de Dev 1: escribir dentro de la transacción, D-019).
+- El motivo de reapertura y de cierre de período es texto libre. No debe contener datos de menores; la pantalla (fase 5) debe avisarlo.
