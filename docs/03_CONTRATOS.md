@@ -142,7 +142,7 @@ Errores: `GradingError` con `code` (`INVALID_GRADE`, `INVALID_STATE` o `INVALID_
 | --- | --- |
 | RN-01 | `parseGrade` acepta solo notas 0..20 con hasta 2 decimales. |
 | RN-02 | `calculateAverage` es un promedio simple, sin ponderación. |
-| RN-03 | Suma en centésimas enteras y redondea una sola vez, .5 hacia arriba (D-026). |
+| RN-03 | Suma y divide con `decimal.js` y redondea una sola vez, .5 hacia arriba (`ROUND_HALF_UP`, D-026). |
 | RN-04 | `toLiteral` usa la tabla validada; por defecto AD, A, B, C. |
 | RN-05 | Una entrada `NE` cuenta como nota con el valor que pasa la API (`resolveNoSubmissionGrade`). |
 | RN-06 | `GradeEntry` no tiene `isLate` ni penalización. Una entrega tardía es `GRADED`. |

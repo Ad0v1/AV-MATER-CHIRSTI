@@ -1,3 +1,4 @@
+import { centsToDecimal, decimalToCents, GradeDecimal } from './decimal';
 import { GradingError } from './errors';
 import { parseGrade, type GradeInput } from './grade-value';
 
@@ -35,14 +36,15 @@ export type AverageResult =
 
 /**
  * Promedio simple sin ponderación (RN-02) de las notas GRADED y NE (RN-05),
- * excluyendo EXEMPT (RN-07). Suma en centésimas enteras y redondea una sola
- * vez, .5 hacia arriba (RN-03). Sin descuento por tardía (RN-06).
+ * excluyendo EXEMPT (RN-07). Suma y divide con `decimal.js` (sin coma
+ * flotante) y redondea una sola vez a entero, .5 hacia arriba (RN-03).
+ * Sin descuento por tardía (RN-06).
  * No muta la entrada.
  * @throws GradingError `INVALID_STATE` ante un estado desconocido,
  *   `INVALID_GRADE` ante una nota que no cumple RN-01.
  */
 export function calculateAverage(entries: readonly GradeEntry[]): AverageResult {
-  let sumCents = 0;
+  let sum = new GradeDecimal(0);
   let counted = 0;
   let exempt = 0;
 
@@ -54,7 +56,7 @@ export function calculateAverage(entries: readonly GradeEntry[]): AverageResult 
         break;
       case 'GRADED':
       case 'NE':
-        sumCents += parseGrade((entry as { value: GradeInput }).value);
+        sum = sum.plus(centsToDecimal(parseGrade((entry as { value: GradeInput }).value)));
         counted += 1;
         break;
       default:
@@ -64,10 +66,8 @@ export function calculateAverage(entries: readonly GradeEntry[]): AverageResult 
 
   if (counted === 0) return { status: 'NO_GRADES', counted: 0, exempt };
 
-  // rounded = floor(sumCents / (100 * counted) + 1/2), solo con enteros.
-  const num = 2 * sumCents + 100 * counted;
-  const den = 200 * counted;
-  const rounded = (num - (num % den)) / den;
+  // Único redondeo del cálculo (RN-03): suma / cantidad → entero, ROUND_HALF_UP.
+  const rounded = sum.dividedBy(counted).toDecimalPlaces(0, GradeDecimal.ROUND_HALF_UP).toNumber();
 
-  return { status: 'OK', rounded, sumCents, counted, exempt };
+  return { status: 'OK', rounded, sumCents: decimalToCents(sum), counted, exempt };
 }

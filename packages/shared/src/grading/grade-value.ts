@@ -1,3 +1,4 @@
+import { centsToDecimal, decimalToCents, GradeDecimal } from './decimal';
 import { GradingError } from './errors';
 
 /** Nota mínima permitida (RN-01). */
@@ -14,11 +15,10 @@ export type GradeInput = string | number;
 export type GradeCents = number & { readonly __brand: 'GradeCents' };
 
 const GRADE_PATTERN = /^\d{1,2}(\.\d{1,2})?$/;
-const MAX_CENTS = GRADE_MAX * 100;
 
 /**
  * Convierte una nota a centésimas enteras validando RN-01: 0..20 con hasta
- * 2 decimales. No usa coma flotante para el cálculo.
+ * 2 decimales. La conversión usa `decimal.js`, sin coma flotante.
  * @throws GradingError `INVALID_GRADE` si no es una nota válida.
  */
 export function parseGrade(input: GradeInput): GradeCents {
@@ -34,10 +34,9 @@ export function parseGrade(input: GradeInput): GradeCents {
 
   if (!GRADE_PATTERN.test(text)) throw invalidGrade(input);
 
-  const [intPart, fracPart = ''] = text.split('.');
-  const cents = Number(intPart) * 100 + Number(fracPart.padEnd(2, '0'));
-  if (cents > MAX_CENTS) throw invalidGrade(input);
-  return cents as GradeCents;
+  const value = new GradeDecimal(text);
+  if (value.greaterThan(GRADE_MAX)) throw invalidGrade(input);
+  return decimalToCents(value) as GradeCents;
 }
 
 /** Indica si el valor es una nota válida según RN-01, sin lanzar. */
@@ -53,9 +52,8 @@ export function isValidGrade(input: unknown): boolean {
 
 /** Devuelve la nota normalizada con 2 decimales (`13.5` → `"13.50"`). */
 export function formatGrade(input: GradeInput): string {
-  const cents = parseGrade(input);
-  const whole = (cents - (cents % 100)) / 100;
-  return `${whole}.${String(cents % 100).padStart(2, '0')}`;
+  // `toFixed` de Decimal (no el nativo): la nota ya es exacta con 2 decimales.
+  return centsToDecimal(parseGrade(input)).toFixed(2);
 }
 
 /**
