@@ -26,6 +26,8 @@ La correspondencia de RF y dev reproduce el **Plan de Trabajo**. Los detalles de
 | RNF-28..30 | Dev 1 / todos | 01, 06, 07 |
 | RNF-31..32 | Dev 4 / QA de todos | 06, 09 |
 
+**Nota de avance (RN-01..07):** motor de notas implementado como funciones puras en `packages/shared/src/grading/` (`grade-value.ts`, `average.ts`, `literal-scale.ts`, `errors.ts`), con 82 casos de prueba en `grade-value.spec.ts`, `average.spec.ts` y `literal-scale.spec.ts` (`pnpm --filter @aula/shared test`). Cubre RN-01 a RN-07 a nivel de motor; QA-008 (RN-06) y QA-020 (RN-03/04) tienen casos. Pendiente: esquema `Grade`, API y pantallas (RF-41..52), y el acuerdo de D-025 y D-026. Sin PR aún.
+
 ## Fuente original por tema
 
 | Tema | Archivo y sección/página impresa |

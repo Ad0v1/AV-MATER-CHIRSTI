@@ -100,3 +100,58 @@ Reglas:
 - **Entidad:** `entityType` y `entityId` se guardan con `null` cuando no se envían.
 
 Pendiente (D-022, D-023, D-024): validar largo y formato de `entityType`/`entityId`; lista blanca o redacción de estados; plazo de retención de `ip` y `userAgent` de consentimiento.
+
+## Motor de notas (`@aula/shared` → grading, Dev 4)
+
+> **Estado: PROPUESTA.** Implementado en `packages/shared/src/grading/` (rama `features/adolfo`, sin PR aún). Precisión y redondeo pendientes de acuerdo en D-025 y D-026. Es un contrato **interno** entre paquetes: lo consumen la API de calificaciones (Dev 4) y los reportes (Dev 5). No es un endpoint HTTP.
+
+Funciones puras: sin NestJS, Prisma, I/O ni fecha del sistema. No guardan nada: la API pasa las notas y persiste el resultado.
+
+Errores: `GradingError` con `code` (`INVALID_GRADE`, `INVALID_STATE` o `INVALID_SCALE`) e `issues` (solo con `INVALID_SCALE`).
+
+**Tipos**
+
+- `GradeInput`: `string | number`, nota tal como llega (`"13.50"` o `13.5`).
+- `GradeCents`: nota en centésimas enteras 0..2000. Solo se obtiene con `parseGrade`.
+- `GradeState`: `'GRADED' | 'NE' | 'EXEMPT'`.
+- `GradeEntry`: `{ state: 'GRADED' | 'NE', value }` o `{ state: 'EXEMPT' }` (sin valor).
+- `AverageResult`: `{ status: 'OK', rounded, sumCents, counted, exempt }` o `{ status: 'NO_GRADES', counted: 0, exempt }`.
+- `LiteralBand` (`{ literal, min, max }`), `LiteralScale` (lista de tramos), `LiteralScaleIssue` (`{ code, index?, message }`) y `LiteralScaleIssueCode`.
+- `GradingErrorCode`: `'INVALID_GRADE' | 'INVALID_STATE' | 'INVALID_SCALE'`.
+
+**Constantes**
+
+- `GRADE_MIN = 0` y `GRADE_MAX = 20`.
+- `DEFAULT_NO_SUBMISSION_GRADE = '0.00'`: nota NE predeterminada (RN-05).
+- `DEFAULT_LITERAL_SCALE`: AD 18..20, A 14..17, B 11..13, C 0..10. Inmutable.
+
+**Funciones públicas**
+
+- `parseGrade(input): GradeCents`: valida RN-01 y convierte a centésimas. Lanza `INVALID_GRADE`.
+- `isValidGrade(input): boolean`: igual que `parseGrade`, pero sin lanzar.
+- `formatGrade(input): string`: nota con 2 decimales (`13.5` → `"13.50"`).
+- `resolveNoSubmissionGrade(configured?): string`: nota NE de la tarea o `"0.00"` si no hay configuración (RN-05).
+- `calculateAverage(entries): AverageResult`: promedio simple con un solo redondeo, .5 hacia arriba. No muta la entrada. Lanza `INVALID_STATE` o `INVALID_GRADE`.
+- `validateLiteralScale(scale): LiteralScaleIssue[]`: lista de problemas de la tabla; vacía si es válida.
+- `assertLiteralScale(scale): void`: lanza `INVALID_SCALE` con `issues`.
+- `toLiteral(rounded, scale = DEFAULT_LITERAL_SCALE): string`: literal de un promedio ya redondeado. Lanza `INVALID_GRADE` si no es entero 0..20.
+
+**Reglas que cumple**
+
+| Regla | Cómo la cumple el motor |
+| --- | --- |
+| RN-01 | `parseGrade` acepta solo notas 0..20 con hasta 2 decimales. |
+| RN-02 | `calculateAverage` es un promedio simple, sin ponderación. |
+| RN-03 | Suma en centésimas enteras y redondea una sola vez, .5 hacia arriba (D-026). |
+| RN-04 | `toLiteral` usa la tabla validada; por defecto AD, A, B, C. |
+| RN-05 | Una entrada `NE` cuenta como nota con el valor que pasa la API (`resolveNoSubmissionGrade`). |
+| RN-06 | `GradeEntry` no tiene `isLate` ni penalización. Una entrega tardía es `GRADED`. |
+| RN-07 | `EXEMPT` no suma ni cuenta; solo aumenta `exempt`. |
+
+**Uso por los consumidores**
+
+- La API de calificaciones (Dev 4) convierte las filas de `Grade` a `GradeEntry`, usa `resolveNoSubmissionGrade` para las NE y guarda el resultado; no recalcula en otro lugar.
+- Los reportes (Dev 5) **no recalculan** promedios ni literales: leen `AverageResult` y usan `toLiteral` del motor.
+- Un promedio sin notas que cuenten es `NO_GRADES`, nunca `0` (D-026). La interfaz muestra "sin nota".
+- `toLiteral` recibe el `rounded` de `calculateAverage`, nunca un promedio sin redondear.
+- `apps/api` todavía no declara `@aula/shared` como dependencia: se añade con la tarea de la API de grading.

@@ -5,11 +5,13 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.build.json",
     "lint": "tsc -p tsconfig.json --noEmit",
-    "test": "echo \"sin tests aun\""
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "devDependencies": {
-    "typescript": "^5.9.0"
+    "typescript": "^5.9.0",
+    "vitest": "^4.1.2"
   }
 }
