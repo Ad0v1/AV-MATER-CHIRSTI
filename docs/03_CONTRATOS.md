@@ -69,3 +69,34 @@ El máximo por defecto es 20 MB y el tope configurable por tarea es 50 MB (RF-28
 ## Regla sobre cambios incompatibles
 
 Cambiar nombre/tipo de una propiedad compartida o de un evento = actualizar documentación, tests de contrato y consumidores en un PR acordado. No editar el schema de otro dueño sin revisión.
+
+## Servicio de auditoría (D-019, Dev 1)
+
+> **Estado: PROPUESTA**, pendiente de revisión de Dev 1. Refleja `apps/api/src/common/audit/audit.service.ts` y `prisma-audit.sink.ts` (rama `features/adolfo`, sin PR aún). La tabla `AuditLog` está en `prisma/schema/auth.prisma` (ver D-021).
+
+Interfaz única para todos los módulos:
+
+```ts
+AuditService.record(event: AuditEvent): Promise<void>
+```
+
+| Campo | Tipo | Obligatorio | Regla |
+|---|---|---|---|
+| `actorId` | UUID (`CHAR(36)`) | No | Usuario que actúa; vacío en acciones del sistema |
+| `action` | string | Sí | Convención `<modulo>.<verbo>`; hoy no se valida |
+| `module` | string | Sí | Módulo que emite el evento |
+| `entityType` | string (máx. 64) | No | Nombre de la entidad de `02_MODELO_ENTIDADES.md` (p. ej. `Grade`) |
+| `entityId` | UUID (`CHAR(36)`) | No | UUID de la raíz del agregado; hoy no se valida el formato |
+| `ip` | string (máx. 45) | No | Si llega más largo, el sink lo recorta a 45 caracteres |
+| `beforeState` | objeto | No | Solo campos modificados (ver reglas) |
+| `afterState` | objeto | No | Solo campos modificados (ver reglas) |
+
+Reglas:
+
+- **Fecha:** `occurredAt` la asigna el servicio en UTC al registrar. El llamador no la envía.
+- **Solo inserción:** el servicio no ofrece actualizar ni borrar. La base rechaza `UPDATE` y `DELETE` sobre `AuditLog` (triggers, error 45000).
+- **Estados:** `beforeState`/`afterState` contienen solo los campos modificados, sin secretos (hashes, secretos TOTP, tokens) ni datos personales completos.
+- **Sin base de datos:** el sink de log (`LogAuditSink`) descarta `beforeState`/`afterState` y no los escribe.
+- **Entidad:** `entityType` y `entityId` se guardan con `null` cuando no se envían.
+
+Pendiente (D-022, D-023, D-024): validar largo y formato de `entityType`/`entityId`; lista blanca o redacción de estados; plazo de retención de `ip` y `userAgent` de consentimiento.

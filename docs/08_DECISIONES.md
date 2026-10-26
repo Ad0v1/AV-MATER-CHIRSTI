@@ -24,6 +24,10 @@
 | D-018 | Zona horaria | PROPUESTA | UTC en DB; `America/Lima` en interfaz | Todos |
 | D-019 | Propiedad de audit trail | CONFIRMADO EN PLAN | Dev 1 servicio compartido; cada módulo llama a servicio | Todos |
 | D-020 | Migraciones | CONFIRMADO EN PLAN | Sincronizar develop y una migración por PR; revisiones cruzadas | Todos |
+| D-021 | Ajustes de esquema auth y bitácora | PROPUESTA | Propuesta del 26/10/2026, relacionada con D-004 (formato de IDs) y D-019 (bitácora); migración `auth_ajustes_bitacora`. (1) PK `@default(uuid(7)) @db.Char(36)` y FK hacia `User` en `CHAR(36)`; antes `VARCHAR(191)` con UUID v4. Toda FK nueva hacia `User` usa `@db.Char(36)`. (2) Usuarios sin borrado físico: baja por `status` (`INACTIVE`/`WITHDRAWN`); `Restrict` en `PolicyAcceptance.user` y `AuditLog.actor`; `LocalCredential` sigue en `Cascade`. (3) `AuditLog` solo inserción, reforzado con triggers `BEFORE UPDATE`/`BEFORE DELETE` (SQLSTATE 45000). (4) `AuditLog` registra `entityType` (`VARCHAR(64)`) y `entityId` (`CHAR(36)`, UUID de la raíz del agregado). UUIDv7 revela la fecha de creación: no usar ids como secreto. | Dev 1 + todos |
+| D-022 | Privilegios de BD en producción | **PENDIENTE** | Dos usuarios de BD: migración (CREATE/ALTER/DROP/INDEX/REFERENCES/TRIGGER) y app (SELECT/INSERT/UPDATE/DELETE, sin DROP/ALTER/TRIGGER), con `REVOKE UPDATE, DELETE` sobre `AuditLog`. Los triggers no cubren TRUNCATE ni DROP. Relacionado con D-021. | Dev 1 |
+| D-023 | Finalidad y retención de ip/userAgent de consentimiento | **PENDIENTE** | `PolicyAcceptance.ip` y `userAgent` son datos personales, incluidos los de menores. Definir finalidad, plazo y anonimización (poner NULL tras el plazo), y qué `userId` acredita el consentimiento de un menor. Registrar en docs/04 y en la política de privacidad. | Dev 1 + institución |
+| D-024 | Lista blanca de beforeState/afterState | **PENDIENTE** | La bitácora es inmutable: antes de que Dev 4/5 la usen, definir lista blanca o redacción de estados. Regla vigente propuesta en docs/03: solo campos modificados, sin secretos ni datos personales completos. | Dev 1 + Dev 4/5 |
 
 ## Plantilla ADR para nuevas decisiones
 

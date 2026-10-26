@@ -4,7 +4,8 @@
 
 ## Convenciones propuestas
 
-- Claves primarias UUID en `id`; foráneas con sufijo `Id`; `createdAt`/`updatedAt` si hay cambios; referencias a objetos sin URLs públicas.
+- Claves primarias UUIDv7 en `id`, guardadas como `CHAR(36)` (`@default(uuid(7)) @db.Char(36)`). Toda FK hacia `User` usa `@db.Char(36)` (D-021).
+- Foráneas con sufijo `Id`; `createdAt`/`updatedAt` si hay cambios; referencias a objetos sin URLs públicas.
 - `User` = una identidad; jamás crear otra tabla `StudentUser`, `TeacherUser` o `Alumno` redundante.
 - Una `Enrollment` registra pertenencia a una sección; el historial de traslado debe preservarse (RF-24).
 - `CourseSection` relaciona curso, sección y docente: no confundir con `Course` (catálogo).
@@ -18,7 +19,7 @@
 |---|---|---|---|
 | `User` | Dev 2, auth Dev 1 | id, institutionalEmail, name, role, status | RF-03, RF-18..23; no acceso si inactivo/retirado |
 | `LocalCredential` | Dev 1 | userId, passwordHash, totp* | RF-04; respaldo solo admin |
-| `PolicyAcceptance` | Dev 1 | userId, policyVersion, acceptedAt | RF-07 |
+| `PolicyAcceptance` | Dev 1 | userId, policyVersion, acceptedAt, ip, userAgent | RF-07; ip y userAgent son evidencia del consentimiento (retención pendiente, D-023) |
 | `GuardianStudent` | Dev 2 | guardianId, studentId | RF-20, RF-52 |
 | `AcademicYear` | Dev 2 | year, active | RF-09; solo uno activo |
 | `AcademicPeriod` | Dev 2 | academicYearId, sequence, label, startAt, endAt, closedAt | RF-10/11; exactamente cuatro tipos/denominaciones documentadas |
@@ -35,7 +36,7 @@
 | `Announcement` | Dev 5 | scope, courseSectionId?, text | RF-32 |
 | `Notification` | Dev 5 | recipientId, eventType, deliveredAt? | RF-53 |
 | `InstitutionSetting` | Dev 5 | key, value | RF-61 |
-| `AuditLog` | Dev 1 | actorId, action, before/after, ip, timestamp | RNF-14/15; append-only desde app |
+| `AuditLog` | Dev 1 | actorId, action, module, entityType, entityId, before/after, ip, occurredAt | RNF-14/15; solo inserción, reforzado con triggers en BD (D-021); entityId = UUID de la raíz del agregado |
 | `BackgroundJob` | Dev 5 / infra | type, targetId, state | RNF-19; exportación, aviso, purga, scan (ownership a acordar) |
 
 `*`: los detalles TOTP son responsabilidades de seguridad de Dev 1; nunca almacenar secreto TOTP sin protección.

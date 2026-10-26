@@ -5,6 +5,11 @@ export type AuditEvent = {
   actorId?: string;
   action: string;
   module: string;
+  // Entidad sobre la que se actuo. entityType = nombre de la entidad en docs/02
+  // (p. ej. 'Grade'); entityId = UUID de la raiz del agregado.
+  entityType?: string;
+  entityId?: string;
+  // Se guarda como maximo 45 caracteres (IPv6).
   ip?: string;
   beforeState?: unknown;
   afterState?: unknown;
@@ -12,8 +17,8 @@ export type AuditEvent = {
 
 export type AuditRecord = AuditEvent & { occurredAt: Date };
 
-// Destino de los eventos. Hoy solo escribe en el log; cuando exista Prisma se
-// reemplaza por una implementacion que guarde en la tabla AuditLog (append-only).
+// Destino de los eventos. PrismaAuditSink guarda en la tabla AuditLog, que es
+// solo insercion (triggers en la BD); LogAuditSink escribe en el log.
 export abstract class AuditSink {
   abstract write(record: AuditRecord): Promise<void>;
 }

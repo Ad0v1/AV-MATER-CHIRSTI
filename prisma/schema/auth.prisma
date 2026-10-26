@@ -18,7 +18,7 @@ enum UserStatus {
 // Una identidad por persona (D-012: un solo rol). Dev 2 gestiona altas y edicion (RF-18..23);
 // Dev 1 usa este modelo para autenticar y bloquear inactivos (RF-03, RF-08).
 model User {
-  id                 String     @id @default(uuid())
+  id                 String     @id @default(uuid(7)) @db.Char(36)
   institutionalEmail String     @unique
   fullName           String
   role               UserRole
@@ -36,36 +36,47 @@ model User {
 // Cuenta local de respaldo, solo para el administrador (RF-04).
 // El secreto TOTP se guarda cifrado; nunca en claro.
 model LocalCredential {
-  userId              String  @id
+  userId              String  @id @db.Char(36)
   passwordHash        String
   totpSecretEncrypted String?
   user                User    @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 // Aceptacion de politica y terminos por version (RF-07).
+// Se guardan ip y userAgent como evidencia del consentimiento. Restrict: la evidencia
+// no se pierde si alguien intenta borrar al usuario (los usuarios se dan de baja con status).
 model PolicyAcceptance {
-  id            String   @id @default(uuid())
-  userId        String
+  id            String   @id @default(uuid(7)) @db.Char(36)
+  userId        String   @db.Char(36)
   policyVersion String
   acceptedAt    DateTime @default(now())
-  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  ip            String?  @db.VarChar(45)
+  userAgent     String?  @db.VarChar(255)
+  user          User     @relation(fields: [userId], references: [id], onDelete: Restrict, onUpdate: Restrict)
 
   @@unique([userId, policyVersion])
 }
 
 // Bitacora (RNF-14/15). Append-only: la aplicacion solo inserta, nunca actualiza ni borra.
-// Se conserva aunque se purguen los PDF (RF-66, RN-14), por eso actorId no tiene cascada.
+// La base lo refuerza con triggers BEFORE UPDATE/DELETE (migracion auth_ajustes_bitacora).
+// Se conserva aunque se purguen los PDF (RF-66, RN-14). Los usuarios se dan de baja con
+// status (INACTIVE/WITHDRAWN) y nunca se borran; por eso actor usa Restrict.
+// entityType/entityId: entidad sobre la que se actuo (entityId = UUID de la raiz del agregado).
 model AuditLog {
-  id          String   @id @default(uuid())
-  actorId     String?
+  id          String   @id @default(uuid(7)) @db.Char(36)
+  actorId     String?  @db.Char(36)
   action      String
   module      String
-  ip          String?
+  entityType  String?  @db.VarChar(64)
+  entityId    String?  @db.Char(36)
+  ip          String?  @db.VarChar(45)
   beforeState Json?
   afterState  Json?
   occurredAt  DateTime @default(now())
-  actor       User?    @relation(fields: [actorId], references: [id], onDelete: SetNull)
+  actor       User?    @relation(fields: [actorId], references: [id], onDelete: Restrict, onUpdate: Restrict)
 
   @@index([actorId, occurredAt])
   @@index([module, action])
+  @@index([entityType, entityId])
+  @@index([occurredAt])
 }
