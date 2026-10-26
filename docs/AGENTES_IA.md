@@ -1,6 +1,6 @@
 # AV-MATER-CHIRSTI — Agentes de IA del proyecto
 
-**Autor:** Ad0v1 (Dev 4 y Dev 5) · **Fecha:** 26/10/2026 · **Estado:** creados en la rama `ia/base` (solo repo privado): `CLAUDE.md`, `.claude/PROTOCOLO_AGENTES.md`, `.claude/agents/*.md` y `.claude/settings.json`.
+**Autor:** Ad0v1 (Dev 4 y Dev 5) · **Fecha:** 26/10/2026 · **Estado:** creados en la rama `features/adolfo` del repo privado: `CLAUDE.md`, `.claude/PROTOCOLO_AGENTES.md`, `.claude/agents/*.md` y `.claude/settings.json`.
 
 Este documento describe los agentes de Claude Code que usaré en mi copia privada (`Ad0v1/AV-MATER-CHIRSTI`): cuántos son, qué hace cada uno y qué límites tiene. Los requisitos y las carpetas salen de `docs/00_INICIO_Y_MAPA.md` y `docs/10_TRAZABILIDAD.md`.
 
@@ -129,7 +129,7 @@ Los pasos 2 a 4 los hacen los compañeros. En la copia privada solo se hacen *st
 - **Ningún agente hace `git push` a `origin`** (repo del equipo) ni push forzado, y ninguno lee `.env`. Se bloquea con reglas `deny` en `.claude/settings.json`, que también aplican en la nube.
 - Los agentes tampoco hacen `commit`, `merge` ni cambian de rama: eso lo hace el usuario.
 - Los PRs al equipo los abro yo, manualmente, desde `features/adolfo`.
-- `.claude/` y `CLAUDE.md` **no van en los PRs al equipo** salvo acuerdo. Viven en una rama solo de la copia privada (por ejemplo `ia/base`).
+- `.claude/` y `CLAUDE.md` **no van en los PRs al equipo** salvo acuerdo. Viven en `features/adolfo` de la copia privada; al equipo se envía una rama limpia con solo las carpetas de Dev 4 y Dev 5 (ver `docs/FLUJO_LOCAL_GITHUB_NUBE.md`).
 - Los secretos no se dan a ningún agente: en la nube solo se usan valores de prueba.
 - Fuera del alcance de v1 (ERS §7): asistencia, exámenes, cuestionarios, SIAGIE, Google Drive/Classroom y ponderación de actividades.
 

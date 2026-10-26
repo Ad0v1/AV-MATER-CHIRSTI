@@ -2,7 +2,7 @@
 
 Aula virtual escolar (monorepo pnpm + Turborepo): `apps/api` (NestJS + Prisma/MySQL), `apps/web` (Next.js), `apps/worker`, `packages/shared`, `packages/ui`.
 
-Esta configuración vive solo en la rama `ia/base` del repo privado `Ad0v1/AV-MATER-CHIRSTI` (remoto `mio`). **No se envía al repo del equipo** (`sxxntoz/AV-MATER-CHIRSTI`, remoto `origin`).
+Esta configuración vive en la rama `features/adolfo` del repo privado `Ad0v1/AV-MATER-CHIRSTI` (remoto `mio`). **No se envía al repo del equipo** (`sxxntoz/AV-MATER-CHIRSTI`, remoto `origin`): al equipo solo va una rama limpia con las carpetas de Dev 4 y Dev 5 (ver `docs/FLUJO_LOCAL_GITHUB_NUBE.md`). Nunca `git push origin features/adolfo`.
 
 ## Tu papel
 

@@ -27,7 +27,7 @@ Ramas en la copia privada:
 | Rama | Contenido |
 |---|---|
 | `main`, `develop` | Espejo de las del equipo. **No se hacen commits ahí**; solo se actualizan desde `origin`. |
-| `features/adolfo` | Mi trabajo real (solo carpetas de Dev 4 y Dev 5). Es la que va por PR al equipo. |
+| `features/adolfo` | Mi única rama de trabajo y la rama por defecto: `develop` + agentes de IA (`.claude/`, `CLAUDE.md`) + mi código de Dev 4 y Dev 5. **No se sube tal cual al equipo**; ver el paso 5 del ciclo. |
 | `claude/*` | Ramas que crea Claude en la nube. Se revisan en local antes de pasar algo a `features/adolfo`. |
 
 ---
@@ -73,10 +73,18 @@ Ramas en la copia privada:
    git fetch mio
    git checkout <rama-claude>
    ```
-5. Si funciona, lo integro en `features/adolfo`, lo subo y abro el PR hacia `develop` del equipo:
+5. Si funciona, lo integro en `features/adolfo` y lo subo a mi copia (`git push`, que va a `mio`).
+6. Para enviarlo al equipo, armo una rama limpia desde `develop` del equipo con **solo** mis carpetas (sin `.claude/` ni `CLAUDE.md`), la subo como `features/adolfo` del equipo y abro el PR hacia `develop`:
    ```bash
-   git push origin features/adolfo
+   git fetch origin
+   git switch -c envio origin/develop
+   git checkout features/adolfo -- <carpetas de Dev 4 o Dev 5 que cambié>
+   git commit -m "feat(grading): RN-01 motor de notas"
+   git push origin envio:features/adolfo
+   git switch features/adolfo
+   git branch -D envio
    ```
+   **Nunca** `git push origin features/adolfo`: llevaría los agentes al repo del equipo.
 
 ---
 
@@ -85,7 +93,7 @@ Ramas en la copia privada:
 - **Solo toco las carpetas de Dev 4 y Dev 5** en los PRs:
   - Dev 4: `packages/shared/src/grading`, `apps/api/src/modules/grading`, `apps/web/app/(app)/curso/[id]/registro`, `apps/web/app/(app)/mis-notas`, `apps/web/app/(app)/apoderado`
   - Dev 5: `apps/api/src/modules/` (`reports`, `notifications`, `announcements`, `lifecycle`, `settings`), `apps/web/app/(app)/admin/` (`reportes`, `configuracion`, `bitacora`, `almacenamiento`), `apps/worker`
-- Si necesito un cambio en un archivo compartido (`prisma/schema.prisma`, `app.module.ts`, `package.json`, layout), **lo aviso antes** y va en un PR aparte y pequeño.
+- Si necesito un cambio en un archivo compartido (`prisma/schema/base.prisma`, `app.module.ts`, `package.json`, layout), **lo aviso antes** y va en un PR aparte y pequeño.
 - **Los secretos no salen de mi PC:** el `.env` no se sube a ningún repo, y en la nube solo se usan valores de prueba.
 - Los archivos de configuración de Claude (`.claude/`, `CLAUDE.md`) **no van en los PRs al equipo**, salvo que lo acordemos.
 - Cada PR pasa `pnpm lint`, `pnpm test` y `pnpm build` en local antes de abrirse.
