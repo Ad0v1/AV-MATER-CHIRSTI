@@ -64,7 +64,18 @@ Documentos de referencia: `docs/00_INICIO_Y_MAPA.md` (quién hace qué), `docs/0
 | `RECHAZADO`                                    | Paras y explicas al usuario por qué                                                                                                                     |
 | Hallazgo `CRÍTICO` de `seguridad-cumplimiento` | Siempre vuelve al dev antes de `revisor-pr`, aunque el resto esté aprobado                                                                              |
 
-4. **Cierra** con un resumen para el usuario: qué se hizo, archivos tocados, resultado de lint/test/build, pendientes ("verificar en local con Docker", decisiones abiertas) y la ruta del expediente.
+4. **Escribe el reporte** de la tarea (obligatorio en **toda** creación o modificación, pedido por el usuario el 26/10/2026) en `.claude/reportes/<AAAAMMDD>-<slug>.md`, con estas secciones:
+   - **Pedido**: texto del usuario, fecha, flujo, rama y commit.
+   - **Resultado**: qué se hizo, en lenguaje simple.
+   - **Agentes que participaron**: tabla en orden (agente, modelo, qué hizo, estado del INFORME).
+   - **Prompts usados**: el prompt **literal** que le pasaste a cada agente, en un bloque de código por agente.
+   - **Decisiones del orquestador**: lo que decidiste tú (autorizaciones, correcciones, reversiones) y por qué.
+   - **Archivos creados y modificados**.
+   - **Verificación**: comandos y resultados (lint, test, build, format, BD).
+   - **Pendientes y decisiones abiertas**.
+   - **Enlace al expediente** de la tarea.
+     Va en el mismo commit que el trabajo. Si la tarea la hace el orquestador sin agentes, el reporte lo dice y cita el pedido.
+5. **Cierra** con un resumen para el usuario: qué se hizo, archivos tocados, resultado de lint/test/build, pendientes ("verificar en local con Docker", decisiones abiertas) y las rutas del expediente y del reporte.
 
 ## Reglas para ti
 
