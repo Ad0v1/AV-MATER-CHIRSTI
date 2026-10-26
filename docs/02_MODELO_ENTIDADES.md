@@ -20,13 +20,15 @@
 | `User` | Dev 2, auth Dev 1 | id, institutionalEmail, name, role, status | RF-03, RF-18..23; no acceso si inactivo/retirado |
 | `LocalCredential` | Dev 1 | userId, passwordHash, totp* | RF-04; respaldo solo admin |
 | `PolicyAcceptance` | Dev 1 | userId, policyVersion, acceptedAt, ip, userAgent | RF-07; ip y userAgent son evidencia del consentimiento (retención pendiente, D-023) |
-| `GuardianStudent` | Dev 2 | guardianId, studentId | RF-20, RF-52 |
-| `AcademicYear` | Dev 2 | year, active | RF-09; solo uno activo |
-| `AcademicPeriod` | Dev 2 | academicYearId, sequence, label, startAt, endAt, closedAt | RF-10/11; exactamente cuatro tipos/denominaciones documentadas |
-| `Section` | Dev 2 | academicYearId, gradeLevel(1..5), code | RF-12 |
-| `Course` | Dev 2 | name, active | RF-13 |
-| `CourseSection` | Dev 2 | sectionId, courseId, teacherId | RF-14, RN-12 |
-| `Enrollment` | Dev 2 | studentId, sectionId, effectiveFrom, effectiveTo | RF-18/24; preservar movimientos y notas |
+| `GuardianStudent` | Dev 2 | guardianId, studentId, createdAt (clave compuesta) | RF-20, RF-52; finalidad y conservación pendientes para F3 (ver docs/04) |
+| `AcademicYear` | Dev 2 | year (único), isActive (TRUE o NULL, único), closedAt, createdAt, updatedAt | RF-09; solo uno activo (invariante 1, D-027) |
+| `AcademicPeriod` | Dev 2 | academicYearId, sequence (1..4), kind (enum `AcademicPeriodKind`), label, startDate, endDate (`@db.Date`), closedAt | RF-10/11; exactamente cuatro tipos/denominaciones documentadas (D-002), con CHECK de sequence/kind y de fechas; sin solapes en el servicio |
+| `Section` | Dev 2 | academicYearId, gradeLevel(1..5), code, isActive | RF-12; único por año, grado y código |
+| `Course` | Dev 2 | name (único), isActive | RF-13 |
+| `CourseSection` | Dev 2 | sectionId, courseId, teacherId (opcional, D-029), isActive | RF-14, RN-12; único por sección y curso; `teacherId` nulo mientras no hay docente |
+| `Enrollment` | Dev 2 | studentId, sectionId, academicYearId, isCurrent (TRUE o NULL), effectiveFrom, effectiveTo, endReason (enum `EnrollmentEndReason`) | RF-18/24; preservar movimientos y notas; invariante 2 (D-027) |
+
+**Nombres finales del modelo académico (PROPUESTA del 26/10/2026, pendiente de revisión del dueño de Dev 2).** Fuente: `prisma/schema/academic.prisma` en el repo privado, migración `academic_estructura`. Depende de D-021 (FK hacia `User` en `CHAR(36)`). Enums: `AcademicPeriodKind` (`FIRST_BIMESTER`, `SECOND_BIMESTER`, `THIRD_TRIMESTER`, `FOURTH_TRIMESTER`) y `EnrollmentEndReason` (`TRANSFER`, `WITHDRAWAL`, `YEAR_END`, `CORRECTION`). Una matrícula vigente tiene `isCurrent` TRUE y no tiene `effectiveTo` ni `endReason`; una cerrada tiene `isCurrent` NULL, `effectiveTo` y `endReason`.
 | `Material` | **Dev 3** | courseSectionId, periodId?, type, title, description, fileId, reusable, deletedAt | RF-26/27/29/30/31 |
 | `Assignment` | **Dev 3** | courseSectionId, periodId, title, instructions, dueAt, maxSizeBytes, neGrade, allowLate, attachmentFileId?, deletedAt | RF-28/29, RN-05/08/10 |
 | `StoredFile` | **Dev 3** | objectKey, bytes, MIME, checksum?, uploadStatus, scanStatus, uploadedById | RNF-03/18, RF-34/35/40 |
@@ -54,18 +56,20 @@
 
 ## Invariantes que no resuelve solo el ORM
 
-1. Solo un `AcademicYear` activo simultáneamente (transacción/constraint validada).
-2. Un estudiante no debe tener dos matrículas vigentes simultáneas en el mismo año (validación transaccional; RF-24).
+1. Solo un `AcademicYear` activo simultáneamente (transacción/constraint validada). **Imposición en BD (PROPUESTA, D-027):** `isActive` vale TRUE o NULL, nunca FALSE (CHECK `AcademicYear_isActive_chk`); la columna es `UNIQUE` y MySQL admite varios NULL, así que a lo sumo una fila tiene TRUE. El cambio de año activo se hace en una transacción (servicio, F2).
+2. Un estudiante no debe tener dos matrículas vigentes simultáneas en el mismo año (validación transaccional; RF-24). **Imposición en BD (PROPUESTA, D-027):** `isCurrent` vale TRUE (vigente) o NULL (cerrada); `UNIQUE(academicYearId, studentId, isCurrent)` deja una sola vigente por estudiante y año; el CHECK `Enrollment_isCurrent_chk` exige que una vigente no tenga `effectiveTo` ni `endReason`, y que una cerrada los tenga. La FK compuesta `(sectionId, academicYearId)` hace que el año de la matrícula sea el de su sección.
 3. Una `Assignment` debe pertenecer a un período del **mismo año lectivo** que su `CourseSection` (servicio de dominio).
 4. Un docente crea tareas únicamente en sus `CourseSection` y durante períodos abiertos (RN-10/12).
 5. Un estudiante solo puede entregar si pertenece a la sección correspondiente y se cumplen vencimiento/formato/tamaño (RN-08/09/12).
 6. Una versión PDF solo se vuelve visible/descargable después del análisis antivirus satisfactorio (diseño de seguridad propuesto).
 7. Notas y eventos de bitácora deben conservarse cuando se purgan PDF según RF-66/RN-14.
 
+Quedan en el servicio (F2/F3, PROPUESTA del 26/10/2026, sin implementar aún): rol correcto en cada FK hacia `User` (`Enrollment.studentId`, `CourseSection.teacherId`, `GuardianStudent`); `guardianId` distinto de `studentId`; `Section.isActive` y `CourseSection.isActive` comprobados en el servicio (RN-10); fechas coherentes al cerrar una matrícula (`effectiveTo >= effectiveFrom`); y bitácora de acciones críticas académicas.
+
 ## Campos/decisiones todavía por cerrar
 
 - Modelo de permisos multirol o rol único; ERS habla de cuatro perfiles pero no define roles múltiples.
-- Reinscripción, traslados a otra sección y matrícula histórica (cómo identificar matrícula activa).
+- Reinscripción, traslados a otra sección y matrícula histórica (cómo identificar matrícula activa). Propuesta en D-011 y D-027: la matrícula activa es la de `isCurrent` TRUE; un traslado cierra una matrícula y abre otra (RF-24).
 - Asociar `Material` opcionalmente a un período; no es inequívoco para clases/lecturas.
 - Vencimiento exacto e idempotencia del `SubmissionVersion` con subida directa a S3.
 - Retención de PDF de libros reutilizables y relación entre copia nueva/antigua al clonar año.

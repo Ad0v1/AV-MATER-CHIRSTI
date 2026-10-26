@@ -30,6 +30,12 @@ model User {
   policyAcceptances PolicyAcceptance[]
   auditLogs         AuditLog[]
 
+  // Relaciones inversas de Dev 2 (academic.prisma)
+  taughtCourseSections CourseSection[]   @relation("CourseSectionTeacher")
+  enrollments          Enrollment[]      @relation("EnrollmentStudent")
+  guardianLinks        GuardianStudent[] @relation("GuardianStudentGuardian")
+  wardLinks            GuardianStudent[] @relation("GuardianStudentStudent")
+
   @@index([role, status])
 }
 

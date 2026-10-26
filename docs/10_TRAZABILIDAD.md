@@ -28,6 +28,8 @@ La correspondencia de RF y dev reproduce el **Plan de Trabajo**. Los detalles de
 
 **Nota de avance (RN-01..07):** motor de notas implementado como funciones puras en `packages/shared/src/grading/` (`grade-value.ts`, `average.ts`, `literal-scale.ts`, `errors.ts`), con 82 casos de prueba en `grade-value.spec.ts`, `average.spec.ts` y `literal-scale.spec.ts` (`pnpm --filter @aula/shared test`). Cubre RN-01 a RN-07 a nivel de motor; QA-008 (RN-06) y QA-020 (RN-03/04) tienen casos. Pendiente: esquema `Grade`, API y pantallas (RF-41..52), y el acuerdo de D-025 y D-026. Sin PR aún.
 
+**Nota de avance (RF-09, 10, 12, 13, 14, 18, 20 y 24; PROPUESTA del 26/10/2026):** solo modelo de datos y seed. Esquema en `prisma/schema/academic.prisma` (años, períodos, secciones, cursos, `CourseSection` con docente opcional, matrículas y vínculos apoderado–estudiante). Migración `prisma/migrations/20261026174231_academic_estructura`, con 7 CHECK. Seed ficticio en `prisma/seed/` (`pnpm db:seed`, D-028). Test: `apps/api/test/academic-schema.e2e-spec.ts` (18 casos; corre con `pnpm --filter api test:e2e` contra la base local y se omite sin `DATABASE_URL`). Pendiente: API y servicios (F2/F3), importación (F4) y pantallas (F5); el resto de RF-09..25 sigue sin avance. Sin commit ni PR; depende de D-021 y de D-027 a D-029.
+
 ## Fuente original por tema
 
 | Tema | Archivo y sección/página impresa |

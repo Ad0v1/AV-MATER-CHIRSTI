@@ -62,6 +62,12 @@ flowchart TD
 - **H:** libro reutilizable sobrevive a purga; material común no reutilizable sigue regla de retención RF-66.
 - **I:** mismo request duplicado por reintentos de red: idempotencia sin crear dos versiones.
 
+## Historial de matrícula y vínculos de menores (PROPUESTA, 26/10/2026)
+
+- **Baja de un usuario (RN-13):** se hace por `status` (`INACTIVE` o `WITHDRAWN`, D-021). No se borra el usuario ni sus matrículas.
+- **Historial de matrícula (RN-14, RF-24):** las matrículas cerradas (traslado `TRANSFER`, retiro `WITHDRAWAL`, cierre de año `YEAR_END` o corrección `CORRECTION`) se conservan junto con sus notas. Un retiro o una baja no borra la matrícula: la cierra (`isCurrent` NULL, `effectiveTo` y `endReason`).
+- **Vínculos apoderado–estudiante de menores:** `GuardianStudent` se conserva mientras existan los dos usuarios. Las FK son `Restrict`, así que no hay borrado en cascada. **Pendiente para F3:** finalidad, plazo de conservación y revocación auditable de cada vínculo. Requiere decisión de la institución.
+
 ## Alcance excluido (ERS §7)
 
 No implementar asistencia, exámenes/cuestionarios, SIAGIE, integración Google Drive/Classroom, detección automática de entregas duplicadas ni ponderación de actividades.
