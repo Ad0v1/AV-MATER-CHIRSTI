@@ -53,7 +53,8 @@ export type ReopenPeriodDto = z.output<typeof reopenPeriodSchema>;
 
 // --- Secciones ------------------------------------------------------------
 
-const sectionCode = z
+/** Código de sección: 1..8 letras o dígitos, en mayúsculas (también lo usa la importación, RF-21). */
+export const sectionCode = z
   .string()
   .trim()
   .transform((v) => v.toUpperCase())

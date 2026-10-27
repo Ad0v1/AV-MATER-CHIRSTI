@@ -27,3 +27,32 @@ export const USERS_MSG = {
   lastAdmin: 'Debe quedar al menos un administrador activo',
   inactiveActor: 'Tu cuenta no está activa',
 } as const;
+
+/**
+ * Mensajes de la importación masiva (RF-21) a nivel de archivo. Fijos: nunca repiten el nombre del
+ * archivo, celdas, correos ni nombres, ni el mensaje de la librería que lee el archivo.
+ */
+export const IMPORT_MSG = {
+  fileRequired: 'Debes adjuntar el archivo en el campo file',
+  emptyFile: 'El archivo está vacío',
+  unsupportedFormat: 'Formato no admitido: usa un archivo .xlsx o .csv',
+  formatMismatch: 'El contenido del archivo no coincide con su extensión',
+  notUtf8: 'Guarda el archivo como CSV UTF-8',
+  binaryCsv: 'El archivo CSV contiene datos binarios',
+  unclosedQuote: 'El archivo CSV tiene una comilla sin cerrar',
+  damagedXlsx: 'El archivo está dañado o no es un Excel válido',
+  xlsxTooBig: 'El contenido del Excel descomprimido supera el límite permitido',
+  xlsxTooManyEntries: 'El Excel tiene demasiadas partes internas',
+  xlsxUnsupported: 'El Excel usa una característica no admitida (cifrado, ZIP64 o varios discos)',
+  xlsxMacros: 'No se admiten archivos con macros',
+  xlsxDoctype: 'El Excel contiene declaraciones XML no permitidas',
+  noSheet: 'El archivo no tiene hojas',
+  missingHeader: 'La primera fila debe tener los encabezados de la plantilla',
+  headerMissing: 'Falta una columna obligatoria de la plantilla',
+  headerUnknown: 'Hay una columna que no pertenece a la plantilla',
+  headerDuplicate: 'Hay una columna repetida en los encabezados',
+  headerInvalid: 'Los encabezados deben ser texto',
+  noRows: 'El archivo no tiene filas de datos',
+  tooManyRows: 'El archivo supera el máximo de 1000 filas de datos',
+  hashMismatch: 'El archivo no coincide con el de la vista previa; vuelve a validarlo',
+} as const;

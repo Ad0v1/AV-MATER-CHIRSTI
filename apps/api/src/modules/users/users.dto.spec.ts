@@ -37,6 +37,14 @@ describe('users.dto (Decisión 4)', () => {
       expect(fullNameSchema.safeParse('  A  ').success).toBe(false);
       expect(fullNameSchema.safeParse('A'.repeat(121)).success).toBe(false);
     });
+
+    it('rechaza nombres que empiezan por = + - @ (inyección de fórmulas, RF-21)', () => {
+      for (const name of ['=1+1 Ana', '+Ana Pérez', '-Ana Pérez', '@Ana Pérez', '  =Ana Pérez']) {
+        expect(fullNameSchema.safeParse(name).success).toBe(false);
+      }
+      expect(fullNameSchema.parse('Ana-María Pérez')).toBe('Ana-María Pérez');
+      expect(fullNameSchema.parse("María O'Neill")).toBe("María O'Neill");
+    });
   });
 
   it('cuerpos estrictos: un campo desconocido es 400', () => {

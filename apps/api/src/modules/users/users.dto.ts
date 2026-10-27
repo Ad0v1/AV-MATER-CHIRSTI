@@ -18,11 +18,20 @@ export const emailSchema = z
   .toLowerCase()
   .pipe(z.email('El correo no es válido').max(191));
 
-/** Nombre: sin caracteres de control, espacios colapsados, 3..120. */
+// Primer carácter de una fórmula en Excel/LibreOffice (inyección de fórmulas al exportar, RF-21).
+const FORMULA_START = /^[=+\-@]/;
+
+/**
+ * Nombre: sin caracteres de control, sin empezar por = + - @ (no se puede interpretar como
+ * fórmula al abrir una exportación en una hoja de cálculo), espacios colapsados, 3..120.
+ */
 export const fullNameSchema = z
   .string()
   .trim()
   .refine((v) => !CONTROL_CHARS.test(v), { message: 'El nombre tiene caracteres no permitidos' })
+  .refine((v) => !FORMULA_START.test(v), {
+    message: 'El nombre no puede empezar por = + - @',
+  })
   .transform((v) => v.replace(/\s+/g, ' '))
   .pipe(z.string().min(3).max(120));
 

@@ -95,3 +95,66 @@ Todos bajo `/api/v1`, solo ADMIN activo. Cuerpos, respuestas y errores completos
 **Errores.** Mismo formato que el módulo académico. Un deadlock de MySQL (1213) responde 409 para que el cliente reintente. Los motivos (`reason`) se guardan en la bitácora inmutable: no deben llevar datos personales, de salud ni familiares.
 
 **Bitácora.** `module: 'users'`, acciones `users.user.*`, `users.enrollment.*` y `users.guardian_link.*`, después del commit. Solo ids, estados, motivos y nombres de campos cambiados (sin correos ni nombres). Un fallo de escritura se registra en el log (pendiente de Dev 1: `record(event, tx)`, D-019).
+
+## Importación masiva (Dev 2, RF-21)
+
+> **Estado: PROPUESTA.** Código en `apps/api/src/modules/users/import/`, rama `features/adolfo`, aprobado por `revisor-pr` el 27/10/2026 (INFORME 10). Sin commit ni PR. Pendiente: aceptación del dueño de Dev 2, D-021 y D-035. La pantalla es de la fase 5.
+
+**Alcance.** Importar estudiantes (con matrícula en el año activo), docentes y apoderados (con vínculos) desde CSV o XLSX: plantilla, vista previa y confirmación. Solo ADMIN. Fuera: pantalla (F5) y clonación y promoción (F6). El contrato completo (códigos, mensajes y límites) está en `docs/03_CONTRATOS.md`, sección "Importación masiva (Dev 2, RF-21)".
+
+**Dependencias.** `exceljs` **4.4.0** exacta en `apps/api/package.json` (ERS §6). El CSV no usa dependencias: tiene un parser propio. Las versiones de `multer` y `body-parser` están forzadas en la sección `overrides` de `pnpm-workspace.yaml` (D-036): no quitarlas hasta que `@nestjs/platform-express` las actualice.
+
+### Variables de entorno
+
+Ninguna nueva. La importación usa `INSTITUTION_EMAIL_DOMAIN`, ya descrita en la sección de usuarios: sin ella no se valida el dominio de los correos.
+
+### Cómo usarla (API)
+
+1. Descargar la plantilla: `GET /api/v1/users/import/template?type=students&format=csv`. `type`: `students`, `teachers` o `guardians`. `format`: `xlsx` o `csv`.
+2. Vista previa: `POST /api/v1/users/import/preview` como `multipart/form-data`, con los campos `file` y `type`. Revisa `canConfirm` y `errors`. No escribe nada.
+3. Confirmación: `POST /api/v1/users/import/commit` con el mismo archivo, el mismo `type` y el `sha256` de la vista previa. 201 si se creó todo; 422 si hay errores (no se escribe nada); 409 si el archivo no es el de la vista previa.
+
+```bash
+# Vista previa (sustituye <API_PORT> y la cookie de sesión de un ADMIN)
+curl -s -X POST "http://localhost:<API_PORT>/api/v1/users/import/preview" \
+  -H "Cookie: <sesión de ADMIN>" \
+  -F "type=students" \
+  -F "file=@./estudiantes.csv"
+```
+
+No subas al repositorio archivos reales con datos de alumnos.
+
+### Límites (resumen)
+
+1 MiB por archivo (413); 1000 filas de datos y 5000 filas físicas (400); 500 caracteres por celda; 500 errores como máximo en la respuesta; en XLSX, ZIP de 100 partes y 8 MiB descomprimidos, con 4 MiB por parte, y solo se lee la primera hoja. Tabla completa en `docs/03_CONTRATOS.md`. Peticiones: 10 por minuto a preview y a commit (429).
+
+### Fricciones conocidas con archivos reales
+
+> **Aviso.** Las pruebas usan archivos generados por código y la plantilla propia. **Todavía no se ha probado con un `.xlsx` guardado por Excel ni por LibreOffice reales.** Lo siguiente sale del código y de las pruebas:
+
+- **CSV con codificación de Windows.** Si Excel guarda como "CSV (delimitado por comas)" (ANSI), la respuesta es 400 "Guarda el archivo como CSV UTF-8". Usar "CSV UTF-8 (delimitado por comas)".
+- **Separador `;`.** Excel con configuración regional hispana usa `;`. Se acepta si la primera línea tiene más `;` que `,` fuera de comillas.
+- **Ceros a la izquierda.** Excel guarda los números como números: un código de sección `01` se convierte en `1`. Escribe los códigos como texto o usa letras (p. ej. `A`).
+- **Fechas y booleanos.** Excel convierte "1-3" o "3/4" en fecha: la celda da `INVALID_CELL`. Da formato de texto a la columna.
+- **Fórmulas.** Dan `FORMULA_NOT_ALLOWED`. Pega como valores (Pegado especial, Valores).
+- **Hipervínculos.** Excel los crea al escribir correos. Se toma el texto, así que no falla.
+- **Formato en columnas o filas completas.** Excel guarda el formato de columna como `<col max="16384">` y cada fila con formato como `<row>`. Formato de columna completa en 4 o más hojas, más de 5000 filas con formato o más de 100 columnas usadas en 5000 filas dan 400. Solución: borra el formato de las filas y columnas vacías, o copia solo los datos a un libro nuevo.
+- **Validación de datos sobre columna entera** y **nombres definidos con fórmulas**: 400, por el tope de 50 000 celdas de rango.
+- **Varias hojas.** Solo se lee la primera. Las demás cuentan para el límite de 50 hojas.
+- **Formatos no admitidos.** `.xls`, `.xlsm`, `.ods` y un Excel con contraseña dan 415. Guárdalo como `.xlsx`, sin macros ni contraseña.
+- **Nombres de partes no ASCII** dentro del `.xlsx`: 400 "El archivo está dañado o no es un Excel válido".
+- **Más de 500 errores.** La respuesta trae `errorsTruncated: true`: corrige y repite la vista previa.
+- **Después de corregir, repite la vista previa.** El SHA-256 cambia con cualquier byte; un commit con el archivo anterior da 409.
+
+### Cómo se prueba
+
+| Comando | Qué prueba | Requiere |
+| --- | --- | --- |
+| `pnpm --filter api test` | Unitarios: parser CSV, guard y lector XLSX, validador (los 21 códigos), escape CSV, `uuidv7`, plantillas, servicio con Prisma simulado y controlador | Nada |
+| `pnpm --filter api test:e2e` | `apps/api/test/users-import.e2e-spec.ts`: 401 y 403, plantillas, preview y commit de los 3 tipos, códigos, límites, archivos hostiles, 422, 409, concurrencia, 429 y bitácora | `DATABASE_URL` local con el seed; sin ella se omite |
+| `pnpm --filter api lint` y `pnpm --filter api build` | Lint y compilación | Nada |
+
+> **Aviso.** El e2e crea usuarios `qa-f4-*@colegio.example` en 3A y 3B del año 2026, con una sección de prueba que borra al final, y los elimina al terminar. Ejecútalo solo sobre la base local con el seed, nunca sobre datos reales.
+
+- Los casos de 409 por año inactivo o cerrado están solo en los tests unitarios.
+- Tras reiniciar MySQL, las pruebas e2e pueden fallar con `45028` / `ER_CANNOT_RETRIEVE_RSA_KEY`. Ver D-036.

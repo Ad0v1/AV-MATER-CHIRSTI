@@ -337,7 +337,7 @@ type AcademicEventMap = {
 - Entrada estricta: un campo desconocido responde 400 (p. ej. `role` en el `PATCH`). Las fechas de matrícula, traslado y cierre **nunca** las envía el cliente: las pone el servidor.
 - Ids UUID (400 si no lo son). Marcadores TRUE/NULL (`isCurrent`, `isActive`) se exponen como `boolean`.
 - Errores con el mismo formato del módulo académico: 400 `VALIDATION_ERROR` (con `details`), 401, 403 `FORBIDDEN`, 404 `NOT_FOUND`, 409 `CONFLICT`, 422 `BUSINESS_RULE_VIOLATION`. Un bloqueo mutuo de MySQL (deadlock, 1213) se responde 409 "El registro cambió o está en uso; vuelve a intentarlo".
-- Correo: se guarda en minúsculas y sin espacios, máximo 191 caracteres, único (409). Nombre: 3..120 caracteres, espacios colapsados, sin caracteres de control.
+- Correo: se guarda en minúsculas y sin espacios, máximo 191 caracteres, único (409). Nombre: 3..120 caracteres, espacios colapsados, sin caracteres de control y **sin empezar por `=`, `+`, `-` ni `@`** (desde la importación de RF-21, PROPUESTA; ver "Importación masiva (Dev 2, RF-21)").
 - Dominio: si la variable `INSTITUTION_EMAIL_DOMAIN` está definida, los correos de STUDENT, TEACHER y ADMIN deben pertenecer a ese dominio (422). GUARDIAN queda exento hasta D-013. Sin la variable no se valida el dominio y se registra un aviso en el log.
 - El rol de un usuario no cambia (D-012).
 
@@ -433,3 +433,188 @@ type UsersEventMap = {
 
 - Orden de bloqueos en las transacciones: (0) si el objetivo es ADMIN, los ADMIN activos; (1) el usuario (o los usuarios, por id) `FOR UPDATE`; (2) el año `FOR SHARE`; después, las escrituras. Las condiciones se revalidan dentro de la transacción.
 - Un deadlock o un conflicto de escritura de MySQL (1213, P2034) se responde 409 "El registro cambió o está en uso; vuelve a intentarlo". El cliente puede reintentar.
+
+## Importación masiva (Dev 2, RF-21)
+
+> **Estado: PROPUESTA.** Implementado en `apps/api/src/modules/users/import/` (rama `features/adolfo`, sin commit ni PR) y aprobado por `revisor-pr` (INFORME 10, 27/10/2026). Depende de la aceptación del dueño de Dev 2, de D-021 y de D-035. No va al repo del equipo sin acuerdo. La pantalla de carga es de la fase 5. Esta sección sigue el código: si cambia una ruta, un límite, un código o un mensaje, se actualiza aquí.
+
+### Convenciones
+
+- Prefijo `/api/v1`. Los 3 endpoints son solo para ADMIN (`@Roles('ADMIN')` y `ActiveActorGuard`, como el resto de `users`). Sin sesión, 401; sin rol ADMIN o con cuenta no ACTIVE, 403. Los guards corren antes de leer el archivo: sin sesión nunca se lee el cuerpo.
+- Multipart: el archivo va en el campo `file`; `type` y, en el commit, `sha256`. Un campo de más o mal formado responde 400 `VALIDATION_ERROR`.
+- Tipos (`type`): `students`, `teachers`, `guardians`. Formatos (`format`): `xlsx`, `csv`.
+- **Sin estado entre llamadas.** No hay token ni caché: la confirmación vuelve a subir el archivo y se compara su SHA-256 con el de la vista previa.
+- Ningún mensaje repite el valor de una celda, un correo o un nombre. Los mensajes son fijos y en español.
+
+### Endpoints
+
+| Método y ruta | Entrada | Respuesta | Errores |
+| --- | --- | --- | --- |
+| `GET /users/import/template` | Query `type`, `format` (estricta) | 200 archivo, con `Content-Disposition: attachment; filename="plantilla-<type>.<format>"` y `Cache-Control: no-store` | 400; 401; 403 |
+| `POST /users/import/preview` | multipart `file`, `type` | 200 `ImportReport` | 400; 401; 403; 409; 413; 415; 429 |
+| `POST /users/import/commit` | multipart `file`, `type`, `sha256` (64 hexadecimales) | 201 `ImportCommitResult` | 400; 401; 403; 409; 413; 415; 422; 429 |
+
+### Plantillas
+
+Los encabezados pueden ir en cualquier orden. Se normalizan: sin espacios en los extremos, en minúsculas, sin tildes, y los espacios pasan a `_`. Una columna obligatoria que falta, una desconocida o una repetida responde 400. Las filas vacías se ignoran y el número de fila es el físico (encabezado = fila 1).
+
+| Tipo | Columnas | Reglas |
+| --- | --- | --- |
+| `students` | `correo`, `nombre_completo`, `grado`, `seccion` | `grado` es un entero de 1 a 5. `seccion` es de 1 a 8 letras o dígitos (se pasa a mayúsculas) y se busca en el año activo por grado y código. La matrícula usa la fecha del servidor. |
+| `teachers` | `correo`, `nombre_completo` | Correo del dominio institucional (`INSTITUTION_EMAIL_DOMAIN`). |
+| `guardians` | `correo_apoderado`, `nombre_apoderado`, `correo_estudiante` | Una fila por par apoderado-estudiante; hasta 10 estudiantes por apoderado. El estudiante ya debe existir y no estar retirado. El apoderado queda exento de dominio (D-013). |
+
+- Plantilla CSV: UTF-8 con BOM, separador `,`, fin de línea CRLF y solo la fila de encabezados. `Content-Type: text/csv; charset=utf-8`.
+- Plantilla XLSX: hoja `Datos` (encabezados en negrita, fila 1 fija y lista 1..5 en `grado` hasta la fila 1001) y hoja `Instrucciones`. Sin filas de ejemplo. `Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`.
+
+### Flujo: vista previa y después confirmación
+
+1. `POST /users/import/preview` con el archivo valida el archivo y lo compara con la BD con lecturas simples. **No escribe.** Devuelve `sha256` y `canConfirm`.
+2. Si `canConfirm` es `true`, `POST /users/import/commit` con **los mismos bytes**, el mismo `type` y el `sha256` de la vista previa.
+3. En el commit, si el SHA-256 no coincide, responde 409 y hay que volver a la vista previa. Si coincide, valida el archivo otra vez y revalida la BD dentro de una transacción. Si hay cualquier error, responde 422 con `details` y no escribe nada. Si todo está bien, crea usuarios, matrículas y vínculos **todo o nada** y responde 201.
+
+- La transacción tiene un tiempo máximo de 20 s y una espera máxima de 5 s para entrar. Las escrituras van en bloques de 500.
+- Dos commits del mismo archivo en paralelo dan 201 y 409, o 422 `EMAIL_TAKEN` si el segundo ya ve el correo ocupado. Nunca se duplica un usuario.
+- La importación solo crea. Un correo que ya existe, también el de un apoderado, da `EMAIL_TAKEN`. Para vincular un estudiante a un apoderado existente se usa `POST /guardians/:id/students`.
+
+### Respuestas
+
+```ts
+type ImportReport = {
+  type: 'students' | 'teachers' | 'guardians';
+  format: 'xlsx' | 'csv';
+  sha256: string;            // 64 hexadecimales en minúsculas; es el que se envía al commit
+  totalRows: number;         // filas de datos (sin encabezado ni vacías)
+  validRows: number;         // totalRows - errorRows
+  errorRows: number;         // filas distintas con al menos un error
+  errors: ImportRowError[];  // ordenados por fila y columna; máximo 500
+  errorsTruncated: boolean;  // true si hubo más de 500 errores
+  summary: { users: number; enrollments: number; links: number }; // lo que se crearía
+  canConfirm: boolean;       // true si no hay ningún error
+};
+
+type ImportRowError = {
+  row: number;               // número físico de la fila (encabezado = 1)
+  column: string | null;     // columna de la plantilla; null si afecta a toda la fila
+  code: RowErrorCode;        // ver la tabla de códigos
+  message: string;           // fijo en español; nunca el valor de la celda
+};
+```
+
+- `ImportCommitResult` (201): `{ type, created: { users, enrollments, links } }`.
+- En 422 el cuerpo es `{ error: { code: "BUSINESS_RULE_VIOLATION", message: "Solicitud invalida", details: ImportRowError[] }, requestId }`, con 500 errores como máximo.
+- Un mensaje de duplicado añade la primera aparición: "… (primera aparición en la fila N)".
+
+### Códigos de fila (21)
+
+| Código | Cuándo | Mensaje |
+| --- | --- | --- |
+| `REQUIRED` | La celda obligatoria está vacía | El campo es obligatorio |
+| `INVALID_EMAIL` | El correo no es válido | El correo no es válido |
+| `EMAIL_DOMAIN` | El correo de estudiante o docente no es del dominio institucional (el de apoderado está exento, D-013) | El correo no pertenece al dominio institucional |
+| `INVALID_NAME` | Nombre de menos de 3 o más de 120 caracteres, con control, o que empieza por = + - @ | El nombre no es válido (3 a 120 caracteres, sin empezar por = + - @) |
+| `INVALID_GRADE` | `grado` no es un entero de 1 a 5 | El grado debe ser un número entero del 1 al 5 |
+| `INVALID_SECTION` | `seccion` no tiene de 1 a 8 letras o dígitos | La sección debe tener de 1 a 8 letras o dígitos |
+| `SECTION_NOT_FOUND` | No hay esa sección en el año activo (BD) | No existe esa sección en el año académico activo |
+| `SECTION_INACTIVE` | La sección existe pero está inactiva (BD) | La sección está inactiva |
+| `DUPLICATE_IN_FILE` | El correo se repite en el archivo | El correo está repetido en el archivo (primera aparición en la fila N) |
+| `EMAIL_TAKEN` | Ya existe un usuario con ese correo (BD); en guardians, el correo del apoderado | Ya existe un usuario con ese correo |
+| `STUDENT_NOT_FOUND` | No hay usuario con el correo del estudiante (BD) | No existe un estudiante con ese correo |
+| `NOT_STUDENT` | El usuario de ese correo no es estudiante (BD) | El usuario de ese correo no es un estudiante |
+| `STUDENT_WITHDRAWN` | El estudiante está retirado (BD) | El estudiante está retirado |
+| `SAME_PERSON` | El correo del apoderado y el del estudiante son el mismo | El apoderado y el estudiante deben ser personas distintas |
+| `NAME_MISMATCH` | El mismo apoderado aparece con otro nombre (primera aparición en la fila N) | El nombre del apoderado no coincide con el de su primera fila (primera aparición en la fila N) |
+| `TOO_MANY_STUDENTS` | El apoderado tiene más de 10 estudiantes en el archivo | El apoderado supera el máximo de 10 estudiantes |
+| `DUPLICATE_LINK` | Se repite el par apoderado-estudiante (primera aparición en la fila N) | El vínculo entre ese apoderado y ese estudiante está repetido (primera aparición en la fila N) |
+| `FORMULA_NOT_ALLOWED` | La celda del XLSX tiene una fórmula | La celda tiene una fórmula; escribe el valor |
+| `INVALID_CELL` | La celda del XLSX es fecha, booleano, error o número no entero | La celda debe ser texto o un número entero |
+| `TOO_LONG` | La celda tiene más de 500 caracteres | La celda supera los 500 caracteres |
+| `EXTRA_CELLS` | Hay datos fuera de las columnas de la plantilla (`column` es null) | La fila tiene datos fuera de las columnas de la plantilla |
+
+### Errores de archivo
+
+Todos los mensajes son fijos y no incluyen el nombre del archivo ni su contenido.
+
+- **400 `VALIDATION_ERROR`** (archivo o campos):
+  - "Debes adjuntar el archivo en el campo file"; "El archivo está vacío".
+  - Encabezados: "La primera fila debe tener los encabezados de la plantilla"; "Falta una columna obligatoria de la plantilla"; "Hay una columna que no pertenece a la plantilla"; "Hay una columna repetida en los encabezados"; "Los encabezados deben ser texto".
+  - Tamaño y filas: "El archivo no tiene filas de datos"; "El archivo supera el máximo de 1000 filas de datos"; "El archivo supera el máximo de 5000 filas, contando las vacías"; "Una fila del archivo tiene demasiadas columnas".
+  - CSV: "Guarda el archivo como CSV UTF-8" (no es UTF-8); "El archivo CSV tiene una comilla sin cerrar".
+  - XLSX: "El archivo está dañado o no es un Excel válido"; "El archivo no tiene hojas"; "El contenido del Excel descomprimido supera el límite permitido"; "El Excel tiene demasiadas partes internas"; "El Excel tiene demasiadas hojas, columnas, celdas, combinaciones, validaciones o nombres definidos; usa la plantilla".
+  - Campos mal formados (`type`, `format`, `sha256` o campos de más): `details` con `path` y `message`.
+- **401** sin sesión. **403** sin rol ADMIN o con cuenta no ACTIVE.
+- **409 `CONFLICT`**:
+  - "El archivo no coincide con el de la vista previa; vuelve a validarlo" (commit, SHA-256 distinto).
+  - "No hay un año académico activo" y "El año académico está cerrado" (solo `students`, en la vista previa y en el commit).
+  - "El registro cambió o está en uso; vuelve a intentarlo" (concurrencia, deadlock o transacción caducada).
+  - "Ya existe un usuario con ese correo" (carrera en el índice único).
+- **413 `PAYLOAD_TOO_LARGE`**: archivo de más de 1 MiB. Mensaje "File too large" (lo fija multer).
+- **415 `UNSUPPORTED_MEDIA_TYPE`**:
+  - "Formato no admitido: usa un archivo .xlsx o .csv" (otra extensión: `.xls`, `.xlsm`, `.ods`, `.exe`, sin extensión).
+  - "El contenido del archivo no coincide con su extensión" (un ZIP con `.csv`, un CSV con `.xlsx`, un `.xlsx` cifrado, que es un contenedor OLE, o un ejecutable renombrado).
+  - "El archivo CSV contiene datos binarios" (byte NUL).
+  - "No se admiten archivos con macros" (`xl/vbaProject.bin`).
+  - "El Excel contiene declaraciones XML no permitidas" (`DOCTYPE` o `ENTITY`).
+  - "El Excel usa una característica no admitida (cifrado, ZIP64 o varios discos)" (también métodos de compresión no admitidos).
+  - "El Excel tiene partes XML con una codificación no admitida (solo UTF-8)".
+  - "El Excel usa nombres internos con una codificación no admitida" (campo extra Unicode).
+- **422 `BUSINESS_RULE_VIOLATION`** (solo commit): errores de fila o de BD en `details`. Nada escrito.
+- **429 `ERROR`**: más de 10 peticiones por minuto a preview o a commit (`IMPORT_RATE_LIMIT`). El filtro no tiene el 429 en su tabla, así que el código es `ERROR`.
+
+### Límites
+
+| Límite | Valor | Si se supera |
+| --- | --- | --- |
+| Tamaño del archivo | 1 MiB (1 048 576 bytes, D-007) | 413 |
+| Filas de datos | 1000 (sin encabezado ni vacías) | 400 |
+| Filas físicas | 5000 (contando vacías y encabezado) | 400 |
+| Campos por registro CSV | 16 384 | 400 |
+| Columnas útiles por fila | 30 (si hay datos después, `EXTRA_CELLS`) | Código de fila |
+| Caracteres por celda | 500 | `TOO_LONG` |
+| Errores devueltos | 500 | `errorsTruncated: true` |
+| Celdas del libro XLSX | 50 000 | 400 |
+| Hojas del libro XLSX | 50, con `sheetId` ≤ 1000 (solo se lee la primera) | 400 |
+| Combinaciones (`mergeCell`) | 500 | 400 |
+| Áreas de validación y nombres definidos | 50 000 celdas en total | 400 |
+| Columnas del libro | Suma de la columna más alta de cada hoja ≤ 3 × 16 384 | 400 |
+| Ancho de filas del libro | 500 000 (suma, fila a fila, de la columna más alta usada) | 400 |
+| Partes del ZIP del XLSX | 100 | 400 |
+| Descomprimido del XLSX | 8 MiB en total y 4 MiB por parte | 400 |
+| Peticiones de preview y commit | 10 por minuto | 429 |
+| Transacción del commit | 20 s de tiempo máximo y 5 s de espera | 409 si caduca |
+
+### Exportaciones CSV (contrato para Dev 5)
+
+Toda exportación CSV del sistema (reportes, listados, notas, bitácora) debe usar `escapeCsvCell` o `toCsvLine` de `apps/api/src/modules/users/import/csv-escape.ts`:
+
+- Si la celda empieza por `=`, `+`, `-`, `@`, TAB o CR, se antepone un apóstrofo (`'`) para que la hoja de cálculo no la interprete como fórmula. Esto incluye los correos que empiezan por `+` o `-`. El apóstrofo cambia el valor exportado: es intencional.
+- Si contiene `"`, `,`, `;`, CR o LF, se entrecomilla y las `"` internas se duplican (RFC 4180). El `;` se entrecomilla también para Excel con configuración regional hispana.
+- `toCsvLine(cells, separator = ',')` une las celdas ya escapadas.
+
+```ts
+escapeCsvCell(value: string): string;
+toCsvLine(cells: readonly string[], separator = ','): string;
+```
+
+- Los datos ya llegan sin espacios al inicio, pero el escape se aplica igual a todo texto que venga de la BD.
+- Este contrato es para CSV. Para XLSX, Dev 5 debe revisar cómo escribe las celdas; no está probado aquí.
+
+### Nombres (`fullNameSchema`, también en F3)
+
+`fullNameSchema` rechaza los nombres que empiezan por `=`, `+`, `-` o `@`. Aplica a `POST /students`, `POST /teachers`, `POST /guardians` y a `PATCH /users/:id` cuando llega `fullName`: responde 400 `VALIDATION_ERROR` con `details` (`path: "fullName"`) y el mensaje "El nombre no puede empezar por = + - @".
+
+Pendiente: comprobar en la base de datos real si hay nombres guardados que empiecen por esos caracteres. Un `PATCH` de ese nombre fallará hasta corregirlo.
+
+### Bitácora
+
+- Una entrada por importación confirmada, después del commit: `module: 'users'`, `action: 'users.import.commit'`, sin `entityType` ni `entityId`.
+- `afterState`: `{ type, format, rows, usersCreated, enrollmentsCreated, linksCreated, userIds }`. Solo ids y conteos: nunca correos, nombres, filas ni el nombre del archivo.
+- La vista previa y los commits rechazados (409, 422) no se registran.
+- Se escribe después del commit (pendiente de Dev 1, D-019). Si falla, se registra en el log sin revertir la importación.
+- No emite eventos de dominio: los eventos de D-034 no aplican a altas.
+
+### Datos de menores y memoria
+
+- El archivo se procesa en memoria: no va a disco, a Redis, a MinIO ni a ningún log. Al terminar, también si hay error, el buffer se pone a cero.
+- El archivo no se guarda, así que no pasa por ClamAV (D-035). Si algún día se guardara, pasaría por ClamAV (RF-40).
+- Limitación aceptada: las cadenas de JavaScript no se pueden borrar de memoria. Nombres y correos pueden seguir en el montón hasta que el recolector los libere (D-035).
