@@ -11,6 +11,7 @@ import { ConfigModule, ENV, type Env } from './config/config.module.js';
 import { HealthController } from './health/health.controller.js';
 import { AcademicModule } from './modules/academic/academic.module.js';
 import { AuthController } from './modules/auth/auth.controller.js';
+import { UsersModule } from './modules/users/users.module.js';
 
 @Module({
   imports: [
@@ -23,6 +24,7 @@ import { AuthController } from './modules/auth/auth.controller.js';
     AuditModule,
     SessionModule,
     AcademicModule,
+    UsersModule,
   ],
   controllers: [HealthController, AuthController],
   providers: [

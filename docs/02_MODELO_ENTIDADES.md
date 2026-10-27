@@ -20,7 +20,7 @@
 | `User` | Dev 2, auth Dev 1 | id, institutionalEmail, name, role, status | RF-03, RF-18..23; no acceso si inactivo/retirado |
 | `LocalCredential` | Dev 1 | userId, passwordHash, totp* | RF-04; respaldo solo admin |
 | `PolicyAcceptance` | Dev 1 | userId, policyVersion, acceptedAt, ip, userAgent | RF-07; ip y userAgent son evidencia del consentimiento (retención pendiente, D-023) |
-| `GuardianStudent` | Dev 2 | guardianId, studentId, createdAt (clave compuesta) | RF-20, RF-52; finalidad y conservación pendientes para F3 (ver docs/04) |
+| `GuardianStudent` | Dev 2 | id (`CHAR(36)`), guardianId, studentId, isActive (TRUE o NULL), createdAt, revokedAt | RF-20, RF-52, RN-13; vínculo revocable en la fila (PROPUESTA F3, D-032); finalidad y plazo de conservación PENDIENTE INSTITUCIÓN (ver docs/04) |
 | `AcademicYear` | Dev 2 | year (único), isActive (TRUE o NULL, único), closedAt, createdAt, updatedAt | RF-09; solo uno activo (invariante 1, D-027) |
 | `AcademicPeriod` | Dev 2 | academicYearId, sequence (1..4), kind (enum `AcademicPeriodKind`), label, startDate, endDate (`@db.Date`), closedAt | RF-10/11; exactamente cuatro tipos/denominaciones documentadas (D-002), con CHECK de sequence/kind y de fechas; sin solapes en el servicio |
 | `Section` | Dev 2 | academicYearId, gradeLevel(1..5), code, isActive | RF-12; único por año, grado y código |
@@ -43,6 +43,8 @@
 
 `*`: los detalles TOTP son responsabilidades de seguridad de Dev 1; nunca almacenar secreto TOTP sin protección.
 
+**Vínculo apoderado–estudiante (PROPUESTA F3, 26/10/2026, D-032).** `GuardianStudent` ya no tiene clave compuesta: tiene `id` propio (`@default(uuid(7)) @db.Char(36)`) y `isActive` vale TRUE (vigente) o NULL (revocado), nunca FALSE. Revocar escribe `isActive` NULL y `revokedAt`; el vínculo no se borra, así se conserva el historial. Índice `UNIQUE(guardianId, studentId, isActive)`: un solo vigente por par; los revocados (NULL) no chocan entre sí. Tres CHECK: `GuardianStudent_isActive_chk` (vigente sin `revokedAt`, o revocado con `revokedAt`), `GuardianStudent_dates_chk` (`revokedAt >= createdAt`) y `GuardianStudent_distinct_chk` (`guardianId <> studentId`). Migración `20261026235821_guardian_student_revocable`.
+
 ## Cardinalidades esenciales
 
 - `AcademicYear` 1:N `AcademicPeriod` y 1:N `Section`.
@@ -52,19 +54,21 @@
 - `Submission` 1:N `SubmissionVersion`; cada versión apunta a un `StoredFile` privado.
 - `(assignmentId, enrollmentId)` único para `Submission` **y** para `Grade` (independientemente de si hay entrega, dado que NE puede existir sin PDF).
 - `Grade` referencia tarea y matrícula, **no necesariamente una versión PDF**: soporta NE y exoneraciones sin archivo.
-- `GuardianStudent` N:M entre apoderados y estudiantes.
+- `GuardianStudent` N:M entre apoderados y estudiantes (vigentes y revocados; ver el apartado del vínculo).
 
 ## Invariantes que no resuelve solo el ORM
 
 1. Solo un `AcademicYear` activo simultáneamente (transacción/constraint validada). **Imposición en BD (PROPUESTA, D-027):** `isActive` vale TRUE o NULL, nunca FALSE (CHECK `AcademicYear_isActive_chk`); la columna es `UNIQUE` y MySQL admite varios NULL, así que a lo sumo una fila tiene TRUE. El cambio de año activo se hace en una transacción (servicio, F2).
-2. Un estudiante no debe tener dos matrículas vigentes simultáneas en el mismo año (validación transaccional; RF-24). **Imposición en BD (PROPUESTA, D-027):** `isCurrent` vale TRUE (vigente) o NULL (cerrada); `UNIQUE(academicYearId, studentId, isCurrent)` deja una sola vigente por estudiante y año; el CHECK `Enrollment_isCurrent_chk` exige que una vigente no tenga `effectiveTo` ni `endReason`, y que una cerrada los tenga. La FK compuesta `(sectionId, academicYearId)` hace que el año de la matrícula sea el de su sección.
+2. Un estudiante no debe tener dos matrículas vigentes simultáneas en el mismo año (validación transaccional; RF-24). **Imposición en BD (PROPUESTA, D-027):** `isCurrent` vale TRUE (vigente) o NULL (cerrada); `UNIQUE(academicYearId, studentId, isCurrent)` deja una sola vigente por estudiante y año; el CHECK `Enrollment_isCurrent_chk` exige que una vigente no tenga `effectiveTo` ni `endReason`, y que una cerrada los tenga. La rama TRUE empieza con `isCurrent IS NOT NULL`: sin esa condición, una fila con `isCurrent` NULL y sin fechas daba UNKNOWN y MySQL la aceptaba (corregido en la migración `20261027000217_enrollment_iscurrent_check_fix`). La FK compuesta `(sectionId, academicYearId)` hace que el año de la matrícula sea el de su sección.
 3. Una `Assignment` debe pertenecer a un período del **mismo año lectivo** que su `CourseSection` (servicio de dominio).
 4. Un docente crea tareas únicamente en sus `CourseSection` y durante períodos abiertos (RN-10/12).
 5. Un estudiante solo puede entregar si pertenece a la sección correspondiente y se cumplen vencimiento/formato/tamaño (RN-08/09/12).
 6. Una versión PDF solo se vuelve visible/descargable después del análisis antivirus satisfactorio (diseño de seguridad propuesto).
 7. Notas y eventos de bitácora deben conservarse cuando se purgan PDF según RF-66/RN-14.
 
-Quedan en el servicio (F2/F3, PROPUESTA del 26/10/2026, sin implementar aún): rol correcto en cada FK hacia `User` (`Enrollment.studentId`, `CourseSection.teacherId`, `GuardianStudent`); `guardianId` distinto de `studentId`; `Section.isActive` y `CourseSection.isActive` comprobados en el servicio (RN-10); fechas coherentes al cerrar una matrícula (`effectiveTo >= effectiveFrom`); y bitácora de acciones críticas académicas.
+Quedan en el servicio (F2, PROPUESTA del 26/10/2026): rol correcto en `CourseSection.teacherId`; `Section.isActive` y `CourseSection.isActive` comprobados en el servicio (RN-10); y bitácora de acciones críticas académicas (D-019).
+
+Resuelto en F3 (módulo `users`, PROPUESTA, sin commit): rol correcto en `Enrollment.studentId` (STUDENT) y en `GuardianStudent` (GUARDIAN el apoderado, STUDENT el estudiante), comprobado en el servicio con 422; `guardianId` distinto de `studentId` (servicio y CHECK `GuardianStudent_distinct_chk`); fechas coherentes al cerrar (`effectiveTo >= effectiveFrom` en BD, `revokedAt >= createdAt` en BD). Un estudiante WITHDRAWN no se matricula, no se traslada y no se vincula.
 
 ## Campos/decisiones todavía por cerrar
 

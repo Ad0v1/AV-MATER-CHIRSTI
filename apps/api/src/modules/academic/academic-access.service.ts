@@ -291,10 +291,15 @@ export class AcademicAccessService {
     }));
   }
 
-  /** Ids de los estudiantes vinculados a un apoderado. */
+  /**
+   * Ids de los estudiantes con vínculo vigente (isActive TRUE) con el apoderado; los revocados no
+   * cuentan. Tampoco cuentan los estudiantes WITHDRAWN (D-032): se filtra por el estado del
+   * estudiante y el vínculo NO se revoca, así vuelve a contar si el estudiante se reincorpora y no
+   * se pierde historial. Los INACTIVE sí cuentan (suspensión temporal, no retiro).
+   */
   async getLinkedStudentIds(guardianId: string): Promise<string[]> {
     const links = await this.prisma.guardianStudent.findMany({
-      where: { guardianId },
+      where: { guardianId, isActive: true, student: { status: { not: 'WITHDRAWN' } } },
       select: { studentId: true },
     });
     return links.map((l) => l.studentId);

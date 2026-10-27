@@ -52,6 +52,15 @@ describe.skipIf(!process.env.DATABASE_URL)('Esquema academico (e2e, MySQL)', () 
   const newSection = (tx: Tx, academicYearId: string, gradeLevel = 3, code = 'Z') =>
     tx.section.create({ data: { academicYearId, gradeLevel, code } });
 
+  const newGuardian = (tx: Tx, key: string) =>
+    tx.user.create({
+      data: {
+        institutionalEmail: email(key),
+        fullName: `Ficticio ${key}`,
+        role: 'GUARDIAN',
+      },
+    });
+
   const newStudent = (tx: Tx, key: string) =>
     tx.user.create({
       data: {
@@ -191,6 +200,133 @@ describe.skipIf(!process.env.DATABASE_URL)('Esquema academico (e2e, MySQL)', () 
         expect(String(err)).toMatch(/Enrollment_isCurrent_chk/);
       });
     });
+
+    it('RF-24: cerrar la matricula (isCurrent NULL) sin fecha ni motivo viola Enrollment_isCurrent_chk', async () => {
+      await inRollback(async (tx) => {
+        const year = await newYear(tx, 2090);
+        const section = await newSection(tx, year.id);
+        const student = await newStudent(tx, 'qa-cierre');
+        const err = await tx.enrollment
+          .create({
+            data: {
+              studentId: student.id,
+              sectionId: section.id,
+              academicYearId: year.id,
+              isCurrent: null,
+            },
+          })
+          .catch((e: unknown) => e);
+        expect(String(err)).toMatch(/3819/);
+        expect(String(err)).toMatch(/Enrollment_isCurrent_chk/);
+      });
+    });
+
+    it('RF-24: isCurrent = false viola Enrollment_isCurrent_chk (el marcador es TRUE o NULL)', async () => {
+      await inRollback(async (tx) => {
+        const year = await newYear(tx, 2090);
+        const section = await newSection(tx, year.id);
+        const student = await newStudent(tx, 'qa-false');
+        const err = await tx.enrollment
+          .create({
+            data: {
+              studentId: student.id,
+              sectionId: section.id,
+              academicYearId: year.id,
+              isCurrent: false,
+            },
+          })
+          .catch((e: unknown) => e);
+        expect(String(err)).toMatch(/3819/);
+        expect(String(err)).toMatch(/Enrollment_isCurrent_chk/);
+      });
+    });
+
+    it('RN-13: vinculo revocado (isActive NULL) sin revokedAt viola GuardianStudent_isActive_chk', async () => {
+      await inRollback(async (tx) => {
+        const guardian = await newGuardian(tx, 'qa-gchk1');
+        const student = await newStudent(tx, 'qa-schk1');
+        const err = await tx.guardianStudent
+          .create({ data: { guardianId: guardian.id, studentId: student.id, isActive: null } })
+          .catch((e: unknown) => e);
+        expect(String(err)).toMatch(/3819/);
+        expect(String(err)).toMatch(/GuardianStudent_isActive_chk/);
+      });
+    });
+
+    it('RN-13: vinculo con isActive = false viola GuardianStudent_isActive_chk', async () => {
+      await inRollback(async (tx) => {
+        const guardian = await newGuardian(tx, 'qa-gchk2');
+        const student = await newStudent(tx, 'qa-schk2');
+        const err = await tx.guardianStudent
+          .create({ data: { guardianId: guardian.id, studentId: student.id, isActive: false } })
+          .catch((e: unknown) => e);
+        expect(String(err)).toMatch(/3819/);
+        expect(String(err)).toMatch(/GuardianStudent_isActive_chk/);
+      });
+    });
+
+    it('RN-13: vinculo vigente con revokedAt viola GuardianStudent_isActive_chk', async () => {
+      await inRollback(async (tx) => {
+        const guardian = await newGuardian(tx, 'qa-gchk3');
+        const student = await newStudent(tx, 'qa-schk3');
+        const err = await tx.guardianStudent
+          .create({
+            data: {
+              guardianId: guardian.id,
+              studentId: student.id,
+              isActive: true,
+              revokedAt: new Date(Date.now() + 60_000),
+            },
+          })
+          .catch((e: unknown) => e);
+        expect(String(err)).toMatch(/3819/);
+        expect(String(err)).toMatch(/GuardianStudent_isActive_chk/);
+      });
+    });
+
+    it('RN-13: apoderado y estudiante con el mismo id violan GuardianStudent_distinct_chk', async () => {
+      await inRollback(async (tx) => {
+        const person = await newStudent(tx, 'qa-mismo');
+        const err = await tx.guardianStudent
+          .create({ data: { guardianId: person.id, studentId: person.id } })
+          .catch((e: unknown) => e);
+        expect(String(err)).toMatch(/3819/);
+        expect(String(err)).toMatch(/GuardianStudent_distinct_chk/);
+      });
+    });
+
+    it('RN-13: revokedAt anterior a createdAt viola GuardianStudent_dates_chk', async () => {
+      await inRollback(async (tx) => {
+        const guardian = await newGuardian(tx, 'qa-gchk4');
+        const student = await newStudent(tx, 'qa-schk4');
+        const err = await tx.guardianStudent
+          .create({
+            data: {
+              guardianId: guardian.id,
+              studentId: student.id,
+              isActive: null,
+              createdAt: new Date('2090-06-01T00:00:00Z'),
+              revokedAt: new Date('2090-05-01T00:00:00Z'),
+            },
+          })
+          .catch((e: unknown) => e);
+        expect(String(err)).toMatch(/3819/);
+        expect(String(err)).toMatch(/GuardianStudent_dates_chk/);
+      });
+    });
+
+    it('RN-13: un segundo vinculo vigente del mismo par falla con P2002; revocados conviven', async () => {
+      await inRollback(async (tx) => {
+        const guardian = await newGuardian(tx, 'qa-gdup');
+        const student = await newStudent(tx, 'qa-sdup');
+        const data = { guardianId: guardian.id, studentId: student.id };
+        await tx.guardianStudent.create({ data });
+        await expect(tx.guardianStudent.create({ data })).rejects.toMatchObject({ code: 'P2002' });
+        const revoked = { ...data, isActive: null, revokedAt: new Date(Date.now() + 60_000) };
+        await tx.guardianStudent.create({ data: revoked });
+        await tx.guardianStudent.create({ data: revoked });
+      });
+    });
   });
 
   describe('RN-13: sin borrado fisico (Restrict)', () => {
@@ -230,7 +366,7 @@ describe.skipIf(!process.env.DATABASE_URL)('Esquema academico (e2e, MySQL)', () 
         prisma.courseSection.count(),
         prisma.enrollment.count(),
         prisma.enrollment.count({ where: { isCurrent: true } }),
-        prisma.guardianStudent.count(),
+        prisma.guardianStudent.count({ where: { isActive: true } }), // vigentes (RN-13)
         prisma.academicPeriod.count({ where: { closedAt: { not: null } } }),
       ]);
       expect(counts).toEqual([

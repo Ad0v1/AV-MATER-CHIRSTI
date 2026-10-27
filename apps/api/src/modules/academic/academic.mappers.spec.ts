@@ -1,5 +1,5 @@
 import { ConflictException, NotFoundException } from '@nestjs/common';
-import { mapPrismaError } from './academic.errors.js';
+import { isDeadlock, mapPrismaError } from './academic.errors.js';
 import { diffFields, fromDateOnly, hasChanges, marker, toDateOnly } from './academic.mappers.js';
 
 describe('diffFields (D-024)', () => {
@@ -63,5 +63,35 @@ describe('mapPrismaError', () => {
   it('relanza cualquier otro error', () => {
     const error = new Error('boom');
     expect(() => mapPrismaError(error)).toThrow(error);
+  });
+
+  it('deadlock de MySQL (1213) → 409: P2034, P2010 de $queryRaw y errno del driver', () => {
+    const raw1213 = {
+      code: 'P2010',
+      meta: { driverAdapterError: { cause: { originalCode: '1213', kind: 'mysql' } } },
+    };
+    const rawConflict = {
+      code: 'P2010',
+      meta: { driverAdapterError: { cause: { kind: 'TransactionWriteConflict' } } },
+    };
+    expect(() => mapPrismaError({ code: 'P2034' })).toThrow(ConflictException);
+    expect(() => mapPrismaError(raw1213)).toThrow(ConflictException);
+    expect(() => mapPrismaError(rawConflict)).toThrow(ConflictException);
+    expect(() => mapPrismaError({ errno: 1213 })).toThrow(ConflictException);
+    expect(isDeadlock({ code: 'P2010', meta: {} })).toBe(false);
+  });
+
+  it('P2010 que no es deadlock se relanza tal cual', () => {
+    const other = {
+      code: 'P2010',
+      meta: { driverAdapterError: { cause: { originalCode: '1064', kind: 'mysql' } } },
+    };
+    let thrown: unknown;
+    try {
+      mapPrismaError(other);
+    } catch (e) {
+      thrown = e;
+    }
+    expect(thrown).toBe(other);
   });
 });

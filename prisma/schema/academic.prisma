@@ -116,13 +116,18 @@ model Enrollment {
 }
 
 model GuardianStudent {
-  guardianId String   @db.Char(36)
-  studentId  String   @db.Char(36)
-  createdAt  DateTime @default(now())
+  id         String    @id @default(uuid(7)) @db.Char(36)
+  guardianId String    @db.Char(36)
+  studentId  String    @db.Char(36)
+  // TRUE = vigente; NULL = revocado; nunca FALSE (CHECK). UNIQUE(guardianId, studentId, isActive):
+  // un solo vínculo vigente por par; los revocados se conservan (RN-13/14, D-032).
+  isActive   Boolean?  @default(true)
+  createdAt  DateTime  @default(now())
+  revokedAt  DateTime?
 
   guardian User @relation("GuardianStudentGuardian", fields: [guardianId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   student  User @relation("GuardianStudentStudent", fields: [studentId], references: [id], onDelete: Restrict, onUpdate: Restrict)
 
-  @@id([guardianId, studentId])
+  @@unique([guardianId, studentId, isActive])
   @@index([studentId])
 }

@@ -151,14 +151,15 @@ export async function seedAcademic(prisma: PrismaClient): Promise<void> {
     );
   }
 
-  // 8. Vinculos apoderado–estudiante (clave: guardianId + studentId).
+  // 8. Vinculos apoderado–estudiante: solo se crea si el par no tiene uno vigente (isActive TRUE).
+  //    Los revocados (isActive NULL + revokedAt) se conservan y no se reactivan (RN-13/14).
   for (const link of GUARDIAN_LINKS) {
     const guardianId = userId(link.guardian);
     const studentId = userId(link.student);
-    await prisma.guardianStudent.upsert({
-      where: { guardianId_studentId: { guardianId, studentId } },
-      create: { guardianId, studentId },
-      update: {},
+    const current = await prisma.guardianStudent.findFirst({
+      where: { guardianId, studentId, isActive: true },
+      select: { id: true },
     });
+    if (!current) await prisma.guardianStudent.create({ data: { guardianId, studentId } });
   }
 }

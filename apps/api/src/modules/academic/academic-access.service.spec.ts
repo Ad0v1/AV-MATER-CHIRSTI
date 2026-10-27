@@ -418,6 +418,19 @@ describe('AcademicAccessService', () => {
       await expect(access.getLinkedStudentIds('apo01')).resolves.toEqual(['a', 'b']);
     });
 
+    it('RN-13 / D-032: getLinkedStudentIds solo cuenta vínculos vigentes de estudiantes no retirados', async () => {
+      await access.getLinkedStudentIds('apo01');
+      expect(prisma.guardianStudent.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            guardianId: 'apo01',
+            isActive: true,
+            student: { status: { not: 'WITHDRAWN' } },
+          },
+        }),
+      );
+    });
+
     it('getActiveYear consulta el marcador TRUE', async () => {
       prisma.academicYear.findFirst.mockResolvedValue({ id: 'y-2026', year: 2026 });
       await expect(access.getActiveYear()).resolves.toEqual({ id: 'y-2026', year: 2026 });
