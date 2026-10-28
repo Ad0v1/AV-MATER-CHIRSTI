@@ -5,37 +5,8 @@ import { PrismaMariaDb } from '@prisma/adapter-mariadb';
 import { PrismaClient } from '../../apps/api/src/generated/prisma/client.js';
 import { seedAcademic } from './academic.js';
 import { ALL_USERS, SEED_EMAIL_DOMAIN } from './fixtures.js';
-
-// Hosts permitidos para el seed: maquina local o el servicio `mysql` del docker compose.
-const ALLOWED_DB_HOSTS = new Set(['localhost', '127.0.0.1', '::1', '[::1]', 'mysql']);
-
-// Devuelve la URL solo si apunta a una base local. Nunca incluye la URL ni la
-// contrasena en los mensajes de error.
-function assertLocalDatabase(): string {
-  if (process.env.NODE_ENV === 'production') {
-    throw new Error('El seed de datos ficticios no se ejecuta con NODE_ENV=production.');
-  }
-  if (process.env.CI === 'true') {
-    throw new Error('El seed de datos ficticios no se ejecuta en CI (CI=true).');
-  }
-  const url = process.env.DATABASE_URL;
-  if (!url) {
-    throw new Error('Falta DATABASE_URL (copia .env.example a .env).');
-  }
-  let host: string;
-  try {
-    host = new URL(url).hostname.toLowerCase();
-  } catch {
-    throw new Error('DATABASE_URL no es una URL valida.');
-  }
-  if (!ALLOWED_DB_HOSTS.has(host)) {
-    throw new Error(
-      'DATABASE_URL no apunta a una base local: el seed solo corre contra ' +
-        'localhost, 127.0.0.1, ::1 o el servicio mysql del docker compose.',
-    );
-  }
-  return url;
-}
+// Comprobaciones de entorno local compartidas con dev-session.ts (F5).
+import { assertLocalDatabase } from './local-guard.js';
 
 async function main(): Promise<void> {
   // Todas las comprobaciones van antes de crear el cliente de Prisma.
