@@ -7,7 +7,7 @@ describe('API (e2e)', () => {
   let app: INestApplication<App>;
 
   beforeEach(async () => {
-    app = await createTestApp();
+    app = (await createTestApp()).app;
   });
 
   it('GET /api/v1/health responde ok', () => {
