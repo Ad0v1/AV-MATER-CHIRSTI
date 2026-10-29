@@ -10,17 +10,28 @@
 import 'server-only';
 import { cookies } from 'next/headers';
 import { ApiError, networkError, parseApiError } from './errors';
-import { SESSION_COOKIE, assertApiPath, sessionCookieHeader } from './request-guards';
+import {
+  SESSION_COOKIE,
+  assertApiPath,
+  resolveTimeoutMs,
+  sessionCookieHeader,
+} from './request-guards';
 
 export { SESSION_COOKIE };
 
 const API_BASE = `${(process.env.API_INTERNAL_URL ?? 'http://localhost:4000').replace(/\/+$/, '')}/api/v1`;
 
-const REQUEST_TIMEOUT_MS = 15_000;
+/** Opciones por petición. `timeoutMs`: 15 s por defecto (ver resolveTimeoutMs). */
+export type RequestOptions = { timeoutMs?: number };
 
 type Method = 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE';
 
-async function request<T>(method: Method, path: string, body?: unknown): Promise<T> {
+async function request<T>(
+  method: Method,
+  path: string,
+  body?: unknown,
+  options: RequestOptions = {},
+): Promise<T> {
   assertApiPath(path);
   const headers: Record<string, string> = { Accept: 'application/json' };
   const cookie = sessionCookieHeader((await cookies()).get(SESSION_COOKIE)?.value);
@@ -35,7 +46,7 @@ async function request<T>(method: Method, path: string, body?: unknown): Promise
       body: body === undefined ? undefined : JSON.stringify(body),
       cache: 'no-store',
       redirect: 'manual',
-      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      signal: AbortSignal.timeout(resolveTimeoutMs(options.timeoutMs)),
     });
   } catch {
     throw networkError();
@@ -60,7 +71,8 @@ async function request<T>(method: Method, path: string, body?: unknown): Promise
 
 export const apiServer = {
   get: <T>(path: string) => request<T>('GET', path),
-  post: <T>(path: string, body?: unknown) => request<T>('POST', path, body ?? {}),
+  post: <T>(path: string, body?: unknown, options?: RequestOptions) =>
+    request<T>('POST', path, body ?? {}, options),
   patch: <T>(path: string, body: unknown) => request<T>('PATCH', path, body),
   put: <T>(path: string, body: unknown) => request<T>('PUT', path, body),
 };

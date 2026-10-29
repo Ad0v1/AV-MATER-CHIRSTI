@@ -12,4 +12,6 @@ export const focusIds = {
   section: (id: string) => `seccion-${id}`,
   course: (id: string) => `curso-${id}`,
   courseSection: (id: string) => `curso-seccion-${id}`,
+  /** Encabezado del resultado de clonar la estructura (RF-15). */
+  cloneResult: 'resultado-clonacion',
 } as const;

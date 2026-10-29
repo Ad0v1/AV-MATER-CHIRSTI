@@ -33,9 +33,9 @@ export type YearSummary = {
 
 export type YearDetail = YearSummary & { periods: PeriodView[] };
 
-type YearRow = { id: string; year: number; isActive: boolean | null; closedAt: Date | null };
+export type YearRow = { id: string; year: number; isActive: boolean | null; closedAt: Date | null };
 
-const toSummary = (year: YearRow, activeYear: { year: number } | null): YearSummary => ({
+export const toSummary = (year: YearRow, activeYear: { year: number } | null): YearSummary => ({
   id: year.id,
   year: year.year,
   isActive: marker(year.isActive),

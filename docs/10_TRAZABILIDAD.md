@@ -57,6 +57,14 @@ La correspondencia de RF y dev reproduce el **Plan de Trabajo**. Los detalles de
 - Pruebas: Vitest de lógica pura (`pnpm --filter web test`). Sin Playwright todavía.
 - Pendiente: prueba manual en navegador (360 px, teclado y lector de pantalla); Playwright con axe; login real de Dev 1, que sustituye `dev-session` y `dev-role`; limitación de peticiones detrás del BFF (Dev 1); RF-15 y RF-16 (F6) fuera de esta fase. Sin commit ni PR; no va al repo del equipo sin acuerdo (D-037).
 
+**Nota de avance (RF-15 y RF-16, RN-15; API, pantallas y pruebas; PROPUESTA del 29/10/2026, F6 de Dev 2):** clonar la estructura de un año en otro (RF-15) y promoción en bloque de estudiantes con propuesta, corrección y confirmación todo o nada (RF-16, RN-15, D-038).
+
+- **RF-15 (clonar):** `POST /academic-years/:id/clone-structure` en `apps/api/src/modules/academic/` (`academic-clone.service.ts`, `academic-clone-policy.ts`, `academic-locks.ts`). Pantalla `apps/web/app/(app)/admin/estructura/anios/[anioId]/clonar/`, con `_components/clone-structure.tsx` y `_lib/clone.ts`.
+- **RF-16 (promoción):** `GET /academic-years/:id/promotion-proposal` y `POST /academic-years/:id/promotion` en `apps/api/src/modules/users/promotion/` (`promotion-policy.ts`, `promotion.service.ts`, `promotion.controller.ts`, `promotion.dto.ts`). Pantalla `apps/web/app/(app)/admin/estructura/anios/[anioId]/promocion/`, con `_components/promotion-screen.tsx` y `_lib/promotion-machine.ts`.
+- **Pruebas unitarias:** `academic-clone-policy.spec.ts`, `academic-clone-locks.spec.ts`, `promotion-policy.spec.ts` y `api-exception-413.spec.ts` (`pnpm --filter api test`); `clone.test.ts`, `promotion-machine.test.ts`, `promotion-a11y.test.ts` y `apps/web/lib/api/timeout.test.ts` (`pnpm --filter web test`).
+- **Pruebas de integración:** `apps/api/test/academic-clone.e2e-spec.ts` (clonación, docentes, segundo clon 409, origen posterior 422, bitácora sin nombres) y `apps/api/test/users-promotion.e2e-spec.ts` (18 casos: propuesta, todo o nada, huella 409, tandas con `EXCLUDE`, `YEAR_END`, origen cerrado, paralelo, límite de 2000 decisiones, bitácora solo con ids).
+- **Pendiente:** texto literal de RF-15 y RF-16 en la ERS sin confirmar; ¿los egresados pasan a `INACTIVE`? (por ahora no); revisión de Dev 1 del límite de cuerpo (512 KB) y del 413 en `app.setup.ts` y `api-exception.filter.ts`; JSON mal formado sigue en 500 (Dev 1); prueba manual en navegador. Las pruebas necesitan MySQL local con el seed: verificar en local con Docker. Sin commit ni PR; no va al repo del equipo sin acuerdo (D-038).
+
 ## Fuente original por tema
 
 | Tema | Archivo y sección/página impresa |

@@ -15,6 +15,11 @@ export const MSG = {
   conflict: 'El registro cambió o está en uso; vuelve a intentarlo',
   forbidden: 'No tienes permiso para esta accion',
   invalidTeacher: 'El usuario no es un docente activo',
+  sourceYearNotFound: 'El año de origen no existe',
+  cloneSameYear: 'El año de origen y el de destino deben ser distintos',
+  cloneSourceNotEarlier: 'El año de origen debe ser anterior al año de destino',
+  cloneTargetHasSections: 'El año de destino ya tiene secciones',
+  cloneSourceEmpty: 'El año de origen no tiene secciones activas',
 } as const;
 
 const prismaCode = (error: unknown): string | undefined => {

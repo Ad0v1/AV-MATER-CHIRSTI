@@ -622,3 +622,127 @@ Pendiente: comprobar en la base de datos real si hay nombres guardados que empie
 - El archivo se procesa en memoria: no va a disco, a Redis, a MinIO ni a ningún log. Al terminar, también si hay error, el buffer se pone a cero.
 - El archivo no se guarda, así que no pasa por ClamAV (D-035). Si algún día se guardara, pasaría por ClamAV (RF-40).
 - Limitación aceptada: las cadenas de JavaScript no se pueden borrar de memoria. Nombres y correos pueden seguir en el montón hasta que el recolector los libere (D-035).
+
+## API de clonación y promoción de años (Dev 2, F6: RF-15, RF-16; RN-15)
+
+> **Estado: PROPUESTA** (29/10/2026). Implementado en `apps/api/src/modules/academic/` (clonación) y `apps/api/src/modules/users/promotion/` (promoción), rama `features/adolfo`, sin commit ni PR al equipo. Revisado por `seguridad-cumplimiento` (INFORMES 4, 9 y 13) y `ux-accesibilidad` (INFORMES 5, 8 y 14). Depende de la aceptación del dueño de Dev 2 y de D-038. Sin cambios de esquema. Esta sección sigue el código.
+
+### Convenciones
+
+- Prefijo `/api/v1`. Los 3 endpoints son solo para ADMIN (`@Roles('ADMIN')` y `ActiveActorGuard`). Sin sesión, 401; sin rol ADMIN o con cuenta no ACTIVE, 403.
+- `:id` es siempre el **año destino**.
+- Entrada estricta: un campo de más responde 400.
+- Errores con el formato común. Los mensajes son fijos y nunca incluyen nombres ni correos.
+
+### Endpoints
+
+| Método y ruta | Entrada | Respuesta | Errores |
+| --- | --- | --- | --- |
+| `POST /academic-years/:id/clone-structure` | Cuerpo `{ sourceYearId, copyTeachers? }` | 201 `CloneStructureResult` | 400; 401; 403; 404; 409; 422 |
+| `GET /academic-years/:id/promotion-proposal?sourceYearId=` | Query `sourceYearId` (UUID) | 200 `PromotionProposal` | 400; 401; 403; 404; 409; 422 |
+| `POST /academic-years/:id/promotion` | Cuerpo `{ sourceYearId, fingerprint, decisions }` | 201 `PromotionResult` | 400; 401; 403; 404; 409; 422 |
+
+### Clonar la estructura (RF-15)
+
+Cuerpo: `sourceYearId` (UUID, año origen) y `copyTeachers` (booleano, por defecto `false`).
+
+```json
+{
+  "targetYear": { "id": "uuid", "year": 2027, "isActive": false, "closedAt": null, "readOnly": false },
+  "sourceYearId": "uuid",
+  "created": { "sections": 6, "courseSections": 30, "teachersAssigned": 0 },
+  "skipped": { "inactiveSections": 0, "inactiveCourseSections": 0, "inactiveCourses": 0, "teachersNotActive": 0 }
+}
+```
+
+- 400: campos de más, `sourceYearId` que no es UUID o `copyTeachers` que no es booleano.
+- 404: "El año académico no existe" (destino) o "El año de origen no existe".
+- 409: "El año académico está cerrado"; "El año académico es de solo lectura"; "El año de destino ya tiene secciones" (un segundo clon también responde esto, sin escribir); "El registro cambió o está en uso; vuelve a intentarlo" (concurrencia o deadlock).
+- 422: "El año de origen y el de destino deben ser distintos"; "El año de origen debe ser anterior al año de destino"; "El año de origen no tiene secciones activas".
+
+Reglas:
+
+- Se copian solo las secciones activas y, de cada una, los curso-sección activos con curso activo. No se copian períodos (el destino ya los tiene, RF-09), matrículas, vínculos ni contenidos.
+- `teacherId` queda `null` salvo con `copyTeachers: true`: entonces se conserva solo si el docente sigue con rol TEACHER y estado ACTIVE. Si no, queda `null` y se cuenta en `skipped.teachersNotActive`.
+- Una sola transacción. Bloqueos: docentes (si se copian), año origen y año destino, de menor a mayor.
+- Bitácora `academic.year.clone_structure` sobre el año destino, después del commit: `sourceYearId`, `copyTeachers` y conteos. Sin nombres. No emite eventos.
+
+### Propuesta de promoción (RF-16)
+
+`GET` sin estado y sin bitácora: la propuesta se recalcula en cada lectura.
+
+```json
+{
+  "sourceYear": { "id": "uuid", "year": 2026 },
+  "targetYear": { "id": "uuid", "year": 2027 },
+  "fingerprint": "64 caracteres hexadecimales",
+  "targetSections": [{ "id": "uuid", "gradeLevel": 1, "code": "A" }],
+  "items": [{
+    "enrollmentId": "uuid", "studentId": "uuid", "fullName": "Nombre", "status": "ACTIVE",
+    "from": { "sectionId": "uuid", "gradeLevel": 2, "code": "A" },
+    "proposed": { "action": "PROMOTE", "sectionId": "uuid" },
+    "flags": []
+  }],
+  "summary": { "promote": 0, "repeat": 0, "graduate": 0, "exclude": 0, "withoutSection": 0 },
+  "canConfirm": true
+}
+```
+
+- Entran las matrículas vigentes del año origen. Un retirado con matrícula ya cerrada, o un estudiante sin matrícula vigente, no aparece.
+- Acción propuesta: grados 1 a 4, `PROMOTE` al grado siguiente; grado 5, `GRADUATE`; retirado (`WITHDRAWN`) o ya matriculado en el destino, `EXCLUDE`; inactivo, `PROMOTE` con la marca `INACTIVE`.
+- Sección propuesta: la del mismo código si existe y está activa; si no, la única activa de ese grado; si no, `null` con la marca `NO_TARGET_SECTION`.
+- Marcas (`flags`): `INACTIVE`, `WITHDRAWN`, `NO_TARGET_SECTION`, `ALREADY_ENROLLED`. Las filas se ordenan por grado, código y nombre.
+- `canConfirm` es `false` si alguna fila `PROMOTE` o `REPEAT` no tiene sección elegida.
+- `fingerprint`: SHA-256 de las matrículas vigentes del origen, las secciones activas del destino y las matrículas ya existentes en el destino. Se calcula en el servidor.
+- 400; 404 (como en la clonación); 409 "El año de destino está cerrado" o "El año de destino es de solo lectura"; 422: "El año de origen y el de destino deben ser distintos", "El año de destino debe ser el siguiente al año de origen", "Cierra todos los períodos del año de origen antes de promover" (origen con algún período abierto) y "El año de destino no tiene secciones activas".
+
+### Confirmar la promoción (RF-16, RN-15, D-038)
+
+Cuerpo:
+
+```json
+{
+  "sourceYearId": "uuid",
+  "fingerprint": "64 caracteres hexadecimales en minúsculas",
+  "decisions": [{ "enrollmentId": "uuid", "action": "PROMOTE", "sectionId": "uuid" }]
+}
+```
+
+- `action`: `PROMOTE`, `REPEAT`, `GRADUATE` o `EXCLUDE`. `sectionId` es obligatorio en `PROMOTE` y `REPEAT` (sección activa del año destino) y no se admite en `GRADUATE` ni en `EXCLUDE`.
+- Entre 1 y 2000 decisiones, sin matrículas repetidas. Las decisiones deben cubrir **todas** las filas de la propuesta.
+- Correcciones permitidas: `PROMOTE` (grados 1 a 4), `REPEAT` (cualquier grado), `GRADUATE` (solo grado 5) y `EXCLUDE`. Las filas `WITHDRAWN` y `ALREADY_ENROLLED` solo admiten `EXCLUDE`.
+
+Respuesta 201:
+
+```json
+{ "promoted": 50, "repeated": 2, "graduated": 9, "excluded": 1, "closedEnrollments": 61, "createdEnrollments": 52 }
+```
+
+Errores:
+
+- 400: cuerpo mal formado, campos de más, huella que no es hexadecimal de 64 caracteres o más de 2000 decisiones.
+- 404: destino u origen no existen.
+- 409: "La propuesta cambió; vuelve a cargarla" (la huella no coincide con el estado actual); "El año de destino está cerrado" o "El año de destino es de solo lectura"; "El registro cambió o está en uso; vuelve a intentarlo" (concurrencia, deadlock o transacción caducada a los 20 s).
+- 422 `BUSINESS_RULE_VIOLATION` con `details` `[{ path, message }]`: `path` es `decisions` (faltan filas o sobran) o `decisions.<índice>` (matrícula ajena a la propuesta, acción no permitida, sección que falta, sección de otro grado o no activa, o sección en una acción que no la lleva).
+
+Efecto, todo o nada (si cualquier error, no se escribe nada):
+
+- `PROMOTE`, `REPEAT` y `GRADUATE` cierran la matrícula del origen: `isCurrent` NULL, `endReason` `YEAR_END`, `effectiveTo` = el mayor entre el instante de la confirmación y `effectiveFrom`.
+- `PROMOTE` y `REPEAT` crean la matrícula en el destino: `isCurrent` TRUE, `effectiveFrom` = instante de la confirmación.
+- `EXCLUDE` deja la matrícula del origen vigente. Así se confirma en tandas: lo que queda para después vuelve a aparecer en la siguiente propuesta.
+- No cambia el `status` de ningún usuario. No toca notas, contenidos ni datos de años anteriores.
+- Permitido sobre un año origen cerrado o de solo lectura (D-038).
+- Bloqueos, en orden: estudiantes, años de menor a mayor y secciones del destino. Después se revalidan la huella, las condiciones y las decisiones.
+- Bitácora `users.promotion.commit` sobre el año destino, después del commit: `sourceYearId`, conteos y los ids de matrículas cerradas y creadas. Sin nombres ni correos. No emite eventos.
+
+### Límite del cuerpo JSON y 413 (nota de plataforma, pendiente de Dev 1)
+
+- El cuerpo JSON admite hasta **512 KB** (`JSON_BODY_LIMIT` en `apps/api/src/app.setup.ts`; antes, el 100 KB de Express). Una promoción de 2000 decisiones con `sectionId` ronda 250 KB.
+- Un cuerpo mayor responde **413** `PAYLOAD_TOO_LARGE` con el mensaje "El cuerpo de la solicitud supera el tamaño permitido", sin `details` (`apps/api/src/common/errors/api-exception.filter.ts`). Antes respondía 500.
+- Cambio autorizado por el usuario el 29/10/2026 y **pendiente de revisión por Dev 1**, dueño de esos dos archivos.
+- Pendiente de Dev 1: un JSON mal formado sigue respondiendo 500.
+
+### Pendientes
+
+- El texto literal de RF-15 y RF-16 en la ERS no está confirmado. Las reglas salen del expediente, de RN-15 (`docs/04_REGLAS_ESTADOS.md`) y de D-029 y D-030.
+- ¿Los egresados (grado 5, `GRADUATE`) pasan a `INACTIVE`? Por ahora no: conservan `ACTIVE`.

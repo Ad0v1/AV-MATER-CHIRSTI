@@ -222,3 +222,60 @@ Los endpoints que usan estas pantallas están en las secciones de la API académ
 | `pnpm --filter web lint` y `pnpm --filter web build` | Lint y compilación | Nada |
 
 > **Pendiente.** Prueba manual en navegador (360 px, teclado y lector de pantalla) y Playwright con axe. Las pruebas con sesión necesitan la base local con el seed: verificar en local con Docker.
+
+## Clonación y promoción de años (Dev 2, F6: RF-15, RF-16; RN-15)
+
+> **Estado: PROPUESTA.** Código en `apps/api/src/modules/academic/` (clonación) y `apps/api/src/modules/users/promotion/` (promoción); pantallas en `apps/web/app/(app)/admin/estructura/`. Rama `features/adolfo`, sin commit ni PR. Contrato en `docs/03_CONTRATOS.md` (sección "API de clonación y promoción de años"), regla RN-15 en `docs/04_REGLAS_ESTADOS.md` y decisión D-038. Las menciones "fuera de esta fase" de las secciones anteriores de este manual ya no aplican.
+
+**Alcance.** Copiar la estructura (secciones y curso-sección) de un año anterior a un año destino vacío, y promover a los estudiantes al año siguiente con propuesta, corrección y confirmación. No copia períodos, matrículas ni contenidos.
+
+### Variables de entorno
+
+Ninguna nueva.
+
+### Rutas de la web
+
+| Ruta | Pantalla |
+| --- | --- |
+| `/admin/estructura/anios/[anioId]/clonar` | Copiar la estructura de un año anterior (RF-15) |
+| `/admin/estructura/anios/[anioId]/promocion` | Propuesta de promoción, corrección y confirmación (RF-16) |
+
+Los dos enlaces salen de la ficha del año destino (`anios/[anioId]/page.tsx`).
+
+### Precondiciones
+
+- **Clonar.** El año destino se crea antes con RF-09 (con sus cuatro períodos) y debe estar vacío (sin secciones), sin cerrar y sin ser de solo lectura. El origen debe ser anterior y tener al menos una sección activa. El enlace solo aparece si el año no tiene secciones y no es de solo lectura.
+- **Promover.** El origen debe tener sus cuatro períodos cerrados (puede estar cerrado). El destino debe ser el año siguiente (`año origen + 1`), sin cerrar, no de solo lectura y con al menos una sección activa. La pantalla toma como origen el año inmediatamente anterior y avisa si no existe.
+- Permisos: solo ADMIN activo. La web no decide permisos; la API responde 403.
+
+### Cómo llama la web a la API
+
+- La propuesta se lee en un Server Component (`getPromotionProposal` en `estructura/_lib/data.ts`). La confirmación es la Server Action `promotionCommitAction` (`estructura/_lib/actions.ts`), con 30 s de tiempo máximo (`PROMOTION_TIMEOUT_MS`), porque la transacción de la API puede tardar hasta 25 s. La copia usa `cloneStructureAction`.
+- `apps/web/lib/api/server.ts` admite `timeoutMs` por petición (solo en `post`): 15 s por defecto y 60 s como máximo (`resolveTimeoutMs`). Ver D-037.
+
+### Límite del cuerpo y 413 (nota de plataforma)
+
+- El límite del cuerpo JSON sube de 100 KB a **512 KB** (`JSON_BODY_LIMIT` en `apps/api/src/app.setup.ts`). Un cuerpo mayor responde **413** `PAYLOAD_TOO_LARGE` (filtro `apps/api/src/common/errors/api-exception.filter.ts`) en vez de 500.
+- **Archivos de Dev 1 cambiados con autorización del usuario (29/10/2026):** `apps/api/src/app.setup.ts` y `apps/api/src/common/errors/api-exception.filter.ts`. **Pendientes de revisión de Dev 1 (David).** Sus comentarios lo indican.
+- Pendiente de Dev 1: un JSON mal formado sigue respondiendo 500.
+
+### Endpoints (resumen)
+
+Todos bajo `/api/v1`, solo ADMIN activo (`ActiveActorGuard`). `:id` es el año destino. Cuerpos, respuestas y errores completos en `docs/03_CONTRATOS.md`.
+
+| Método y ruta | Uso |
+| --- | --- |
+| `POST /academic-years/:id/clone-structure` | Copiar la estructura desde `sourceYearId` (RF-15) |
+| `GET /academic-years/:id/promotion-proposal?sourceYearId=` | Propuesta de promoción, sin estado ni bitácora (RF-16) |
+| `POST /academic-years/:id/promotion` | Confirmar la promoción, todo o nada, con la huella (RF-16, RN-15) |
+
+### Pruebas
+
+| Comando | Qué prueba | Requiere |
+| --- | --- | --- |
+| `pnpm --filter api test:e2e` (`academic-clone.e2e-spec.ts`, `users-promotion.e2e-spec.ts`) | Clonación, propuesta, confirmación, tandas, huella 409, confirmaciones en paralelo, bitácora sin nombres | `DATABASE_URL` local con el seed; sin ella se omiten |
+| `pnpm --filter web test` (`clone.test.ts`, `promotion-machine.test.ts`, `promotion-a11y.test.ts`, `timeout.test.ts`) | Lógica pura de las pantallas y del timeout | Nada |
+
+> **Aviso.** Los e2e crean y borran datos de prueba: ejecutarlos solo sobre la base local con el seed. Si MySQL acaba de arrancar, ver "Problemas frecuentes en local".
+
+**Pendiente.** Prueba manual en navegador y verificar los e2e en local con Docker.

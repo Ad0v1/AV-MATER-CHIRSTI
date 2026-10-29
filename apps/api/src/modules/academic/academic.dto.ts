@@ -105,3 +105,12 @@ export type UpdateCourseSectionDto = z.output<typeof updateCourseSectionSchema>;
 // D-029: asignar, reasignar o quitar (null) al docente.
 export const assignTeacherSchema = z.object({ teacherId: idSchema.nullable() });
 export type AssignTeacherDto = z.output<typeof assignTeacherSchema>;
+
+// --- Clonación de estructura (RF-15) --------------------------------------
+
+// Estricto: un campo de más es 400 (INFORME 1 de F6, regla A1).
+export const cloneStructureSchema = z.strictObject({
+  sourceYearId: idSchema,
+  copyTeachers: z.boolean().default(false),
+});
+export type CloneStructureDto = z.output<typeof cloneStructureSchema>;

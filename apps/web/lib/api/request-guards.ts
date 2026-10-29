@@ -21,3 +21,21 @@ export function assertApiPath(path: string): void {
     throw new Error('Ruta de API no válida');
   }
 }
+
+/** Tiempo máximo por defecto de una petición del servidor de Next a la API. */
+export const DEFAULT_TIMEOUT_MS = 15_000;
+/** Tope de `timeoutMs` (ninguna petición espera más de un minuto). */
+export const MAX_TIMEOUT_MS = 60_000;
+
+/**
+ * Tiempo máximo de una petición: `timeoutMs` si es un entero entre 1 s y 60 s; si no, 15 s.
+ * Solo se sube para operaciones largas conocidas (p. ej. la promoción en bloque, 30 s).
+ */
+export function resolveTimeoutMs(timeoutMs?: number): number {
+  return typeof timeoutMs === 'number' &&
+    Number.isInteger(timeoutMs) &&
+    timeoutMs >= 1_000 &&
+    timeoutMs <= MAX_TIMEOUT_MS
+    ? timeoutMs
+    : DEFAULT_TIMEOUT_MS;
+}

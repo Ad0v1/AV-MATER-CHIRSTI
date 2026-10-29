@@ -1,4 +1,4 @@
-import type { Prisma } from '../../generated/prisma/client.js';
+import { Prisma } from '../../generated/prisma/client.js';
 import type { UserRole, UserStatus } from '../../generated/prisma/enums.js';
 
 // Bloqueos de fila del módulo users (Decisión 4.6). Orden global dentro de una transacción:
@@ -49,6 +49,22 @@ export async function lockUsersForUpdate(
     if (user) locked.set(id, user);
   }
   return locked;
+}
+
+/**
+ * Bloquea varios usuarios en una sola consulta (`WHERE id IN (...) ORDER BY id FOR UPDATE`),
+ * en orden de id. La usa la promoción en bloque (RF-16), con hasta 2000 estudiantes, en lugar de
+ * una consulta por usuario. Devuelve los que existen.
+ */
+export async function lockUsersForUpdateBulk(
+  tx: Prisma.TransactionClient,
+  ids: string[],
+): Promise<Map<string, LockedUser>> {
+  const unique = [...new Set(ids)].sort();
+  if (unique.length === 0) return new Map();
+  const rows = await tx.$queryRaw<LockedUser[]>`
+    SELECT id, role, status FROM User WHERE id IN (${Prisma.join(unique)}) ORDER BY id FOR UPDATE`;
+  return new Map(rows.map((r) => [r.id, r]));
 }
 
 /**

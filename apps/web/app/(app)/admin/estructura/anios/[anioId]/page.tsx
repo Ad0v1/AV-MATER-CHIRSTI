@@ -1,4 +1,5 @@
-// /admin/estructura/anios/[anioId] — año, períodos y secciones (RF-10..13; RN-10, RN-11).
+// /admin/estructura/anios/[anioId] — año, períodos y secciones (RF-10..13, RF-15, RF-16; RN-10, RN-11).
+import Link from 'next/link';
 import { Suspense } from 'react';
 import {
   LoadError,
@@ -11,7 +12,9 @@ import {
 } from '@/app/(app)/admin/_shared/components/page-bits';
 import { CreateSectionForm, SectionItem } from '../../_components/section-panels';
 import { PeriodPanel, YearActions } from '../../_components/year-panels';
+import { canOfferClone } from '../../_lib/clone';
 import { getYear, listSections } from '../../_lib/data';
+import { canOfferPromotion } from '../../_lib/promotion-machine';
 import { FOCUS_HEADING, focusIds } from '../../_lib/focus';
 import { formatInstant, sectionLabel, yearStatus } from '../../_lib/format';
 import type { List, SectionView, YearDetail } from '../../_lib/types';
@@ -135,6 +138,28 @@ async function YearView({ params }: { params: Promise<{ anioId: string }> }) {
         title="Secciones"
         description={`${sections.total} ${sections.total === 1 ? 'sección' : 'secciones'} en ${year.year}.`}
       >
+        {canOfferClone(year, sections.total) ? (
+          <p className="text-sm">
+            <Link
+              href={`/admin/estructura/anios/${encodeURIComponent(year.id)}/clonar`}
+              className="inline-flex min-h-11 items-center underline underline-offset-4"
+            >
+              Copiar la estructura de un año anterior
+            </Link>{' '}
+            <span className="text-muted-foreground">(secciones y cursos, sin matrículas).</span>
+          </p>
+        ) : null}
+        {canOfferPromotion(year, sections.items) ? (
+          <p className="text-sm">
+            <Link
+              href={`/admin/estructura/anios/${encodeURIComponent(year.id)}/promocion`}
+              className="inline-flex min-h-11 items-center underline underline-offset-4"
+            >
+              Promover estudiantes de {year.year - 1} a {year.year}
+            </Link>{' '}
+            <span className="text-muted-foreground">(propuesta que revisas y confirmas).</span>
+          </p>
+        ) : null}
         {year.readOnly ? null : <CreateSectionForm yearId={year.id} />}
         {sorted.length === 0 ? (
           <p className="text-sm text-muted-foreground">Este año aún no tiene secciones.</p>

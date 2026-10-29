@@ -91,6 +91,24 @@ En MySQL, un CHECK que evalúa a UNKNOWN **no falla**: una condición con `NULL`
 - `GuardianStudent_isActive_chk` sigue el mismo patrón desde su creación (migración `20261026235821_guardian_student_revocable`).
 - Regla para cualquier CHECK nuevo sobre un marcador TRUE/NULL: escribirlo con `IS NOT NULL` en la rama TRUE y probarlo en un ROLLBACK con cierre sin fecha, sin motivo y con marcador FALSE.
 
+## Promoción en bloque (RN-15, RF-16; PROPUESTA F6, 29/10/2026)
+
+> Detalle de RN-15. La API está en `03_CONTRATOS.md` (sección "API de clonación y promoción de años") y la excepción de escritura sobre años cerrados, en D-038.
+
+- **Propuesta.** El sistema propone una acción para cada matrícula vigente del año origen y el admin la corrige y confirma. No hay promoción automática (RN-15). La propuesta no se guarda: se calcula en cada lectura.
+- **Precondiciones.** El año origen tiene sus cuatro períodos cerrados; puede estar cerrado (D-038). El destino es el año siguiente (`año origen + 1`), no está cerrado, no es de solo lectura (D-030) y tiene al menos una sección activa.
+- **Acciones permitidas.**
+  - Grados 1 a 4: `PROMOTE` (al grado siguiente), `REPEAT` (mismo grado) o `EXCLUDE`.
+  - Grado 5: `GRADUATE` (egresa), `REPEAT` o `EXCLUDE`.
+  - Retirado (`WITHDRAWN`) o ya matriculado en el destino (`ALREADY_ENROLLED`): solo `EXCLUDE`.
+  - `PROMOTE` y `REPEAT` exigen una sección activa del destino. `GRADUATE` y `EXCLUDE` no llevan sección.
+- **Estudiante inactivo.** Se propone como los demás, con la marca `INACTIVE`. El admin decide.
+- **Confirmación todo o nada.** Las decisiones deben cubrir todas las filas. Si una no cuadra, o si la propuesta cambió desde que se cargó (huella distinta), no se escribe nada.
+- **Tandas.** Lo que se deja para después se marca `EXCLUDE`: su matrícula del origen sigue vigente y reaparece en la siguiente propuesta.
+- **Cierre de matrícula.** `PROMOTE`, `REPEAT` y `GRADUATE` cierran la matrícula del origen con `endReason` `YEAR_END`, `isCurrent` NULL y `effectiveTo` = el mayor entre el instante de la confirmación y `effectiveFrom`. Así nunca se cierra antes de empezar. `PROMOTE` y `REPEAT` abren una matrícula en el destino desde el instante de la confirmación (`isCurrent` TRUE).
+- **Lo que no cambia.** Notas, promedios, contenidos y bitácora del año origen (RN-14). El `status` de los usuarios no cambia: los egresados siguen `ACTIVE`. **Pendiente:** ¿pasan a `INACTIVE`? Por ahora no.
+- **Concurrencia.** Si dos confirmaciones llegan a la vez, una responde 409. La unicidad de la matrícula vigente por estudiante y año lo respalda.
+
 ## Alcance excluido (ERS §7)
 
 No implementar asistencia, exámenes/cuestionarios, SIAGIE, integración Google Drive/Classroom, detección automática de entregas duplicadas ni ponderación de actividades.

@@ -11,6 +11,7 @@ import type {
   YearDetail,
   YearSummary,
 } from './types';
+import type { PromotionProposal } from './promotion-machine';
 import { isUuid } from './validation';
 
 const id = (value: string): string => {
@@ -25,6 +26,12 @@ export const getYear = (yearId: string) =>
 
 export const listSections = (yearId: string) =>
   apiServer.get<List<SectionView>>(`/academic-years/${id(yearId)}/sections`);
+
+/** RF-16: propuesta de promoción del año origen al año destino (lectura, sin bitácora). */
+export const getPromotionProposal = (targetYearId: string, sourceYearId: string) =>
+  apiServer.get<PromotionProposal>(
+    `/academic-years/${id(targetYearId)}/promotion-proposal?sourceYearId=${id(sourceYearId)}`,
+  );
 
 export const listCourses = (includeInactive: boolean) =>
   apiServer.get<List<CourseView>>(`/courses?includeInactive=${includeInactive ? 'true' : 'false'}`);

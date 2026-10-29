@@ -5,8 +5,10 @@
 // dar mensajes junto al campo. Tras escribir se refresca el router (`refresh`).
 import { refresh } from 'next/cache';
 import { redirect } from 'next/navigation';
-import { detailMessages, toUserMessage } from '@/lib/api/errors';
+import { ApiError, detailMessages, toUserMessage } from '@/lib/api/errors';
 import { apiServer } from '@/lib/api/server';
+import { cloneSuccessMessage, parseCloneForm, type CloneStructureResult } from './clone';
+import { parseCommitInput, type PromotionResult } from './promotion-machine';
 import type { ActionState, YearDetail } from './types';
 import {
   PERIOD_COUNT,
@@ -121,6 +123,85 @@ export async function activateYearAction(yearId: string): Promise<ActionState> {
 export async function closeYearAction(yearId: string): Promise<ActionState> {
   if (!isUuid(yearId)) return invalid(BAD_ID);
   return run(() => apiServer.post(`/academic-years/${enc(yearId)}/close`), 'El año quedó cerrado.');
+}
+
+// --- Clonar estructura (RF-15) ----------------------------------------------
+
+/** Estado de la acción de clonar: además del mensaje, el resultado para mostrarlo en pantalla. */
+export type CloneActionState = ActionState & { result?: CloneStructureResult };
+
+export async function cloneStructureAction(
+  targetYearId: string,
+  _prev: ActionState,
+  fd: FormData,
+): Promise<CloneActionState> {
+  if (!isUuid(targetYearId)) return invalid(BAD_ID);
+  const raw = fd.get('copyTeachers');
+  const input = parseCloneForm(text(fd, 'sourceYearId'), typeof raw === 'string' ? raw : null);
+  if (!input.ok) return invalid(input.error);
+  let result: CloneStructureResult;
+  try {
+    result = await apiServer.post<CloneStructureResult>(
+      `/academic-years/${enc(targetYearId)}/clone-structure`,
+      { sourceYearId: input.sourceYearId, copyTeachers: input.copyTeachers },
+    );
+  } catch (error) {
+    return { status: 'error', message: toUserMessage(error), details: detailMessages(error) };
+  }
+  refresh();
+  return { status: 'ok', message: cloneSuccessMessage(result), result };
+}
+
+// --- Promoción en bloque (RF-16, RN-15) -------------------------------------
+
+/** Mayor que los 25 s de la transacción de promoción (20 s + 5 s de espera). */
+const PROMOTION_TIMEOUT_MS = 30_000;
+
+export type PromotionCommitOutcome =
+  | { ok: true; result: PromotionResult }
+  | { ok: false; status: number; message: string; details: { path: string; message: string }[] };
+
+/**
+ * Confirma la promoción (todo o nada). Los argumentos llegan del navegador: se validan antes de
+ * llamar a la API, que vuelve a validar todo y compara la huella (409 si la propuesta cambió).
+ */
+export async function promotionCommitAction(
+  targetYearId: string,
+  sourceYearId: string,
+  fingerprint: string,
+  decisions: unknown,
+): Promise<PromotionCommitOutcome> {
+  const input = parseCommitInput(sourceYearId, fingerprint, decisions);
+  if (!isUuid(targetYearId) || !input.ok) {
+    return {
+      ok: false,
+      status: 400,
+      message: input.ok ? BAD_ID : input.error,
+      details: [],
+    };
+  }
+  let result: PromotionResult;
+  try {
+    result = await apiServer.post<PromotionResult>(
+      `/academic-years/${enc(targetYearId)}/promotion`,
+      {
+        sourceYearId: input.sourceYearId,
+        fingerprint: input.fingerprint,
+        decisions: input.decisions,
+      },
+      // La transacción admite hasta 20 s más 5 s de espera: la web espera 30 s.
+      { timeoutMs: PROMOTION_TIMEOUT_MS },
+    );
+  } catch (error) {
+    return {
+      ok: false,
+      status: error instanceof ApiError ? error.status : 0,
+      message: toUserMessage(error),
+      details: error instanceof ApiError ? error.details : [],
+    };
+  }
+  refresh();
+  return { ok: true, result };
 }
 
 // --- Períodos (RF-10, RF-11) ------------------------------------------------

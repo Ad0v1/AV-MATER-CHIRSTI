@@ -2,7 +2,8 @@ import { Logger } from '@nestjs/common';
 import type { AuditService } from '../../common/audit/audit.service.js';
 import type { Actor } from '../academic/request-user.js';
 
-export type UsersEntity = 'User' | 'Enrollment' | 'GuardianStudent';
+// 'AcademicYear': la promoción en bloque (RF-16) se registra sobre el año destino.
+export type UsersEntity = 'User' | 'Enrollment' | 'GuardianStudent' | 'AcademicYear';
 
 const logger = new Logger('UsersAudit');
 

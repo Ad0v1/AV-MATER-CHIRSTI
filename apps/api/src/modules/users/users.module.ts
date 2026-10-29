@@ -8,13 +8,15 @@ import { GuardiansController } from './guardians.controller.js';
 import { UserImportController } from './import/user-import.controller.js';
 import { UserImportService } from './import/user-import.service.js';
 import { institutionDomainProvider } from './institution-domain.js';
+import { PromotionController } from './promotion/promotion.controller.js';
+import { PromotionService } from './promotion/promotion.service.js';
 import { StudentsController } from './students.controller.js';
 import { TeachersController } from './teachers.controller.js';
 import { UsersController } from './users.controller.js';
 import { UsersService } from './users.service.js';
 
 // Usuarios, matrículas, traslados y apoderados (Dev 2, F3: RF-18..25, RN-13) e importación masiva
-// (F4: RF-21). Solo ADMIN.
+// (F4: RF-21) y promoción en bloque (F6: RF-16, RN-15). Solo ADMIN.
 // PrismaModule y AuditModule son globales; AcademicModule aporta AcademicAccessService y los eventos.
 @Module({
   imports: [AcademicModule],
@@ -26,12 +28,14 @@ import { UsersService } from './users.service.js';
     TeachersController,
     GuardiansController,
     GuardianLinksController,
+    PromotionController,
   ],
   providers: [
     UsersService,
     EnrollmentsService,
     GuardianLinksService,
     UserImportService,
+    PromotionService,
     ActiveActorGuard,
     institutionDomainProvider,
   ],
