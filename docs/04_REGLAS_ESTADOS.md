@@ -62,6 +62,53 @@ flowchart TD
 - **H:** libro reutilizable sobrevive a purga; material común no reutilizable sigue regla de retención RF-66.
 - **I:** mismo request duplicado por reintentos de red: idempotencia sin crear dos versiones.
 
+## Historial de matrícula y vínculos de menores (PROPUESTA, 26/10/2026)
+
+- **Baja de un usuario (RN-13):** se hace por `status` (`INACTIVE` o `WITHDRAWN`, D-021). No se borra el usuario ni sus matrículas.
+- **Historial de matrícula (RN-14, RF-24):** las matrículas cerradas (traslado `TRANSFER`, retiro `WITHDRAWAL`, cierre de año `YEAR_END` o corrección `CORRECTION`) se conservan junto con sus notas. Un retiro o una baja no borra la matrícula: la cierra (`isCurrent` NULL, `effectiveTo` y `endReason`).
+- **Vínculos apoderado–estudiante de menores:** `GuardianStudent` se conserva mientras existan los dos usuarios. Las FK son `Restrict`, así que no hay borrado en cascada. La revocación auditable ya está en F3 (PROPUESTA, abajo). **PENDIENTE INSTITUCIÓN:** finalidad y plazo de conservación de cada vínculo (D-032).
+
+### Revocación de vínculos (RN-13, RN-14; PROPUESTA F3)
+
+- Un vínculo vigente tiene `isActive` TRUE y `revokedAt` vacío. Revocarlo escribe `isActive` NULL y `revokedAt` (nunca FALSE). La fila se conserva con su historial.
+- Solo puede haber un vínculo vigente por par apoderado–estudiante (UNIQUE con el marcador). Después de revocar se puede crear uno nuevo con otro `id`.
+- El motivo de la revocación (10..500 caracteres) va solo a la bitácora (ver docs/03, advertencia sobre datos de menores).
+- Un vínculo revocado no da acceso: `getLinkedStudentIds` lo excluye.
+
+### Retiro, rematrícula y traslado de estudiantes (RF-18, RF-23, RF-24; PROPUESTA F3)
+
+- **Retiro (`WITHDRAWN`).** En la misma transacción cierra las matrículas vigentes de los años no cerrados: `isCurrent` NULL, `effectiveTo` y `endReason` `WITHDRAWAL`. Las matrículas de años cerrados no se tocan. La bitácora registra cada cierre.
+- **Retiro y vínculos.** El retiro no revoca los vínculos de apoderado. El apoderado deja de tener acceso porque `getLinkedStudentIds` excluye a los estudiantes `WITHDRAWN`. Si el estudiante vuelve a `ACTIVE`, el vínculo vuelve a contar. Así no se pierde historial, pero la decisión sobre cuánto tiempo se guarda el vínculo queda pendiente (D-032).
+- **Inactivo.** `INACTIVE` no cierra matrículas ni quita vínculos; el estudiante sigue contando para el apoderado.
+- **Rematrícula.** Tras un retiro, `WITHDRAWN` → `ACTIVE` no reabre la matrícula cerrada. Se matricula de nuevo con una matrícula nueva en una sección del año activo (`POST /students/:id/enrollments`). Un estudiante `WITHDRAWN` no se matricula, no se traslada y no se vincula.
+- **Traslado (`TRANSFER`).** Mismo año y mismo grado; sección distinta. La matrícula vigente se cierra con `effectiveTo = at` y `endReason` `TRANSFER`, y se crea otra en la sección destino con `effectiveFrom = at`. Las fechas las fija el servidor: `at = max(ahora, effectiveFrom de la vigente)`. El historial se conserva (RN-14, G de la tabla de escenarios).
+
+### Patrón de CHECK con marcadores TRUE/NULL (PROPUESTA F3)
+
+En MySQL, un CHECK que evalúa a UNKNOWN **no falla**: una condición con `NULL` pasa en silencio. Por eso, en las columnas que valen TRUE o NULL (`AcademicYear.isActive`, `Enrollment.isCurrent`, `GuardianStudent.isActive`), la rama TRUE empieza con `<columna> IS NOT NULL AND <columna> = 1`. Así una fila con el marcador NULL y sin fechas o sin motivo no pasa por la rama TRUE.
+
+- Hallazgo de la revisión de F3 (modelador-bd): `Enrollment_isCurrent_chk` (migración `academic_estructura`) aceptaba `isCurrent` NULL sin `effectiveTo` ni `endReason`. Se recreó en la migración `20261027000217_enrollment_iscurrent_check_fix`. En los datos del seed de desarrollo, 0 de 62 filas lo incumplían.
+- `GuardianStudent_isActive_chk` sigue el mismo patrón desde su creación (migración `20261026235821_guardian_student_revocable`).
+- Regla para cualquier CHECK nuevo sobre un marcador TRUE/NULL: escribirlo con `IS NOT NULL` en la rama TRUE y probarlo en un ROLLBACK con cierre sin fecha, sin motivo y con marcador FALSE.
+
+## Promoción en bloque (RN-15, RF-16; PROPUESTA F6, 29/10/2026)
+
+> Detalle de RN-15. La API está en `03_CONTRATOS.md` (sección "API de clonación y promoción de años") y la excepción de escritura sobre años cerrados, en D-038.
+
+- **Propuesta.** El sistema propone una acción para cada matrícula vigente del año origen y el admin la corrige y confirma. No hay promoción automática (RN-15). La propuesta no se guarda: se calcula en cada lectura.
+- **Precondiciones.** El año origen tiene sus cuatro períodos cerrados; puede estar cerrado (D-038). El destino es el año siguiente (`año origen + 1`), no está cerrado, no es de solo lectura (D-030) y tiene al menos una sección activa.
+- **Acciones permitidas.**
+  - Grados 1 a 4: `PROMOTE` (al grado siguiente), `REPEAT` (mismo grado) o `EXCLUDE`.
+  - Grado 5: `GRADUATE` (egresa), `REPEAT` o `EXCLUDE`.
+  - Retirado (`WITHDRAWN`) o ya matriculado en el destino (`ALREADY_ENROLLED`): solo `EXCLUDE`.
+  - `PROMOTE` y `REPEAT` exigen una sección activa del destino. `GRADUATE` y `EXCLUDE` no llevan sección.
+- **Estudiante inactivo.** Se propone como los demás, con la marca `INACTIVE`. El admin decide.
+- **Confirmación todo o nada.** Las decisiones deben cubrir todas las filas. Si una no cuadra, o si la propuesta cambió desde que se cargó (huella distinta), no se escribe nada.
+- **Tandas.** Lo que se deja para después se marca `EXCLUDE`: su matrícula del origen sigue vigente y reaparece en la siguiente propuesta.
+- **Cierre de matrícula.** `PROMOTE`, `REPEAT` y `GRADUATE` cierran la matrícula del origen con `endReason` `YEAR_END`, `isCurrent` NULL y `effectiveTo` = el mayor entre el instante de la confirmación y `effectiveFrom`. Así nunca se cierra antes de empezar. `PROMOTE` y `REPEAT` abren una matrícula en el destino desde el instante de la confirmación (`isCurrent` TRUE).
+- **Lo que no cambia.** Notas, promedios, contenidos y bitácora del año origen (RN-14). El `status` de los usuarios no cambia: los egresados siguen `ACTIVE`. **Pendiente:** ¿pasan a `INACTIVE`? Por ahora no.
+- **Concurrencia.** Si dos confirmaciones llegan a la vez, una responde 409. La unicidad de la matrícula vigente por estudiante y año lo respalda.
+
 ## Alcance excluido (ERS §7)
 
 No implementar asistencia, exámenes/cuestionarios, SIAGIE, integración Google Drive/Classroom, detección automática de entregas duplicadas ni ponderación de actividades.

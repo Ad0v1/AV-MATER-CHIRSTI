@@ -1,5 +1,5 @@
-import { PlaceholderPage } from '@/components/placeholder-page';
+import { MaterialsPage } from '../_materials/materials-page';
 
-export default function Page() {
-  return <PlaceholderPage title="Libros de lectura" owner="Dev 3" requirements="RF-28..29" />;
+export default function Page({ params }: { params: Promise<{ id: string }> }) {
+  return <MaterialsPage params={params} kind="READING" />;
 }

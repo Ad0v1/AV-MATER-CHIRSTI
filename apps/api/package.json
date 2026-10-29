@@ -24,8 +24,9 @@
     "backup": "nest build && node dist/scripts/backup.js"
   },
   "dependencies": {
-    "@aws-sdk/client-s3": "^3.1153.0",
-    "@aws-sdk/lib-storage": "^3.1153.0",
+    "@aws-sdk/client-s3": "^3.1159.0",
+    "@aws-sdk/lib-storage": "^3.1159.0",
+    "@aws-sdk/s3-request-presigner": "^3.1159.0",
     "@nestjs/common": "^12.0.1",
     "@nestjs/core": "^12.0.1",
     "@nestjs/platform-express": "^12.0.1",
@@ -34,6 +35,7 @@
     "@prisma/client": "7.10.1",
     "argon2": "^0.45.1",
     "cookie-parser": "^1.4.7",
+    "exceljs": "4.4.0",
     "helmet": "^8.3.0",
     "ioredis": "^6.0.0",
     "otplib": "^13.5.0",
