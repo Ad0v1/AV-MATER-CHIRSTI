@@ -256,3 +256,157 @@ Hallazgos:
 ### Decisión del orquestador 4 — formato
 
 El pedido de revisor-pr es un `prettier --write` mecánico sin cambio de lógica, así que lo aplica el orquestador directamente sobre los 3 archivos (no cuenta como vuelta de corrección) y repite `prettier --check` y `pnpm --filter web test`. El documentador se deja para el final de 5c, como dijo el plan.
+
+---
+
+## Entrega 5b — pantallas de usuarios (RF-18..20, 22..25)
+
+Pedido por el usuario: "Seguir con 5b" (tras el commit `49fa112` de la 5a, subido a `mio`).
+Vueltas de corrección de 5b: 1/2
+Plan: INFORME 1, Decisión 2 (rutas 5b) y Decisiones 1, 3, 4 y 5; no hace falta un nuevo plan del arquitecto. Arrastra de 5a: MEDIO de UX (caja de aviso de 10 s sin cerrar), BAJO de UX (doble lectura del error; aria-describedby en "Cerrar año") y la decisión de seguridad sobre `q` (Server Action POST o sin registrar la URL).
+
+### INFORME 10 — dev2-estructura (entrega 5b)
+
+Estado: LISTO
+Requisitos: RF-18, 19, 20, 22, 23, 24, 25; RN-13; RNF-24..27 (2.4.3, 4.1.3, 2.2.1, 1.3.1); D-012; D-037 (propuesta)
+Resumen: pantallas de usuarios: lista con filtros en la URL, paginación y búsqueda `q` por Server Action POST; altas de estudiante, docente y apoderado (1..10 estudiantes con buscador); ficha (editar, estado, matrículas, matricular, trasladar, apoderados/estudiantes con revocados, vincular, revocar). Lo común de 5a pasó a `app/(app)/admin/_shared/` sin cambiar conducta. Resueltos el MEDIO y los 2 BAJO de UX de 5a. Lint, test (118) y build ok; acciones probadas con la API real; BD como el seed y servidores detenidos.
+Archivos (bajo apps/web/app/(app)/admin/):
+
+- Movidos con git mv de estructura/_components a _shared/components/: action-feedback.tsx (botón "Cerrar" de 44 px, pausa con puntero/foco, espacio reservado en móvil), confirm-action.tsx (triggerDescribedBy), form-bits.tsx (FormMessage sin role="alert", prop title), page-bits.tsx (Section focusable, sectionTitleId, ReadOnlyNotice con title), styles.ts
+- Nuevos en _shared/lib/: action-state.ts, focus.ts, validation.ts, format.ts
+- estructura/: _lib/{focus,format,types,validation}.ts re-exportan lo común; componentes y 5 páginas solo cambian imports; year-panels.tsx con aria-describedby en "Cerrar año"
+- usuarios/: page.tsx, [id]/page.tsx, nuevo/{estudiante,docente,apoderado}/page.tsx; _lib/{types,users,users.test,data,actions}.ts; _components/{user-list,user-filters,user-search,student-picker,new-user-forms,user-panels}.tsx
+- Sin tocar: nav, routes, layouts, next.config.ts, packages/ui, apps/api/src, package.json, lockfile, components/ui, lib/api
+  Comandos: web lint ok; web test 6 archivos/118 (39 nuevos); web build ok (5 rutas PPR); tsc ok; prettier ok; api lint ok; api test 28/314 ok. Docker: páginas por curl (1 main, 1 h1#titulo-pagina, región de estado; "Mostrando 1–20 de 68"; filtros; ids de foco; "No encontrado"; 403 docente; 401 sin cookie; token fuera del HTML; Cache-Control private, no-store). Server Actions: búsqueda (paginación, filtros, q de 1 y 101 rechazado, "50%_" literal, 403, 401; Origin ajeno rechazado por Next), altas de 3 roles (redirigen a ?alta=1) y sus errores (400 con details, 409, 404, 409 año cerrado, 403, "=SUMA", uuid, 0 y repetidos), edición (éxito, 409), estado (WITHDRAWN cierra 1 matrícula, ACTIVE, INACTIVE, 409 propio estado, manipulado rechazado), matrícula (éxito, 409), traslado (éxito 3A→3B; 422 otro grado, misma sección, retirado; motivo 501 rechazado), vínculo (éxito, 409, 422 retirado, 422 mismo id, 403, 0 y 2 locales), revocación (éxito, 409, motivo 5 rechazado, id manipulado). Logs sin nombres, correos ni texto buscado. Limpieza: borró por id los 3 usuarios de prueba (*.5b@colegio.example) con matrículas y vínculos en la BD local, sin tocar AuditLog; luego pnpm db:seed (68 usuarios, 2 años, 8 períodos, 7 secciones, 30 curso-sección, 62 matrículas, 3 vínculos).
+  Hallazgos:
+- [MEDIO, arrastrado] action-feedback.tsx — resuelto (Cerrar aviso fuera de la región, devuelve el foco al título, pausa con puntero/foco, h-28 reservado bajo sm).
+- [BAJO, arrastrado] year-panels.tsx:63 — resuelto (aria-describedby).
+- [BAJO, arrastrado] form-bits.tsx:70-77 — resuelto: sin role="alert", se mantiene el foco; aviso role="group" con aria-labelledby y aria-describedby.
+- [BAJO] "Importar desde Excel" da 404 hasta 5c.
+- [BAJO] API: POST /guardians con studentId inexistente responde 404, no 422 como dice docs/03 → ajustar docs/03 o la API.
+- [BAJO] filtros con next/form dejan `role=&status=` en la URL (cosmético).
+- [BAJO] la búsqueda responde 200 con contenido 401/403 (como en 5a).
+  Decisiones: (1) `q` solo en el cuerpo del POST, resultados en estado del cliente, parseUserFilters ignora q en la URL; (2) filtros en la URL con next/form, grado/sección solo con Estudiante; (3) buscador de estudiantes sin form anidado, tope 10 (1 al vincular), sin repetidos ni retirados, revalidado con parseStudentIds; (4) traslado con transferTargets, matrícula con studentPlan, motivos estado/traslado 1..500 opcionales y revocación 10..500, REASON_NOTICE y aviso de que Retirado cierra matrículas; (5) rol no editable (D-012); (6) foco a `<sectionId>-titulo` y `vinculo-<id>`, altas redirigen con ?alta=1 "Cuenta creada"; (7) lo común en app/(app)/admin/_shared/.
+  Pendientes: prueba manual en navegador; Playwright + axe; 5c; documentador al final de 5c; Dev 1 (throttle, login). Sin commit (renombres en el índice).
+  Para: qa-tester; luego seguridad-cumplimiento y ux-accesibilidad.
+
+### INFORME 11 — qa-tester (entrega 5b)
+
+Estado: LISTO
+Requisitos: RF-18..20, 22..25; RN-13; RNF-24..27
+Resumen: tests de usuarios ampliados con casos límite (web 159, antes 118) y tests propios de `_shared/lib`. Lint, test y build de web y test de api ok. Humo con la API real sin bugs. BD como el seed y servidores detenidos.
+Archivos: apps/web/app/(app)/admin/usuarios/_lib/users.test.ts (34 casos nuevos); apps/web/app/(app)/admin/_shared/lib/shared.test.ts (nuevo, 7 casos)
+Comandos: web test 7/159 ok; web lint ok; web build ok; api test 28/314 ok; prettier ok. Humo (API con node dist/main :4000, web next start :3000, admin y docente01): /admin/usuarios con y sin filtros, con q en la URL, con page=abc&role=ROOT, fichas de estudiante y apoderado, /nuevo/* y id no UUID → 200, 1 main, 1 h1#titulo-pagina, role="status", Cache-Control private, no-cache, no-store, "Mostrando 1–20 de 68", "No encontrado"; sin cookie y con docente, aviso 401/403 en la página. Server Actions: búsqueda (5 docentes; q=a rechazado; %% literal; grado ignorado con TEACHER; 403; 401), alta de docente (redirect ?alta=1; 409 con valores conservados; "=SUMA(1)" rechazado). Logs sin nombres, correos ni token. Limpieza: borró por id el usuario qa.docente.5b (COUNT = 0), pnpm db:seed, puertos libres; el AuditLog conserva las filas del alta.
+Hallazgos:
+
+- [BAJO] `?q=` escrito a mano en la URL vuelve en el payload RSC (estado de ruta de Next); la app no lo lee ni lo genera → sin acción.
+- [BAJO] 401/403 con HTTP 200 (como en 5a).
+- [BAJO] la búsqueda no limita la frecuencia → throttle de Dev 1.
+- [BAJO] `setDevRole` aparece en el manifiesto de Server Actions (no es de 5b) → que seguridad confirme que es solo de desarrollo.
+  Pendientes: Playwright + axe y prueba manual; componentes React sin unit tests; las acciones de editar, estado, matricular, trasladar, vincular y revocar no se repitieron (las probó el dev).
+  Para: seguridad-cumplimiento y ux-accesibilidad.
+
+### INFORME 12 — seguridad-cumplimiento (entrega 5b)
+
+Nota: la primera ejecución se cortó por inactividad (600 s); se reanudó al mismo agente con SendMessage.
+
+Estado: APROBADO
+Requisitos: RF-18..20, 22..25; RN-13; RNF-02, RNF-09..13; D-012; D-037 (propuesta)
+Resumen: sin CRÍTICO ni ALTO. Validación de forma en servidor en cada Server Action (isUuid + encodeURIComponent, isStatus, parseStudentIds 1..10 sin repetidos y 1 al vincular, validateReason con USER_REASON_LIMITS, nombre sin control ni `= + - @` y 3..120, correo en minúsculas y ≤ 191, FormData solo strings); autorización solo en la API; CSRF por Origin/Host; el rol no se envía (actions.ts:236-239); sin console.*, dangerouslySetInnerHTML ni router.push en app/(app)/admin; `q` solo en el cuerpo del POST (aceptado; el `?q=` manual en el payload RSC es BAJO aceptado); minimización (UserListItem, StudentChoice, PersonRef sin correo del otro lado; revocados y matrículas cerradas solo para admin en la ficha, coherente con RN-13); REASON_NOTICE en ReasonField (form-bits.tsx:235) usado en los 3 motivos (user-panels.tsx:139, 218, 253); `_shared` sin cambios de conducta; setDevRole retorna sin hacer nada en producción (components/layout/actions.ts:9); sin borrados en el código de las pantallas.
+Hallazgos:
+
+- [MEDIO, arrastrado] apps/api/src/app.module.ts:19-32 — throttle por req.ip detrás del BFF; los buscadores no tienen límite propio → Dev 1.
+- [BAJO] apps/web/lib/session.ts:8-11 — getCurrentRole devuelve 'admin' sin cookie, también en producción (menú engañoso, sin escalada) → Dev 1; mientras, rol de menor privilegio.
+- [BAJO] usuarios/_lib/actions.ts:60-65, 98-121 — values, motivo y q vuelven al cliente → aceptable, fuera de logs.
+- [BAJO] docs/03 vs API — POST /guardians con studentId inexistente da 404, no 422.
+- [BAJO] búsquedas con 200 y contenido 401/403 → sin fuga, mantener no-store.
+- [BAJO] local-guard/dev-session — pendientes de 5a sin cambios.
+  Decisiones: (1) `q` solo en el POST, cerrado; (2) setDevRole se retira con el login real; (3) en 5c, lista blanca de tipo, tope de tamaño, Origin, sin registrar cuerpo ni nombre del archivo; (4) motivos sin registrarse fuera de la API.
+  Para: orquestador — sin vuelta al dev por seguridad; Dev 1 recibe throttle y getCurrentRole.
+
+### INFORME 13 — ux-accesibilidad (entrega 5b)
+
+Nota: la primera ejecución se cortó por inactividad (600 s); se reanudó al mismo agente con SendMessage.
+
+Estado: CAMBIOS_PEDIDOS
+Requisitos: RF-18..20, 22..25; RNF-24..27 (1.3.1, 2.1.1, 2.2.1, 2.4.3, 3.3.1, 3.3.3, 4.1.3)
+Resumen: revisión solo de código. Base sólida; arrastres de 5a cerrados. 1 ALTO, 3 MEDIO y BAJO.
+Hallazgos:
+
+- [ALTO] usuarios/[id]/page.tsx:116-126 — "Cuenta creada" con <Alert role="note"> renderizada en servidor: no se anuncia ni mueve el foco (4.1.3, 2.4.3). → componente cliente CreatedNotice con useAnnounce, nota id="cuenta-creada" tabIndex=-1 enfocada al montar, y quitar ?alta=1 con router.replace.
+- [MEDIO] user-search.tsx:42-45,89,182-184 + user-filters.tsx:50 — los resultados de búsqueda siguen reemplazando la lista tras aplicar filtros. → key en UserSearch o aviso "La búsqueda sigue activa".
+- [MEDIO] student-picker.tsx:79-81,138-142 — error de tope de 10 sin anuncio ni foco. → announce(error) y foco en el buscador; opcional deshabilitar "Agregar".
+- [MEDIO] student-picker.tsx:98-102 + form-bits.tsx:27-31 — "Elige al menos un estudiante" sin aria-invalid; el foco no va a ningún sitio. → aria-invalid y tabIndex=-1 en el fieldset o foco al buscador; FormMessage siempre con texto.
+- [BAJO] user-search.tsx:98-104 — campo vacío sin mensaje.
+- [BAJO] user-search.tsx:54-69 — tras "Limpiar búsqueda" anunciar que volvió la lista.
+- [BAJO] student-picker.tsx:88-95 — al quitar, el foco va al buscador (aceptable).
+- [BAJO] user-filters.tsx:75-109 — avisar que Estudiante muestra grado y sección.
+- [BAJO] action-feedback.tsx:119-122 — aceptable.
+- [BAJO] user-list.tsx:66-98 — verificar la tabla a 640–768 px.
+  Verificado sin hallazgos: lista, filtros y paginación; formularios de alta; búsqueda (role="search", aria-busy, anuncio del total); buscador de estudiantes (fieldset, legend, nombres accesibles, Enter no envía, tope 10); ficha (Section focusable, dl, estados con texto); ReasonField; arrastres de 5a. Falta comprobar visualmente el aviso de que Retirado cierra matrículas.
+  Decisiones: (1) una nota de éxito tras redirección se anuncia con useAnnounce o lleva el foco; (2) los errores de grupo cumplen lo mismo que los de campo.
+  Pendientes: 360 y 640–768 px, teclado, NVDA/VoiceOver, modo oscuro; Playwright + axe; anuncio de role="group" en NVDA/JAWS.
+  Para: dev2-estructura — ALTO y 3 MEDIO (vuelta 1/2 de 5b); BAJO pueden esperar; luego qa-tester y UX solo sobre [id]/page.tsx, user-search.tsx, student-picker.tsx y form-bits.tsx.
+
+### Decisión del orquestador 5 — vuelta de corrección 1/2 de 5b
+
+Seguridad APROBADO; UX CAMBIOS_PEDIDOS → vuelve al mismo dev2-estructura de 5b con el ALTO y los 3 MEDIO, más los BAJO baratos de UX (mensaje con campo vacío, anuncio al limpiar búsqueda, pista del rol Estudiante). El BAJO de seguridad sobre getCurrentRole es de Dev 1 (lib/session.ts) y no se toca. Después QA y UX acotado a los archivos corregidos.
+
+### INFORME 14 — dev2-estructura (5b, vuelta de corrección 1/2)
+
+Estado: LISTO
+Requisitos: RF-18, 19, 22, 23, 25; RNF-24..27 (4.1.3, 2.4.3, 3.3.1)
+Resumen: corregidos el ALTO, los 3 MEDIO y 3 BAJO del INFORME 13. web lint, test (163) y build ok; humo con Docker del alta, la nota, la búsqueda y los filtros; BD como el seed y servidores detenidos.
+Archivos (apps/web/app/(app)/admin/usuarios/): _components/created-notice.tsx (nuevo); [id]/page.tsx; page.tsx; _lib/users.ts; _lib/actions.ts; _lib/users.test.ts; _components/user-search.tsx; _components/user-filters.tsx; _components/student-picker.tsx. form-bits.tsx sin tocar. Sin tocar lib/session.ts, nav, routes, layouts, next.config, packages/ui, apps/api/src, package.json, lockfile.
+Comandos: web lint ok; web test 7/163 (4 casos nuevos: searchRequest, searchResetKey, createdDetail/createdNoticeText, withoutCreatedFlag); tsc ok; web build ok; prettier ok. Humo: alta de estudiante → ?alta=1 con id="cuenta-creada", aria-labelledby, aria-describedby, tabindex="-1" y "Matriculado en 3.º A."; sin ?alta=1 no aparece; búsqueda con q vacío → "Escribe al menos 2 caracteres."; intent=limpiar → idle; filtros STUDENT grado 3 → total 20; lista "Mostrando 1–20 de 21" con la pista de rol; aviso de Retirado en el diálogo. Limpieza: borró por id estudiante.5b y su matrícula; pnpm db:seed (68 usuarios, 62 matrículas); puertos libres.
+Hallazgos resueltos:
+
+- [ALTO] [id]/page.tsx:119 + created-notice.tsx — anuncia con useAnnounce una sola vez, enfoca la nota (id="cuenta-creada", tabIndex=-1) y quita ?alta=1 con window.history.replaceState (router.replace re-renderizaría y cortaría el anuncio); lógica pura en users.ts:435, 444.
+- [MEDIO] page.tsx:77 + users.ts:425 — key={searchResetKey(filters)} reinicia la búsqueda al cambiar filtros.
+- [MEDIO] student-picker.tsx:84, 204 — announce del error de tope/repetido/retirado y foco al buscador; aviso de selección llena; "Agregar" sigue habilitado.
+- [MEDIO] student-picker.tsx:173 — aria-invalid y aria-describedby en el buscador (aria-invalid no es válido en group/fieldset); useFocusOnError lo alcanza.
+- [BAJO] actions.ts:102 + users.ts:414 — campo vacío → "Escribe al menos 2 caracteres."
+- [BAJO] user-search.tsx:87-89 — "Volviste a la lista de usuarios." al limpiar.
+- [BAJO] user-filters.tsx:61 — pista del rol con aria-describedby.
+- Comprobado user-panels.tsx:136: aviso de que Retirado cierra matrículas.
+  Hallazgo nuevo: [BAJO] created-notice.tsx — anuncio + foco puede leerse dos veces en NVDA/JAWS; si se confirma, quitar el announce.
+  Decisiones: (1) notas tras redirección como componente cliente que anuncia y enfoca, marca quitada con history.replaceState; (2) búsqueda reiniciada al cambiar filtros; (3) errores de grupo marcados en el buscador.
+  Pendientes: prueba manual (NVDA/VoiceOver, 360 y 640–768 px, modo oscuro); Playwright + axe. Sin commit.
+  Para: qa-tester y ux-accesibilidad acotados a los archivos corregidos.
+
+### INFORME 15 — ux-accesibilidad (5b, revisión de la vuelta 1/2)
+
+Estado: APROBADO
+Requisitos: RF-18, 19, 22, 23, 25; WCAG 4.1.3, 2.4.3, 3.3.1
+Resumen: revisión solo de código de los archivos corregidos. ALTO, 3 MEDIO y BAJO resueltos; sin regresiones.
+Verificado: created-notice.tsx:20-28 (un solo anuncio con guarda de StrictMode, foco con tabIndex=-1 y aria-labelledby/aria-describedby, history.replaceState conserva history.state y no corta el anuncio; withoutCreatedFlag conserva el resto de la consulta); page.tsx:77 (key reinicia la búsqueda al cambiar filtros; la paginación de resultados no la reinicia); student-picker.tsx:173-178 (aria-invalid en el campo, mejor que en el fieldset); student-picker.tsx:80-87, 202-206 (anuncio, foco y aviso de selección llena); users.ts:414-419; user-search.tsx:89; user-filters.tsx:61.
+Doble lectura anuncio + foco: no bloquea; mantener ambos hasta la prueba con NVDA/VoiceOver y, si se repite, quitar solo el announce.
+Observaciones BAJO: student-picker.tsx:106 (el fieldset también describe el error; dejar solo hintId); student-picker.tsx:81-86 (el foco llega antes de que se actualice aria-invalid; el announce lo cubre); al cambiar filtros se pierde el texto buscado (coherente).
+Pendientes: NVDA/VoiceOver, 360 y 640–768 px, modo oscuro; Playwright + axe.
+Para: orquestador — revisor-pr; sin nueva vuelta.
+
+### INFORME 16 — qa-tester (5b, repetición tras la corrección 1/2)
+
+Estado: LISTO
+Requisitos: RF-18, 19, 22, 23, 25; RNF-24..27
+Resumen: tests de los helpers nuevos ampliados; web test, lint, build y api test ok; humo con la API real coincide con el INFORME 14; sin bugs.
+Archivo: apps/web/app/(app)/admin/usuarios/_lib/users.test.ts (5 casos: searchRequest con límites y tipos raros; searchResetKey; createdDetail/createdNoticeText con los 4 roles y sin correo; withoutCreatedFlag con variantes de URL)
+Comandos: web test 7/168 ok; web lint ok; web build ok; api test 28/314 ok. Humo: alta en 3.º A → ?alta=1 con id="cuenta-creada", aria-labelledby, aria-describedby, tabindex="-1" y "Matriculado en 3.º A."; sin ?alta=1 no aparece; q vacío → error de campo; intent=limpiar → idle; q=Estudiante con STUDENT grado 3 → resultados; lista "Mostrando 1–20 de 21". Limpieza: borrado por id del usuario y su matrícula (quedan filas de bitácora), pnpm db:seed (68 usuarios, 62 matrículas), servidores detenidos. No leyó .env.
+Hallazgo de diseño (no bug): searchResetKey incluye `page`, así que cambiar de página de la lista también reinicia la búsqueda (fijado por un test).
+Pendientes: Playwright + axe; NVDA/JAWS y 360/640–768 px manuales.
+
+### Decisión del orquestador 6
+
+QA y UX en verde tras la vuelta 1/2 de 5b; seguridad aprobó en el INFORME 12 y la corrección no tocó permisos ni la API, así que no se repite. El reinicio de la búsqueda al cambiar de página de la lista se acepta: con una búsqueda activa la lista no se muestra, así que su paginación no se usa en ese momento. Sigue revisor-pr.
+
+### INFORME 17 — revisor-pr (entrega 5b)
+
+Nota: la primera ejecución se interrumpió al cerrarse la sesión anterior (créditos); se reanudó al mismo agente con SendMessage y volvió a correr todos los comandos.
+
+Estado: APROBADO
+Requisitos: RF-18, 19, 20, 22, 23, 24, 25; RN-13; RNF-24..27; D-012
+Resumen: lo que hay sin commit desde 49fa112 está en alcance; mover piezas a `_shared` no cambió la conducta de 5a; pasan lint, test, build y prettier. Sin CRÍTICO ni ALTO; INFORMES 12 y 15 en APROBADO.
+Comandos: web lint ok (aviso informativo jsx-ast-utils); web test 7/168 ok; web build ok (PPR); api lint ok; api test 28/314 ok; prettier --check sobre 42 archivos y el expediente ok; sin cambios en apps/api, packages, package.json, pnpm-lock.yaml, apps/web/lib, next.config.ts, AGENTS.md ni next-env.d.ts.
+Hallazgos (BAJO): no usar `git add -A` (.agents/, skills-lock.json); year-panels.tsx suma useId y aria-describedby (permitido); pendientes ya anotados (importar 404 hasta 5c, guardians 404 vs 422, throttle y getCurrentRole de Dev 1, doble lectura NVDA).
+Archivos del commit: _shared/components/ (5 renombres), _shared/lib/ (action-state, focus, format, shared.test, validation), estructura/_components/ (5), estructura/_lib/ (4), estructura/ páginas (5), usuarios/ (page.tsx, [id]/page.tsx, nuevo/{estudiante,docente,apoderado}/page.tsx), usuarios/_components/ (7), usuarios/_lib/ (5), el expediente y el reporte. Excluir .agents/ y skills-lock.json.
+Para: orquestador — reporte y commit con esa lista; luego 5c.

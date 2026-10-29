@@ -1,4 +1,4 @@
-// Piezas de presentación sin estado (Server Components) de /admin/estructura.
+// Piezas de presentación sin estado (Server Components) de las pantallas de administración.
 import Link from 'next/link';
 import type { ReactNode } from 'react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -6,8 +6,8 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ApiError, toUserMessage } from '@/lib/api/errors';
 import { cn } from '@/lib/utils';
-import { FOCUS_HEADING, PAGE_TITLE_ID } from '../_lib/focus';
-import type { StatusTone } from '../_lib/format';
+import { FOCUS_HEADING, PAGE_TITLE_ID } from '../lib/focus';
+import type { StatusTone } from '../lib/format';
 import { ActionFeedbackProvider } from './action-feedback';
 
 // <div>, no <main>: el <main> ya lo pone SidebarInset en el layout (no se toca el layout).
@@ -73,22 +73,32 @@ export function PageHeader({
   );
 }
 
+/** Id del `<h2>` de una `Section` (destino de foco tras una acción, si es `focusable`). */
+export const sectionTitleId = (id: string): string => `${id}-titulo`;
+
 export function Section({
   title,
   description,
   children,
   id,
+  focusable = false,
 }: {
   title: string;
   description?: ReactNode;
   children: ReactNode;
   id?: string;
+  /** El título puede recibir el foco por código (tabIndex=-1, sin entrar en el orden del Tab). */
+  focusable?: boolean;
 }) {
-  const headingId = id ? `${id}-titulo` : undefined;
+  const headingId = id ? sectionTitleId(id) : undefined;
   return (
     <section aria-labelledby={headingId} className="flex flex-col gap-3">
       <div className="flex flex-col gap-1">
-        <h2 id={headingId} className="text-lg font-semibold">
+        <h2
+          id={headingId}
+          tabIndex={focusable ? -1 : undefined}
+          className={cn('text-lg font-semibold', focusable && FOCUS_HEADING)}
+        >
           {title}
         </h2>
         {description ? <p className="text-sm text-muted-foreground">{description}</p> : null}
@@ -148,11 +158,17 @@ export function LoadingBlock({ rows = 3, label = 'Cargando…' }: { rows?: numbe
   );
 }
 
-/** Aviso fijo cuando el año es de solo lectura (D-030). */
-export function ReadOnlyNotice({ children }: { children: ReactNode }) {
+/** Aviso fijo (por defecto, "Solo lectura" cuando el año no se puede cambiar, D-030). */
+export function ReadOnlyNotice({
+  children,
+  title = 'Solo lectura',
+}: {
+  children: ReactNode;
+  title?: string;
+}) {
   return (
     <Alert role="note">
-      <AlertTitle>Solo lectura</AlertTitle>
+      <AlertTitle>{title}</AlertTitle>
       <AlertDescription>{children}</AlertDescription>
     </Alert>
   );

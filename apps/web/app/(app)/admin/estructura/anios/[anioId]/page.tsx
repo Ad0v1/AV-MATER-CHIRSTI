@@ -8,7 +8,7 @@ import {
   ReadOnlyNotice,
   Section,
   StatusBadge,
-} from '../../_components/page-bits';
+} from '@/app/(app)/admin/_shared/components/page-bits';
 import { CreateSectionForm, SectionItem } from '../../_components/section-panels';
 import { PeriodPanel, YearActions } from '../../_components/year-panels';
 import { getYear, listSections } from '../../_lib/data';

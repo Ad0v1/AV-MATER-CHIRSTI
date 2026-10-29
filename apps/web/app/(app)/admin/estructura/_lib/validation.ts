@@ -2,6 +2,16 @@
 // las Server Actions y los formularios cliente, y se prueba con Vitest. La API sigue siendo la
 // autoridad: estas reglas solo evitan viajes inútiles y dan mensajes junto al campo.
 // Límites copiados de apps/api/src/modules/academic/academic.dto.ts (docs/03).
+// Lo común (motivos, uuid, booleanos) vive en admin/_shared/lib/validation.ts.
+export {
+  REASON_NOTICE,
+  isStrictBoolean,
+  isUuid,
+  reasonCounter,
+  reasonLength,
+  validateReason,
+  type ReasonLimits,
+} from '../../_shared/lib/validation';
 
 export const MIN_YEAR = 2000;
 export const MAX_YEAR = 2100;
@@ -17,44 +27,6 @@ export const REASON_LIMITS = {
   /** Reapertura de período (RF-11): obligatorio, 10..500. */
   reopenPeriod: { required: true, min: 10, max: 500 },
 } as const;
-
-export type ReasonLimits = { required: boolean; min: number; max: number };
-
-/** Aviso fijo que acompaña a cada campo de motivo (docs/03, bitácora académica). */
-export const REASON_NOTICE =
-  'El motivo queda en la bitácora. No escribas nombres, notas ni datos personales de estudiantes.';
-
-const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-export const isUuid = (value: unknown): value is string =>
-  typeof value === 'string' && UUID_PATTERN.test(value);
-
-/**
- * true solo para un booleano real. Los argumentos ligados (`.bind`) de una Server Action llegan
- * del navegador y se pueden manipular ("true", 1, null): se rechazan.
- */
-export const isStrictBoolean = (value: unknown): value is boolean => typeof value === 'boolean';
-
-/** Longitud que cuenta la API (Zod: trim y luego length). */
-export const reasonLength = (value: string): number => value.trim().length;
-
-/** Error del motivo o null si es válido. Mismos límites que la API. */
-export function validateReason(value: string, limits: ReasonLimits): string | null {
-  const length = reasonLength(value);
-  if (length === 0) {
-    return limits.required ? `Escribe el motivo (mínimo ${limits.min} caracteres).` : null;
-  }
-  if (length < limits.min) return `El motivo debe tener al menos ${limits.min} caracteres.`;
-  if (length > limits.max) return `El motivo no puede pasar de ${limits.max} caracteres.`;
-  return null;
-}
-
-/** Texto del contador junto al campo de motivo. */
-export function reasonCounter(value: string, limits: ReasonLimits): string {
-  return `${reasonLength(value)} de ${limits.max} caracteres${
-    limits.required ? ` (mínimo ${limits.min})` : ''
-  }`;
-}
 
 /** true si `iso` es un día real con formato YYYY-MM-DD. */
 export function isDateOnly(iso: string): boolean {

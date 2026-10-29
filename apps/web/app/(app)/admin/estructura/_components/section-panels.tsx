@@ -14,9 +14,15 @@ import { sectionLabel } from '../_lib/format';
 import { focusIds } from '../_lib/focus';
 import { IDLE, type SectionView } from '../_lib/types';
 import { GRADE_LEVELS } from '../_lib/validation';
-import { ConfirmAction, InlineAction } from './confirm-action';
-import { FormMessage, SelectField, SubmitButton, TextField, useFormRefs } from './form-bits';
-import { TOUCH } from './styles';
+import { ConfirmAction, InlineAction } from '@/app/(app)/admin/_shared/components/confirm-action';
+import {
+  FormMessage,
+  SelectField,
+  SubmitButton,
+  TextField,
+  useFormRefs,
+} from '@/app/(app)/admin/_shared/components/form-bits';
+import { TOUCH } from '@/app/(app)/admin/_shared/components/styles';
 
 const CODE_HINT = 'De 1 a 8 letras o dígitos, sin tildes ni ñ (por ejemplo, A o B2).';
 

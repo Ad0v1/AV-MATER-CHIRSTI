@@ -12,14 +12,14 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { cn } from '@/lib/utils';
-import { TOUCH } from './_components/styles';
+import { TOUCH } from '@/app/(app)/admin/_shared/components/styles';
 import {
   LoadError,
   LoadingBlock,
   PageHeader,
   PageShell,
   StatusBadge,
-} from './_components/page-bits';
+} from '@/app/(app)/admin/_shared/components/page-bits';
 import { listYears } from './_lib/data';
 import { formatInstant, yearStatus } from './_lib/format';
 import type { List, YearSummary } from './_lib/types';

@@ -6,8 +6,13 @@ import { Button } from '@/components/ui/button';
 import { createYearAction } from '../_lib/actions';
 import { IDLE } from '../_lib/types';
 import { PERIOD_COUNT, PERIOD_LABELS, defaultPeriodDates, parseYear } from '../_lib/validation';
-import { FormMessage, SubmitButton, TextField, useFormRefs } from './form-bits';
-import { TOUCH } from './styles';
+import {
+  FormMessage,
+  SubmitButton,
+  TextField,
+  useFormRefs,
+} from '@/app/(app)/admin/_shared/components/form-bits';
+import { TOUCH } from '@/app/(app)/admin/_shared/components/styles';
 
 type Dates = Record<string, string>;
 

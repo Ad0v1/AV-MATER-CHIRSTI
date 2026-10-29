@@ -1,7 +1,12 @@
 // /admin/estructura/anios/nuevo — crear año académico con sus 4 períodos (RF-09, RF-10).
 import { Suspense } from 'react';
 import { NewYearForm } from '../../_components/new-year-form';
-import { LoadError, LoadingBlock, PageHeader, PageShell } from '../../_components/page-bits';
+import {
+  LoadError,
+  LoadingBlock,
+  PageHeader,
+  PageShell,
+} from '@/app/(app)/admin/_shared/components/page-bits';
 import { listYears } from '../../_lib/data';
 
 export default function Page() {

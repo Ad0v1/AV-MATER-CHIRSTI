@@ -1,6 +1,6 @@
 'use client';
 
-// Piezas comunes de los formularios de /admin/estructura (WCAG 2.1 AA, desde 360 px):
+// Piezas comunes de los formularios de administración (estructura y usuarios) (WCAG 2.1 AA, desde 360 px):
 // etiqueta visible, aria-invalid + aria-describedby, foco en el primer error y botones de 44 px.
 import { useEffect, useId, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { useFormStatus } from 'react-dom';
@@ -11,10 +11,10 @@ import { Label } from '@/components/ui/label';
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select';
 import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
-import type { ActionState } from '../_lib/types';
+import type { ActionState } from '../lib/action-state';
 import { useAnnounce } from './action-feedback';
 import { CONTROL, TOUCH } from './styles';
-import { REASON_NOTICE, reasonCounter, type ReasonLimits } from '../_lib/validation';
+import { REASON_NOTICE, reasonCounter, type ReasonLimits } from '../lib/validation';
 
 /**
  * Tras un error, lleva el foco al primer campo inválido del formulario o, si no hay, al aviso.
@@ -57,27 +57,39 @@ export function SubmitButton({
 }
 
 /**
- * Error del formulario como `alert` (con detalles). El éxito no se pinta aquí: se anuncia en la
- * región de estado siempre montada (ActionFeedbackProvider, vía useFormRefs).
+ * Error del formulario (con detalles). El éxito no se pinta aquí: se anuncia en la región de
+ * estado siempre montada (ActionFeedbackProvider, vía useFormRefs).
+ *
+ * Sin `role="alert"` (BAJO de UX, INFORME 7): `useFocusOnError` ya lleva el foco al primer campo
+ * inválido o a este aviso, y el lector lee lo que recibe el foco; con `alert` además, NVDA y JAWS
+ * lo leían dos veces. Se elige el foco porque también sirve a quien navega con teclado (2.4.3) y
+ * deja el cursor donde hay que corregir. Es un `group` con nombre (el título) y descripción (el
+ * mensaje) para que se anuncie completo al recibir el foco.
  */
 export function FormMessage({
   state,
   alertRef,
+  title = 'No se pudo guardar',
 }: {
   state: ActionState;
   alertRef?: RefObject<HTMLDivElement | null>;
+  title?: string;
 }) {
+  const id = useId();
   if (state.status !== 'error' || !state.message) return null;
   return (
     <Alert
       variant="destructive"
       ref={alertRef}
+      role="group"
+      aria-labelledby={`${id}-titulo`}
+      aria-describedby={`${id}-mensaje`}
       tabIndex={-1}
       // Recibe el foco por código: indicador visible siempre (no solo con teclado).
       className="outline-none focus:ring-3 focus:ring-ring/60"
     >
-      <AlertTitle>No se pudo guardar</AlertTitle>
-      <AlertDescription>
+      <AlertTitle id={`${id}-titulo`}>{title}</AlertTitle>
+      <AlertDescription id={`${id}-mensaje`}>
         <p className="break-words">{state.message}</p>
         {state.details && state.details.length > 0 ? (
           <ul className="mt-1 list-disc pl-5">

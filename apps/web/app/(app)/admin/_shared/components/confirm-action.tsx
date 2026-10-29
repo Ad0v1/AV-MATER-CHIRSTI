@@ -18,8 +18,8 @@ import {
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
-import { focusAfterSuccess, pickFocusTarget } from '../_lib/focus';
-import { IDLE, type ActionState } from '../_lib/types';
+import { focusAfterSuccess, pickFocusTarget } from '../lib/focus';
+import { IDLE, type ActionState } from '../lib/action-state';
 import { useAnnounce } from './action-feedback';
 import { FormMessage, SubmitButton, useFormRefs } from './form-bits';
 import { TOUCH } from './styles';
@@ -41,6 +41,7 @@ export function ConfirmAction({
   description,
   confirmLabel,
   focusId,
+  triggerDescribedBy,
   destructive = false,
   disabled = false,
   children,
@@ -52,6 +53,8 @@ export function ConfirmAction({
   confirmLabel: string;
   /** Id del encabezado que recibe el foco tras el éxito (ver _lib/focus.ts). */
   focusId?: string;
+  /** Id de un texto visible que explica el botón (p. ej. una condición previa). */
+  triggerDescribedBy?: string;
   destructive?: boolean;
   disabled?: boolean;
   /** Campos extra del formulario (por ejemplo, el motivo). Reciben el estado para sus errores. */
@@ -82,6 +85,7 @@ export function ConfirmAction({
     >
       <AlertDialogTrigger
         disabled={disabled}
+        aria-describedby={triggerDescribedBy}
         render={<Button variant={destructive ? 'destructive' : 'outline'} className={TOUCH} />}
       >
         {triggerLabel}

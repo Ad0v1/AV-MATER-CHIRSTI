@@ -8,7 +8,7 @@ import {
   PageShell,
   Section,
   StatusBadge,
-} from '../_components/page-bits';
+} from '@/app/(app)/admin/_shared/components/page-bits';
 import { listCourses } from '../_lib/data';
 import { FOCUS_HEADING, focusIds } from '../_lib/focus';
 import { cn } from '@/lib/utils';

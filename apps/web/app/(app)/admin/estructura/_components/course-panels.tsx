@@ -6,8 +6,13 @@ import { createCourseAction, setCourseActiveAction, updateCourseNameAction } fro
 import { focusIds } from '../_lib/focus';
 import { IDLE, type CourseView } from '../_lib/types';
 import { COURSE_NAME_MAX } from '../_lib/validation';
-import { ConfirmAction, InlineAction } from './confirm-action';
-import { FormMessage, SubmitButton, TextField, useFormRefs } from './form-bits';
+import { ConfirmAction, InlineAction } from '@/app/(app)/admin/_shared/components/confirm-action';
+import {
+  FormMessage,
+  SubmitButton,
+  TextField,
+  useFormRefs,
+} from '@/app/(app)/admin/_shared/components/form-bits';
 
 export function CreateCourseForm() {
   const [state, formAction] = useActionState(createCourseAction, IDLE);

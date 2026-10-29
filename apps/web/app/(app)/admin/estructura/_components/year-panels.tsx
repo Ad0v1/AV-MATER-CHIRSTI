@@ -1,7 +1,7 @@
 'use client';
 
 // Acciones del año (RF-12, RN-11) y de sus períodos (RF-10, RF-11, RN-10).
-import { useActionState } from 'react';
+import { useActionState, useId } from 'react';
 import {
   activateYearAction,
   closePeriodAction,
@@ -13,8 +13,14 @@ import {
 import { PAGE_TITLE_ID, focusIds } from '../_lib/focus';
 import { IDLE, type PeriodView } from '../_lib/types';
 import { REASON_LIMITS } from '../_lib/validation';
-import { ConfirmAction } from './confirm-action';
-import { FormMessage, ReasonField, SubmitButton, TextField, useFormRefs } from './form-bits';
+import { ConfirmAction } from '@/app/(app)/admin/_shared/components/confirm-action';
+import {
+  FormMessage,
+  ReasonField,
+  SubmitButton,
+  TextField,
+  useFormRefs,
+} from '@/app/(app)/admin/_shared/components/form-bits';
 
 export function YearActions({
   yearId,
@@ -31,6 +37,7 @@ export function YearActions({
   readOnly: boolean;
   openPeriods: number;
 }) {
+  const openNoticeId = useId();
   if (isClosed) return null;
   return (
     <div className="flex flex-wrap items-start gap-2">
@@ -55,12 +62,13 @@ export function YearActions({
         }
         confirmLabel="Cerrar año"
         focusId={PAGE_TITLE_ID}
+        triggerDescribedBy={openPeriods > 0 ? openNoticeId : undefined}
         destructive
       />
       {openPeriods > 0 ? (
         // Se deja pulsable (un botón deshabilitado no se descubre con teclado); el aviso se ve
         // antes de intentarlo y el diálogo lo repite.
-        <p className="basis-full text-sm text-muted-foreground">
+        <p id={openNoticeId} className="basis-full text-sm text-muted-foreground">
           Para cerrar el año, primero cierra{' '}
           {openPeriods === 1 ? 'su período abierto' : `sus ${openPeriods} períodos abiertos`}.
         </p>

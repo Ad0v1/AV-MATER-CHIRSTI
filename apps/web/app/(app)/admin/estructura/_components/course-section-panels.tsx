@@ -9,8 +9,13 @@ import {
 } from '../_lib/actions';
 import { focusIds } from '../_lib/focus';
 import { IDLE, type CourseSectionView, type CourseView, type TeacherOption } from '../_lib/types';
-import { ConfirmAction, InlineAction } from './confirm-action';
-import { FormMessage, SelectField, SubmitButton, useFormRefs } from './form-bits';
+import { ConfirmAction, InlineAction } from '@/app/(app)/admin/_shared/components/confirm-action';
+import {
+  FormMessage,
+  SelectField,
+  SubmitButton,
+  useFormRefs,
+} from '@/app/(app)/admin/_shared/components/form-bits';
 
 const NO_TEACHER = { value: '', label: 'Sin docente' };
 

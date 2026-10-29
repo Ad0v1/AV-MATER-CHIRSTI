@@ -10,7 +10,7 @@ import {
   ReadOnlyNotice,
   Section,
   StatusBadge,
-} from '../../../../_components/page-bits';
+} from '@/app/(app)/admin/_shared/components/page-bits';
 import {
   getYear,
   listActiveTeachers,
