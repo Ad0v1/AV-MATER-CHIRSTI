@@ -375,6 +375,8 @@ type AcademicEventMap = {
 
 Las rutas de la tabla cuelgan de `/api/v1`. Los estudiantes sin matrícula vigente en el año activo aparecen con `currentSection: null`.
 
+> **Pendiente de decidir (F5):** `POST /guardians` con un `studentId` que no existe responde **404** en la API, pero la tabla dice **422** ("algún estudiante no existe"). No se ha resuelto: o se corrige la tabla o la API. Lo decide el dueño de Dev 2 con `arquitecto-integrador`. La web muestra el mensaje que devuelve la API en ambos casos.
+
 ### Reglas de estado (RF-23)
 
 - `STUDENT` → `WITHDRAWN`: en la misma transacción cierra sus matrículas vigentes de años **no cerrados** (`isCurrent` NULL, `effectiveTo` = instante del servidor, `endReason` `WITHDRAWAL`). Las de años cerrados no se tocan.
@@ -453,6 +455,8 @@ type UsersEventMap = {
 | `GET /users/import/template` | Query `type`, `format` (estricta) | 200 archivo, con `Content-Disposition: attachment; filename="plantilla-<type>.<format>"` y `Cache-Control: no-store` | 400; 401; 403 |
 | `POST /users/import/preview` | multipart `file`, `type` | 200 `ImportReport` | 400; 401; 403; 409; 413; 415; 429 |
 | `POST /users/import/commit` | multipart `file`, `type`, `sha256` (64 hexadecimales) | 201 `ImportCommitResult` | 400; 401; 403; 409; 413; 415; 422; 429 |
+
+**Ruta puente de la web (F5, D-037).** La pantalla de importación no llama a la API desde el navegador. Usa el Route Handler de `apps/web` `/admin/usuarios/importar/archivo/{plantilla|preview|commit}`, que reenvía a estos endpoints solo con la cookie `aula_sid`: `plantilla` acepta GET y `preview` y `commit` aceptan POST con el mismo `file`, `type` y `sha256`. La ruta responde 403 si el `Origin` no es del mismo host, 413 si `Content-Length` falta o supera 1 MiB + 64 KiB, 415 si el cuerpo no es multipart y 400 si `type` o `format` no están en la lista blanca. El resto de códigos son los de la API. No guarda ni registra el archivo ni su nombre.
 
 ### Plantillas
 

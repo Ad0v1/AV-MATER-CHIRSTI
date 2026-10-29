@@ -49,6 +49,14 @@ La correspondencia de RF y dev reproduce el **Plan de Trabajo**. Los detalles de
 - Verificación de seguridad: INFORME 9 (aprobado con 0 CRÍTICO y 0 ALTO tras las correcciones H1 a H12) e INFORME 10 (revisor).
 - Pendiente: pantalla de carga (fase 5); prueba con `.xlsx` guardados por Excel y LibreOffice reales; aceptación del dueño de Dev 2, de D-021 y de D-035; decisión de Dev 1 sobre D-036 y la bitácora dentro de la transacción (D-019). Las pruebas de integración necesitan MySQL local con el seed: verificar en local con Docker. Sin commit ni PR; no va al repo del equipo sin acuerdo.
 
+**Nota de avance (RF-09..14, RF-17..25; interfaz de F5; PROPUESTA del 29/10/2026):** pantallas de administración en `apps/web/app/(app)/admin/` sobre la API de F2–F4, con llamadas desde el servidor (D-037).
+
+- Estructura (RF-09, 10, 11, 12, 13, 14 y 17; aprobada por `revisor-pr`, INFORME 9): `estructura/page.tsx` (años), `estructura/anios/nuevo/`, `estructura/anios/[anioId]/` (año, períodos y secciones), `estructura/anios/[anioId]/secciones/[seccionId]/` (curso-sección y docente) y `estructura/cursos/`.
+- Usuarios (RF-18, 19, 20, 22, 23, 24, 25 y RN-13; aprobada por `revisor-pr`, INFORME 17): `usuarios/page.tsx` (lista, filtros, búsqueda y paginación), `usuarios/nuevo/{estudiante,docente,apoderado}/` y `usuarios/[id]/` (ficha: edición, estado, matrícula, traslado, apoderados y vínculos). Lo común está en `admin/_shared/`.
+- Importación (RF-21; aprobada por `revisor-pr`, INFORME 24): `usuarios/importar/` (plantilla, vista previa y confirmación) y el Route Handler `usuarios/importar/archivo/[accion]/route.ts`.
+- Pruebas: Vitest de lógica pura (`pnpm --filter web test`). Sin Playwright todavía.
+- Pendiente: prueba manual en navegador (360 px, teclado y lector de pantalla); Playwright con axe; login real de Dev 1, que sustituye `dev-session` y `dev-role`; limitación de peticiones detrás del BFF (Dev 1); RF-15 y RF-16 (F6) fuera de esta fase. Sin commit ni PR; no va al repo del equipo sin acuerdo (D-037).
+
 ## Fuente original por tema
 
 | Tema | Archivo y sección/página impresa |

@@ -158,3 +158,67 @@ No subas al repositorio archivos reales con datos de alumnos.
 
 - Los casos de 409 por año inactivo o cerrado están solo en los tests unitarios.
 - Tras reiniciar MySQL, las pruebas e2e pueden fallar con `45028` / `ER_CANNOT_RETRIEVE_RSA_KEY`. Ver D-036.
+
+## Pantallas de administración (Dev 2, F5: RF-09..14 y RF-17..25)
+
+> **Estado: PROPUESTA.** Código en `apps/web/app/(app)/admin/`, rama `features/adolfo`. Estructura, usuarios e importación aprobadas por `revisor-pr` (INFORMES 9, 17 y 24). Commits en el repo privado; sin PR al equipo. Decisión: D-037 en `docs/08_DECISIONES.md`.
+
+**Cómo funciona.** La web llama a la API desde el servidor (Server Components y Server Actions) y reenvía solo la cookie `aula_sid`. La web no decide permisos: la API autoriza cada petición. El login real es de Dev 1; hasta entonces, la sesión se crea con un script local.
+
+### Variables de entorno
+
+| Variable | Obligatoria | Uso |
+| --- | --- | --- |
+| `API_INTERNAL_URL` | No; por defecto `http://localhost:4000` | URL con la que el servidor de Next llama a la API, con el puerto. Solo del lado del servidor: no usar el prefijo `NEXT_PUBLIC_`. Pendiente: añadirla a `.env.example` con el visto bueno del usuario. |
+
+### Levantar en local
+
+1. Servicios: `docker compose up -d` (MySQL y Redis). La primera vez: `pnpm db:generate`, `pnpm db:migrate` y `pnpm db:seed`.
+2. API: `pnpm --filter api start:dev` (puerto `API_PORT`).
+3. Web: `pnpm --filter web dev`, en `http://localhost:3000`.
+4. Sesión local, desde la raíz del repositorio:
+
+```bash
+pnpm exec tsx --tsconfig apps/api/tsconfig.json prisma/seed/dev-session.ts [--email <correo>]
+```
+
+Sin `--email` crea la sesión del ADMIN del seed. El script imprime el token y las instrucciones.
+
+5. Cookie: en DevTools, Application > Cookies > `http://localhost:3000`, crea una cookie con nombre `aula_sid`, valor el token y ruta `/`. Recarga la página.
+
+**Reglas del script.** Es solo para local y temporal: se borra cuando haya login (RF-01..07).
+
+- Se niega con `NODE_ENV=production`, con `CI=true`, y si `DATABASE_URL` o `REDIS_URL` no apuntan a un servicio local (`localhost`, `127.0.0.1`, `::1`, o los servicios `mysql` y `redis` del `docker compose`).
+- Solo acepta correos del seed (`@colegio.example`) de usuarios `ACTIVE`.
+- El token es una credencial: no lo compartas ni lo subas al repositorio.
+
+### Problemas frecuentes en local
+
+- **`localhost` no llega a Docker (Windows con WSL).** Si `localhost` resuelve a `[::1]` y WSL escucha allí, la API, la web o el script no llegan a MySQL ni a Redis. Compruébalo con `netstat -ano`. Solución: arranca los procesos con `--dns-result-order=ipv4first`, para que `localhost` resuelva a `127.0.0.1`, donde escucha Docker. En PowerShell: `$env:NODE_OPTIONS="--dns-result-order=ipv4first"` antes de cada comando.
+- **Error `45028` / `ER_CANNOT_RETRIEVE_RSA_KEY`.** MySQL acaba de arrancar y la caché de `caching_sha2_password` está vacía. Espera unos segundos y repite el comando (la primera conexión la calienta). Si vuelve a pasar, ver D-036.
+
+### Rutas de la web
+
+| Ruta | Pantalla |
+| --- | --- |
+| `/admin/estructura` | Años |
+| `/admin/estructura/anios/nuevo` | Alta de año |
+| `/admin/estructura/anios/[anioId]` | Año, períodos y secciones |
+| `/admin/estructura/anios/[anioId]/secciones/[seccionId]` | Sección, curso-sección y docente |
+| `/admin/estructura/cursos` | Cursos |
+| `/admin/usuarios` | Lista, filtros, búsqueda y paginación |
+| `/admin/usuarios/nuevo/estudiante`, `/docente`, `/apoderado` | Altas |
+| `/admin/usuarios/[id]` | Ficha: edición, estado, matrícula, traslado, apoderados y vínculos |
+| `/admin/usuarios/importar` | Importación (plantilla, vista previa y confirmación) |
+| `/admin/usuarios/importar/archivo/{plantilla\|preview\|commit}` | Ruta puente hacia la API de importación (D-037) |
+
+Los endpoints que usan estas pantallas están en las secciones de la API académica, de usuarios e importación de este manual y en `docs/03_CONTRATOS.md`.
+
+### Pruebas
+
+| Comando | Qué prueba | Requiere |
+| --- | --- | --- |
+| `pnpm --filter web test` | Vitest: lógica pura de las pantallas (errores, validaciones, máquina de la importación, guardas de la ruta puente) y `prisma/seed/local-guard` | Nada |
+| `pnpm --filter web lint` y `pnpm --filter web build` | Lint y compilación | Nada |
+
+> **Pendiente.** Prueba manual en navegador (360 px, teclado y lector de pantalla) y Playwright con axe. Las pruebas con sesión necesitan la base local con el seed: verificar en local con Docker.

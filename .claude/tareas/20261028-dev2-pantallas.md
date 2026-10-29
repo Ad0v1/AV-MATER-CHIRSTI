@@ -410,3 +410,117 @@ Comandos: web lint ok (aviso informativo jsx-ast-utils); web test 7/168 ok; web 
 Hallazgos (BAJO): no usar `git add -A` (.agents/, skills-lock.json); year-panels.tsx suma useId y aria-describedby (permitido); pendientes ya anotados (importar 404 hasta 5c, guardians 404 vs 422, throttle y getCurrentRole de Dev 1, doble lectura NVDA).
 Archivos del commit: _shared/components/ (5 renombres), _shared/lib/ (action-state, focus, format, shared.test, validation), estructura/_components/ (5), estructura/_lib/ (4), estructura/ páginas (5), usuarios/ (page.tsx, [id]/page.tsx, nuevo/{estudiante,docente,apoderado}/page.tsx), usuarios/_components/ (7), usuarios/_lib/ (5), el expediente y el reporte. Excluir .agents/ y skills-lock.json.
 Para: orquestador — reporte y commit con esa lista; luego 5c.
+
+---
+
+## Entrega 5c — importación masiva (RF-21)
+
+Pedido por el usuario: "Seguir con 5c" (tras el commit `94363f9` de la 5b, subido a `mio`).
+Vueltas de corrección de 5c: 0/2
+Plan: INFORME 1, Decisión 1 (Route Handler `app/(app)/admin/usuarios/importar/archivo/[accion]/route.ts`: Origin, tope de Content-Length, stream con `duplex: 'half'`, solo `aula_sid`, lista blanca de type/format, sin registrar el cuerpo) y Decisión 2 (pantalla `/admin/usuarios/importar`). Decisión 3 de seguridad en el INFORME 12: no registrar el cuerpo ni el nombre del archivo. Contrato de la API en docs/03 (F4, `apps/api/src/modules/users/import/`). Al final de 5c entra el documentador (D-037, sesión local, ruta proxy, `API_INTERNAL_URL`).
+
+### INFORME 18 — dev2-estructura (entrega 5c)
+
+Estado: BLOQUEADO
+Requisitos: RF-21; RNF-09..13, RNF-24..27; D-007; D-037 (propuesta); INFORME 12, Decisión 3
+Resumen: 5c implementada (Route Handler puente, pantalla /admin/usuarios/importar, máquina de estados pura, 40 tests nuevos). Lint, test y build de web, lint y test de api y prettier ok. Con curl contra servidores reales se probó todo lo que no necesita sesión (404, 405, 403 por Origin, 413, 415, 400, 401). Lo que necesita sesión no se pudo probar: el host no llega a MySQL por `localhost` (error 45028 en db:seed y dev-session) porque `wslrelay.exe` (PID 4124) escucha en [::1]:3306, [::1]:6379 y [::1]:9000 y se adelanta a Docker (PID 17544 en 0.0.0.0 y [::]). MySQL en el contenedor está sano.
+Archivos (nuevos, apps/web/app/(app)/admin/usuarios/importar/): page.tsx; _components/import-screen.tsx; _lib/import-guards.ts (+ test); _lib/import-machine.ts (+ test); archivo/[accion]/route.ts. Sin tocar nav, routes, session, lib/api, layouts, next.config, packages/ui, components/ui, apps/api/src, package.json, lockfile. Sin commit.
+Comandos: web test 9/208 ok (antes 168); web lint ok; web build ok (importar PPR, archivo/[accion] dinámico); api build, lint ok; api test 28/314 ok; prettier ok. curl: acción desconocida 404; GET /preview 405 con Allow: POST; Origin ajeno o ausente en POST 403; GET plantilla con Origin ajeno 403; 1,2 MB 413; chunked sin Content-Length 413; application/json 415; query de plantilla inválida 400; sin cookie 401 reenviado con no-store; cookie con `;` no se reenvía (401); página 200 con private, no-store, 1 main, 1 h1#titulo-pagina, región status, accept=".xlsx,.csv" y aviso de privacidad; logs sin nombre de archivo ni correos. dev-session y db:seed fallan por la conexión (no escribieron nada); sin usuarios *.5c; servidores detenidos. Un script propio que cargaba .env fue denegado por el clasificador y no se insistió; no leyó .env.
+Hallazgos:
+
+- [ALTO] entorno local — wslrelay.exe intercepta localhost en 3306, 6379 y 9000. → Decide el usuario: `wsl --shutdown` / cerrar el reenvío de WSL, o autorizar 127.0.0.1 en su .env local. Luego repetir las pruebas con sesión.
+- [MEDIO] archivo/[accion]/route.ts — el stream con duplex: 'half' hasta multer solo está probado en el camino 401. → Verificar preview 200 y commit 201/409 con sesión.
+- [BAJO] import-machine.ts — un 201 ilegible se trata como 502 y permite reintentar (seguro: la API no duplica).
+  Decisiones: (1) método equivocado → 405 con Allow; (2) Origin obligatorio en POST y Sec-Fetch-Site same-origin; GET de plantilla sin Origin aceptado; (3) Content-Length ausente/ inválido/ > tope → 413, 0 → 400, conteo de bytes en el stream, Content-Type multipart con boundary ASCII ≤ 200 o 415; (4) plantilla con Content-Type de lista blanca y Content-Disposition exacto o 502, query con type y format exactos; (5) respuesta solo con status y JSON, no-store y nosniff, 3xx → 502, 60 s subida y 15 s plantilla, sin console.*; (6) plantilla por fetch + Blob, el cliente solo mira tamaño y extensión, confirmación con type y sha256 del reporte y el mismo File, errores en tabla/tarjetas solo con fila, columna y motivo, foco y anuncios; (7) máquina: 400/409/413/415/422 vuelven a reporte, 401/403/429/5xx/red a confirmable, cambiar tipo o archivo descarta el reporte; (8) mensajes 413/429/415/422.
+  Pendientes: con el entorno arreglado, pruebas con sesión (plantillas de los 3 tipos en xlsx y csv, preview válido y con errores, commit con el mismo sha256 y con otro, 403 con docente01; correos *.5c, limpieza y db:seed). Archivos de prueba en el scratchpad: ok.csv y big.csv. Prueba manual en navegador; documentador.
+  Para: orquestador / usuario.
+
+### Decisión del orquestador 7 — bloqueo de entorno
+
+Comprobado con `netstat -ano`: `wslrelay.exe` (PID 4124) escucha en [::1]:3306, [::1]:6379 y [::1]:9000, y Docker (PID 17544) en 0.0.0.0 y [::]; los 5 contenedores están healthy. El BLOQUEADO va al usuario: apagar WSL o cambiar su .env son decisiones suyas (sistema y archivo protegido). Se le pregunta antes de seguir.
+
+### Decisión del orquestador 8 — desbloqueo y eficiencia
+
+El usuario respondió: "VA, utiliza 127.0.0.1, ademas quiero que seas mas eficiente con los agentes". Como el orquestador no puede leer ni editar `.env`, se usa 127.0.0.1 sin tocarlo: con `NODE_OPTIONS=--dns-result-order=ipv4first` Node resuelve `localhost` a 127.0.0.1 (Docker escucha en 0.0.0.0) y se evita el `[::1]` de wslrelay. Comprobado: tras calentar MySQL (error 45028), `dev-session.ts` crea la sesión. Eficiencia: las pruebas con sesión pendientes del INFORME 18 las hace `qa-tester` junto con su revisión de tests (sin devolver al dev), y `seguridad-cumplimiento` y `ux-accesibilidad` corren a la vez, en paralelo, con encargos acotados.
+
+### INFORME 19 — ux-accesibilidad (entrega 5c)
+
+Estado: APROBADO (sin CRÍTICO ni ALTO; 3 MEDIO y 4 BAJO que no bloquean)
+Revisado (solo lectura, sin navegador): importar/page.tsx e _components/import-screen.tsx; contexto en _shared/components/form-bits.tsx e import-machine.ts.
+Bien: tarjetas bajo sm y tabla desde sm (463-497); labels y aria-describedby vía SelectField/TextField; checkFile antes de guardar el File, sin leer contenido (299-302); "Descargando…/Validando…/Importando…" con aria-busy y controles desactivados; foco al h2 del reporte (175, 328-335), al Alert de error (180, 430-437) y al h2 del resultado (199, 380-385) con announce; Confirmar solo si es confirmable con explicación (341-353); aviso de errorsTruncated (453-461); aviso de privacidad antes del campo (277-280); errores de plantilla como mensaje (270-274, 146).
+Hallazgos MEDIO (Para: dev2-estructura):
+
+1. import-screen.tsx:292-303 — el error de archivo (> 1 MiB o extensión) no se anuncia → announce(checkFile(...)) en onChange.
+2. import-screen.tsx:400, 214-219 — "Importar otro archivo" deja el foco en body → al campo de tipo o al h2 "1. Elige el tipo y el archivo".
+3. import-screen.tsx:311-314, 365-368 — aria-busy en el botón no se anuncia → announce al empezar a validar e importar.
+   Hallazgos BAJO: 258 (al descargar la plantilla el botón con foco se desactiva); 236-239 (cambiar el tipo descarta el reporte sin aviso); 282-291 (confirmar 44 px del input file); 426 (contraste del anillo de foco sobre fondo destructivo).
+   Pendiente: NVDA a 360 px.
+
+### INFORME 20 — seguridad-cumplimiento (entrega 5c)
+
+Estado: APROBADO (sin CRÍTICO ni ALTO)
+Revisado (solo lectura): route.ts, import-guards.ts, import-machine.ts, import-screen.tsx, page.tsx y sessionCookieHeader de lib/api/request-guards.ts. No ejecutó nada ni revisó la API ni los tests.
+Verificado: CSRF en POST (route.ts:158; Origin obligatorio y mismo host, "null" y malformados rechazados, Sec-Fetch-Site same-origin, import-guards.ts:82-87); GET de plantilla sin Origin aceptado y validado si viene; tope doble (Content-Length obligatorio ≤ 1 MiB + 64 KiB y ≠ 0, import-guards.ts:107-119; limitBody corta el stream, route.ts:133-150; tamaño mentido → 413, :184); Content-Type multipart con boundary ASCII ≤ 200 (125-134); type/format con 2 claves exactas y apiPath de tabla fija; Content-Disposition exacto o 502 y Content-Type propio; solo aula_sid validada, redirect manual (3xx → 502, route.ts:77), timeouts 60/15 s; sin console ni logger; no-store y nosniff en todas las respuestas (route.ts:37); el cliente solo usa name y size, no muestra el nombre, nombre de descarga fijo (import-screen.tsx:153, 169-172, 292-303); parseRowError acotado a fila, columna, código y mensaje con máximo 500 filas (import-machine.ts:200-217); sin dangerouslySetInnerHTML.
+Hallazgos (BAJO, no bloquean):
+
+1. route.ts:57-66, import-guards.ts:78 — X-Forwarded-Host antes que Host → el proxy de despliegue debe fijarlo. Para: Dev 1/despliegue.
+2. import-guards.ts:87 — GET sin Origin ni Sec-Fetch-Site pasa (solo plantilla vacía; la API exige sesión ADMIN). Aceptable.
+3. route.ts:76-86, :122 — respuesta de la API sin tope de tamaño al leerla → opcional limitar a ~1 MiB.
+4. INFO — import-machine.ts:287-291, import-screen.tsx:441 — mensajes de la API mostrados; sin valores de celda por F4; sin XSS.
+   D-037: aprobado en lo que toca a seguridad.
+   Para: orquestador → revisor-pr.
+
+### INFORME 21 — qa-tester (entrega 5c, con sesión)
+
+Estado: LISTO
+Requisitos: RF-21; RNF-09..13, 24..27; D-007; D-037
+Resumen: 15 casos límite nuevos; pruebas con sesión pendientes del INFORME 18 hechas, todo lo esperado, sin bugs. Limpieza hecha.
+Archivos: importar/_lib/import-guards.test.ts (6 casos), importar/_lib/import-machine.test.ts (9 casos)
+Comandos: web test 9/223 ok (antes 208); web lint ok; web build ok; api build ok; api test 28/314 ok; prettier ok. Con NODE_OPTIONS=--dns-result-order=ipv4first, MySQL calentado, sesiones de ADMIN y docente01, API node dist/main :4000 y web next start :3000:
+
+- plantillas students/teachers/guardians en xlsx y csv: 200, Content-Type correcto, Content-Disposition exacto, nosniff;
+- preview ok.csv (teachers): 200, canConfirm true, sha256;
+- preview bad.csv: 200, canConfirm false, errores {row 2, correo, INVALID_EMAIL} y {row 3, nombre_completo, REQUIRED}; el texto de la celda no aparece;
+- commit con otro sha256: 409; con el mismo: 201 (confirma el stream duplex: 'half' hasta multer, cierra el MEDIO del INFORME 18); repetido: 422 con details EMAIL_TAKEN;
+- big.csv: 413; preview con docente01: 403;
+- logs sin nombres de archivo, correos *.5c ni el texto de la celda.
+  Limpieza: borrado por id prof.uno.5c@colegio.example (0 restantes), pnpm db:seed ok, servidores detenidos.
+  Hallazgos (BAJO): preview y commit con sesión solo de teachers (students y guardians solo plantillas); el 201 ilegible → 502 es seguro (commit repetido da 422 y no duplica).
+  Pendientes: prueba manual en navegador; preview/commit de students y guardians (opcional).
+
+### Decisión del orquestador 9 — vuelta corta de UX en 5c
+
+QA, seguridad y UX en verde. Por eficiencia, en vez de dejar los 3 MEDIO de UX (INFORME 19) como pendientes, se reanuda al mismo dev2-estructura de 5c con solo esos 3 MEDIO y el BAJO 236-239 (cambios pequeños de announce y foco en import-screen.tsx). No cuenta como vuelta de corrección (no hubo CAMBIOS_PEDIDOS). No se repiten QA ni UX: revisor-pr verifica los cambios y corre la batería completa, y el documentador trabaja en paralelo solo en docs/.
+
+### INFORME 22 — dev2-estructura (5c, vuelta corta de UX)
+
+Estado: LISTO
+Requisitos: RF-21; RNF-24..27 (4.1.3, 2.4.3)
+Resumen: hechos los 3 MEDIO y el BAJO 236-239 del INFORME 19. web lint, test (224) y build ok; prettier ok. Sin Docker.
+Archivos: importar/_components/import-screen.tsx (:313 anuncio "Archivo rechazado: <motivo>" con checkFile calculado una vez en :306-311; :221 y :232-236 foco al h2 "1. Elige el tipo y el archivo" con startRef, tabIndex=-1 y FOCUS_HEADING, apoyo en :108, :116 y FocusTarget 'start'; :170 y :194 anuncios al empezar a validar e importar; :247-251 anuncio al cambiar el tipo con reporte); importar/_lib/import-machine.ts (:343-344 VALIDATING_MESSAGE e IMPORTING_MESSAGE; :350 typeChangeMessage); importar/_lib/import-machine.test.ts (:467).
+Hallazgos: ninguno nuevo; siguen abiertos los BAJO :258, 44 px del input file y contraste del anillo de foco.
+Pendientes: NVDA a 360 px. Sin commit.
+Para: revisor-pr.
+
+### INFORME 23 — documentador (Fase 5)
+
+Estado: LISTO
+Requisitos: RF-09..14, RF-17..25 (interfaz F5); RNF-32; D-037
+Resumen: documentada la F5 solo en docs/: D-037 (propuesta, 29/10/2026) y la decisión abierta sin número sobre formularios nativos frente a RHF/TanStack en docs/08; nota de la ruta puente y de la discrepancia de POST /guardians (404 vs 422, pendiente) en docs/03; nota de avance con rutas en docs/10; sección "Pantallas de administración (Dev 2, F5)" en docs/manuales/tecnico.md (API_INTERNAL_URL, arranque local, dev-session solo local, WSL/IPv6 y error 45028, rutas, tests de web). docs/manuales/administrador.md no existe y no se creó. .env.example sin tocar. La importación quedó como "pendiente de la revisión final de revisor-pr" en docs/10 y en el manual.
+Archivos: docs/08_DECISIONES.md, docs/03_CONTRATOS.md, docs/10_TRAZABILIDAD.md, docs/manuales/tecnico.md
+Comandos: ninguno (sin shell); prettier no aplica (.prettierignore excluye docs); verificado con Grep el formato de la tabla de D-037.
+Hallazgos: [MEDIO] discrepancia POST /guardians sin resolver; [MEDIO] no hay manual del administrador; [BAJO] API_INTERNAL_URL falta en .env.example (Dev 1, visto bueno del usuario); [BAJO] la nota "pendiente de revisor-pr" de 5c se debe actualizar cuando apruebe; [BAJO] fecha de D-037.
+Pendientes: manual del administrador; .env.example; guardians 404/422; prueba manual en navegador; login real de Dev 1.
+Para: orquestador.
+
+### INFORME 24 — revisor-pr (entrega 5c y documentación de la F5)
+
+Estado: APROBADO
+Comandos: web lint ok (aviso informativo); web test 9/224 ok; web build ok; api lint ok; api test 28/314 ok; prettier --check sobre importar/, el expediente y los 4 docs ok.
+Verificado: definición de terminado (permisos en la API, bitácora users.import.commit en la API, tests de la máquina y las guardas, 360 px, RF citados; solo falta la prueba manual/Playwright, anotada); alcance limpio (7 archivos nuevos en importar/, expediente y 4 docs; nada fuera; .agents/ y skills-lock.json excluidos); los ajustes del INFORME 22 son solo announce, focusNext='start' y typeChangeMessage, sin cambiar el reducer ni la conducta del INFORME 20; la documentación coincide con route.ts y lib/api/server.ts y solo añade.
+Observaciones menores: actualizar "pendiente de la revisión final" en docs/10 y en el manual técnico; la nota de F4 en docs/10 sigue diciendo "Pendiente: pantalla de carga (fase 5)" (correcto como historia).
+Archivos del commit: el expediente, docs/03, 08, 10, manuales/tecnico.md, los 7 archivos de importar/ y el reporte. Excluir .agents/ y skills-lock.json.
+
+### Decisión del orquestador 10 — cierre de la F5
+
+Revisor-pr APROBADO. El orquestador actualiza las dos notas de estado (docs/10_TRAZABILIDAD.md:56 y docs/manuales/tecnico.md:164) a "aprobada por revisor-pr, INFORME 24" (cambio de texto, sin agente). Pendientes que quedan para el usuario: crear o no el manual del administrador, añadir API_INTERNAL_URL a .env.example (archivo de Dev 1) y decidir la discrepancia de POST /guardians (404 vs 422). Con esto la Fase 5 queda terminada.

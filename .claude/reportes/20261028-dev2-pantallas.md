@@ -1,4 +1,4 @@
-# Reporte — Dev 2, Fase 5: pantallas de administración (entregas 5a y 5b)
+# Reporte — Dev 2, Fase 5: pantallas de administración (entregas 5a, 5b y 5c)
 
 ## Pedido
 
@@ -249,7 +249,7 @@ Después se crea en el navegador, para `http://localhost:3000`, la cookie `aula_
 
 - **Usuario:** "Seguir con 5b" (tras "Commit y subir" de la 5a, commit `49fa112`).
 - **Durante la tarea:** "Inténtalo de nuevo" (dos agentes se cortaron por inactividad) y "revisa si se ejecuto lo ultimo que se estaba realizando, porque parece que se detuvo por la falta de creditos" (el revisor se interrumpió al cerrarse la sesión).
-- **Fecha:** 28–29/10/2026 · **Flujo:** completo · **Vueltas de corrección de 5b:** 1/2 · **Rama:** `features/adolfo` · **Commit:** `feat(web): RF-18..20/22..25 pantallas de usuarios …` (subido solo a `mio` cuando el usuario lo pida)
+- **Fecha:** 28–29/10/2026 · **Flujo:** completo · **Vueltas de corrección de 5b:** 1/2 · **Rama:** `features/adolfo` · **Commit:** `94363f9` (subido solo a `mio`)
 
 ## Resultado (5b)
 
@@ -457,6 +457,173 @@ Todos bajo `apps/web/app/(app)/admin/`:
 - **Prueba manual:** NVDA/VoiceOver (posible doble lectura de "Cuenta creada"), 360 y 640–768 px, modo oscuro. Playwright + axe.
 - **Para David (Dev 1):** límite de peticiones por IP detrás de la web (MEDIO); `getCurrentRole` devuelve admin sin cookie (BAJO).
 - **docs/03 o la API:** `POST /guardians` con un estudiante que no existe responde 404 y el contrato dice 422.
+
+---
+
+# Entrega 5c: importación masiva (RF-21) y documentación de la Fase 5
+
+## Pedido (5c)
+
+- **Usuario:** "Seguir con 5c" (tras "Commit y subir" de la 5b, commit `94363f9`).
+- **Durante la tarea:** "cual me recomiendas, apar WSL o usar la otra opcion, ademas quiero saber que es lo que se esta realizando en 5C" y luego "VA, utiliza 127.0.0.1, ademas quiero que seas mas eficiente con los agentes, tambien indicame cuanto te falta para completar las actividades del dev 2".
+- **Fecha:** 29/10/2026 · **Flujo:** completo · **Vueltas de corrección de 5c:** 0/2 · **Rama:** `features/adolfo` · **Commit:** `feat(web): RF-21 pantalla de importacion masiva …` (subido solo a `mio`)
+
+## Resultado (5c)
+
+- **Pantalla `/admin/usuarios/importar`:** elegir tipo (estudiantes, docentes, apoderados), descargar la plantilla en Excel o CSV, subir y validar (vista previa con errores por fila y columna, **sin mostrar el contenido de las celdas**), y confirmar con el mismo archivo. Avisa que el archivo no se guarda. Se anuncia cada paso y el foco acompaña al usuario.
+- **Ruta puente** `usuarios/importar/archivo/[accion]` en el servidor de la web: exige que la petición venga de la propia web, corta en 1 MiB (por la cabecera y contando los bytes), solo deja pasar `multipart/form-data`, reenvía solo la cookie de sesión y no registra el archivo ni su nombre.
+- **Probado con la API real:** las 6 plantillas, vista previa válida y con errores, confirmación (201), archivo distinto (409), repetido (422), demasiado grande (413) y docente (403).
+- **Documentación de toda la F5:** D-037 en `docs/08`, ruta puente y discrepancia de `/guardians` en `docs/03`, trazabilidad en `docs/10` y sección de pantallas en el manual técnico.
+- **Tests:** 224 de la web (antes 168) y los 314 de la API.
+
+## Agentes que participaron (5c)
+
+| #   | Agente                   | Modelo | Qué hizo                                                                      | Estado    |
+| --- | ------------------------ | ------ | ----------------------------------------------------------------------------- | --------- |
+| 1   | `dev2-estructura`        | Opus   | Ruta puente, pantalla, máquina de estados y 40 tests; pruebas sin sesión      | BLOQUEADO |
+| —   | orquestador              | Opus   | Desbloqueo con `NODE_OPTIONS=--dns-result-order=ipv4first` (sin tocar `.env`) | —         |
+| 2   | `qa-tester`              | Sonnet | 15 casos nuevos y todas las pruebas con sesión pendientes                     | LISTO     |
+| 3   | `seguridad-cumplimiento` | Sonnet | En paralelo: sin CRÍTICO ni ALTO; aprueba D-037                               | APROBADO  |
+| 4   | `ux-accesibilidad`       | Sonnet | En paralelo: sin CRÍTICO ni ALTO; 3 MEDIO                                     | APROBADO  |
+| 5   | `dev2-estructura`        | Opus   | Ajustes cortos de UX (anuncios y foco), reanudado con su contexto             | LISTO     |
+| 6   | `documentador`           | Sonnet | En paralelo con el ajuste: D-037, docs/03, docs/10 y manual técnico           | LISTO     |
+| 7   | `revisor-pr`             | Sonnet | Revisión final de 5c y de la documentación                                    | APROBADO  |
+
+## Prompts usados (5c)
+
+### 1. dev2-estructura (entrega 5c)
+
+```
+Expediente: .claude/tareas/20261028-dev2-pantallas.md. Lee el INFORME 1 (Decisiones 1, 2 y 4 sobre la importación), los INFORMES 4 y 12 (seguridad), la sección "Entrega 5c" al final y, de forma rápida, lo que se hizo en 5a y 5b (commits 49fa112 y 94363f9). El contrato de la importación está en docs/03_CONTRATOS.md y el código de la API en apps/api/src/modules/users/import/ (F4: plantilla GET, preview POST y commit POST multipart; tope de 1 MiB; 10 intentos por minuto; ImportReport con totales, summary, errores por fila/columna/código/mensaje, errorsTruncated, canConfirm y sha256; commit todo o nada que exige el mismo sha256).
+
+Encargo: implementa la entrega 5c de la Fase 5 (pantalla de importación masiva, RF-21; RNF-09..13, RNF-24..27):
+1. Route Handler app/(app)/admin/usuarios/importar/archivo/[accion]/route.ts con accion ∈ {plantilla (GET), preview (POST), commit (POST)}; cualquier otra → 404. Comprueba que Origin sea el mismo host (los Route Handlers no tienen la protección de las Server Actions); rechaza con 413 local un Content-Length ausente o mayor que 1 MiB + 64 KiB; reenvía el cuerpo como stream (duplex: 'half') con su Content-Type, solo la cookie aula_sid validada y sin seguir redirecciones; en la plantilla, lista blanca de type y format y copia Content-Disposition con Cache-Control: no-store; devuelve status y JSON de la API sin registrar el cuerpo ni el nombre del archivo. Pon la lógica pura (Origin, tamaño, lista blanca, acción) en un módulo sin server-only para poder probarla; reutiliza lib/api/request-guards.ts.
+2. Pantalla /admin/usuarios/importar (componente de cliente dentro de una página con PageShell y PageHeader de _shared): elegir tipo (estudiantes, docentes, apoderados), descargar la plantilla xlsx o csv, elegir archivo (accept=".xlsx,.csv", rechazo en el cliente si pasa de 1 MiB), "Validar" (preview) y mostrar el reporte: totales, summary, tabla de errores solo con fila, columna y mensaje (tarjetas bajo sm), aviso si errorsTruncated. "Confirmar importación" solo con canConfirm, reenviando el mismo File y el sha256; un 409 por SHA distinto vuelve a la vista previa; un 422 muestra details en la misma tabla; tras éxito anuncia el resultado con useAnnounce y deja el foco en un encabezado. Si el usuario cambia el archivo o el tipo, se descarta el reporte. Aviso visible: "El archivo no se guarda; los motivos no muestran datos de las celdas". El cliente nunca lee ni muestra el contenido del archivo. Mensajes de error por status con toUserMessage (413 → "El archivo supera 1 MiB", 429 → "Demasiados intentos; espera un minuto").
+3. Pon la máquina de estados (idle → validando → reporte → confirmable → confirmando → hecho; 409 vuelve a reporte; archivo > 1 MiB rechazado) en lógica pura con tests.
+4. El enlace "Importar desde Excel" de /admin/usuarios ya apunta a /admin/usuarios/importar.
+
+Mismas reglas que en 5a y 5b: Next 16.4.2 con cacheComponents (lee apps/web/AGENTS.md y las guías de node_modules/next/dist/docs/ sobre route handlers y request bodies), 360 px y WCAG 2.1 AA, patrones de app/(app)/admin/_shared, ningún dato personal en logs, la web no decide permisos. No toques lib/nav.ts, lib/routes.ts, lib/session.ts, layouts, next.config.ts, packages/ui, apps/api/src, package.json ni el lockfile. No hagas commit.
+
+Verificación: pnpm --filter web lint, test y build; prettier --check sobre lo tocado. Con Docker healthy: dev-session (pnpm exec tsx --tsconfig apps/api/tsconfig.json prisma/seed/dev-session.ts), API :4000, web next start :3000; prueba con curl el Route Handler: plantilla de los 3 tipos en xlsx y csv; preview de un CSV válido y de uno con errores; commit con el mismo sha256 y con otro (409); Origin ajeno (403); sin Content-Length o mayor que el tope (413); acción desconocida (404); sin cookie (401) y con docente (403). Si el commit crea usuarios de prueba, usa correos con un sufijo propio (p. ej. *.5c@colegio.example), límpialos por id en la BD local como en 5b, deja la BD con pnpm db:seed y los servidores detenidos. Usa archivos de prueba en el scratchpad (C:\Users\Laptop\AppData\Local\Temp\claude\C--Proyectos-AV-MATER-CHIRSTI\d111556e-64dd-44a4-b5f2-177ecf4c5a23\scratchpad\). No leas .env.
+
+Devuelve el INFORME con el formato de .claude/PROTOCOLO_AGENTES.md.
+```
+
+### 2. qa-tester (5c, con sesión)
+
+```
+Expediente: .claude/tareas/20261028-dev2-pantallas.md (lee la sección "Entrega 5c": INFORME 18 y Decisiones del orquestador 7 y 8).
+
+Encargo: QA de la entrega 5c (importación masiva, RF-21; RNF-09..13, 24..27). Solo archivos de test. Sé eficiente: no repitas lo que el dev ya probó sin sesión.
+1. Revisa y amplía donde falten casos límite: apps/web/app/(app)/admin/usuarios/importar/_lib/import-guards.test.ts e import-machine.test.ts.
+2. pnpm --filter web test, lint y build; pnpm --filter api test.
+3. Pruebas con sesión pendientes del INFORME 18 (es lo principal). En esta máquina `localhost` IPv6 lo intercepta WSL: antepon NODE_OPTIONS=--dns-result-order=ipv4first a todos los comandos de Node (seed, dev-session, API, web) y antes calienta MySQL con: docker compose exec -T mysql sh -c 'mysql --protocol=TCP -h127.0.0.1 -uaula -p"$MYSQL_PASSWORD" aula_virtual -e "SELECT 1"'. Sesión: pnpm exec tsx --tsconfig apps/api/tsconfig.json prisma/seed/dev-session.ts (y --email docente01@colegio.example para el docente). API con node apps/api/dist/main (tras pnpm --filter api build) en :4000 y web con next start en :3000. Con curl contra http://localhost:3000/admin/usuarios/importar/archivo/<accion> (con Origin: http://localhost:3000 en los POST):
+   - plantilla de students, teachers y guardians en xlsx y csv: status, Content-Type y Content-Disposition;
+   - preview de un CSV válido (200, canConfirm true, sha256) y de uno con errores (200, errores con fila/columna/mensaje y sin contenido de celdas);
+   - commit con el mismo sha256 (201) y con otro sha256 (409);
+   - preview con sesión de docente01 (403).
+   Usa correos *.5c@colegio.example; hay archivos de prueba en el scratchpad C:\Users\Laptop\AppData\Local\Temp\claude\C--Proyectos-AV-MATER-CHIRSTI\d111556e-64dd-44a4-b5f2-177ecf4c5a23\scratchpad\ (ok.csv, big.csv). Al terminar borra por id los usuarios *.5c creados (como en 5b), corre pnpm db:seed (con el mismo NODE_OPTIONS) y deja detenidos los servidores. Comprueba que los logs no tengan el nombre del archivo ni correos. No leas .env.
+
+Devuelve el INFORME del protocolo (LISTO o CAMBIOS_PEDIDOS con Para: dev2-estructura y archivo:línea).
+```
+
+### 3. seguridad-cumplimiento (5c)
+
+```
+Expediente: .claude/tareas/20261028-dev2-pantallas.md (lee el INFORME 1, Decisión 1 sobre la importación, tu INFORME 12 y el INFORME 18 de la entrega 5c).
+
+Encargo acotado y breve: auditoría de seguridad de la entrega 5c (importación masiva, RF-21; RNF-09..13; D-037 propuesta), solo sobre apps/web/app/(app)/admin/usuarios/importar/ (archivo/[accion]/route.ts, _lib/import-guards.ts, _lib/import-machine.ts, _components/import-screen.tsx, page.tsx). Revisa: CSRF del Route Handler (Origin y Sec-Fetch-Site en POST; GET de plantilla sin Origin), tope de tamaño (Content-Length y conteo del stream), lista blanca de Content-Type, type/format y Content-Disposition, que solo reenvía aula_sid validada, redirect manual y timeouts, que no registra el cuerpo, el nombre del archivo ni correos, que la respuesta lleva no-store y nosniff, que el cliente no lee ni muestra el contenido del archivo y que el reporte de errores no expone datos de celdas. No hace falta revisar la API (F4 ya auditada).
+
+Solo lectura. Si en 10 minutos no lo cubres todo, entrega con lo revisado. INFORME del protocolo con severidad, APROBADO o CAMBIOS_PEDIDOS y archivo:línea.
+```
+
+### 4. ux-accesibilidad (5c)
+
+```
+Expediente: .claude/tareas/20261028-dev2-pantallas.md (lee el INFORME 18, Decisiones 6 y 7, y tus decisiones de 5a/5b en los INFORMES 5, 7, 13 y 15).
+
+Encargo acotado y breve: revisión de interfaz de la entrega 5c (importación masiva, RF-21; RNF-24..27), solo sobre apps/web/app/(app)/admin/usuarios/importar/page.tsx y _components/import-screen.tsx. Revisa: 360 px (tabla de errores como tarjetas bajo sm), labels del tipo y del archivo, aria-describedby de pistas y errores, rechazo en cliente de archivos > 1 MiB o de otra extensión (¿se anuncia y lleva el foco?), estados de carga (Validando…, Importando…, aria-busy), foco y anuncio tras validar, tras error y tras importar, el botón Confirmar desactivado sin canConfirm (¿se explica por qué?), aviso de errorsTruncated, aviso de privacidad visible, descarga de la plantilla con errores 401/403 como mensaje, coherencia con los patrones de _shared y textos en español claros.
+
+Solo lectura. Si en 10 minutos no lo cubres todo, entrega con lo revisado. INFORME del protocolo: APROBADO o CAMBIOS_PEDIDOS con archivo:línea, separando lo que bloquea.
+```
+
+### 5. dev2-estructura (ajustes cortos de UX, por SendMessage al mismo agente)
+
+```
+El bloqueo de entorno se resolvió y QA (INFORME 21), seguridad (INFORME 20) y UX (INFORME 19) aprobaron la 5c. Lee en .claude/tareas/20261028-dev2-pantallas.md el INFORME 19 y la Decisión del orquestador 9.
+
+Encargo corto, solo en apps/web/app/(app)/admin/usuarios/importar/_components/import-screen.tsx (y su lógica pura si hace falta):
+1. 292-303: anunciar con announce el error de archivo rechazado en cliente (> 1 MiB o extensión).
+2. 400 y 214-219: tras "Importar otro archivo", llevar el foco al h2 "1. Elige el tipo y el archivo" (o al campo de tipo).
+3. 311-314 y 365-368: announce('Validando el archivo…') y announce('Importando…') al empezar cada paso.
+4. 236-239 (BAJO): al cambiar el tipo con un reporte presente, anunciar que hay que volver a validar.
+
+No toques nada más. Verificación: pnpm --filter web lint, test y build, y prettier --check sobre lo tocado. No hace falta Docker. Devuelve un INFORME breve del protocolo con archivo:línea de cada cambio.
+```
+
+### 6. documentador (Fase 5)
+
+```
+Expediente: .claude/tareas/20261028-dev2-pantallas.md (lee el INFORME 1 y, de forma rápida, los INFORMES de 5a, 5b y 5c; los INFORMES 4, 12 y 20 de seguridad y las Decisiones del orquestador 7 y 8). Reporte de 5a/5b: .claude/reportes/20261028-dev2-pantallas.md.
+
+Encargo: documenta la Fase 5 de Dev 2 (pantallas de administración en apps/web: estructura académica, usuarios e importación; RF-09..14, 17..25; D-037). Solo modifica docs/. Sé conciso y no reescribas secciones ajenas.
+1. docs/08_DECISIONES.md: añade D-037 "Cómo llama la web a la API" (BFF: Server Components y Server Actions con cliente server-only que reenvía solo aula_sid, sin 'use cache' con sesión; importación por Route Handler puente con Origin, tope doble, lista blanca y sin registrar el archivo; la web no decide permisos; temporal hasta el cliente y login de Dev 1). Anota también, sin número nuevo si no corresponde, la decisión abierta de usar formularios nativos con Server Actions en lugar de React Hook Form/TanStack.
+2. docs/03_CONTRATOS.md: nota breve sobre la ruta puente de la web `/admin/usuarios/importar/archivo/{plantilla|preview|commit}` y la discrepancia anotada: POST /guardians con un studentId inexistente responde 404 y el contrato dice 422 (márcalo como pendiente de decidir, no lo resuelvas).
+3. docs/manuales/tecnico.md: cómo levantar las pantallas en local: docker compose, API, web, `pnpm exec tsx --tsconfig apps/api/tsconfig.json prisma/seed/dev-session.ts [--email]` y crear la cookie aula_sid en DevTools; que el script es solo local (rechaza producción, CI y hosts remotos); la variable API_INTERNAL_URL (por defecto http://localhost:4000); la solución si `localhost` IPv6 está ocupado por WSL (`NODE_OPTIONS=--dns-result-order=ipv4first`) y el calentamiento de MySQL por el error 45028; los tests de la web (`pnpm --filter web test`, Vitest).
+4. Si existe un manual del administrador en docs/manuales/, añade una sección corta de uso: estructura (años, períodos, secciones, cursos, docentes), usuarios (lista, búsqueda, altas, ficha, estados, matrícula, traslado, apoderados) e importación (plantilla, validar, confirmar; el archivo no se guarda). Si no existe, no lo crees y dilo.
+5. docs/10_TRAZABILIDAD.md: marca la interfaz de RF-09..14, 17..25 como hecha en F5 con las rutas.
+No toques .env.example (es de Dev 1; menciona API_INTERNAL_URL solo en el manual técnico y deja anotado como pendiente añadirla a .env.example con visto bueno del usuario). Ejecuta prettier --check sobre lo que toques si puedes; si no, dilo. Devuelve el INFORME del protocolo con la lista de archivos.
+```
+
+### 7. revisor-pr (5c y documentación)
+
+```
+Expediente: .claude/tareas/20261028-dev2-pantallas.md (sección "Entrega 5c": INFORMES 18–23 y Decisiones del orquestador 7–9; para el alcance, la Decisión 1).
+
+Encargo: revisión final de la entrega 5c de la Fase 5 de Dev 2 (importación masiva, RF-21; RNF-09..13, 24..27; D-037) y de la documentación de la Fase 5. Revisa solo lo que hay sin commit desde 94363f9. Sé eficiente: una pasada.
+1. Definición de terminado (docs/06_GIT_CALIDAD.md).
+2. Alcance: solo apps/web/app/(app)/admin/usuarios/importar/ (page.tsx, _components/import-screen.tsx, _lib/import-guards.ts + test, _lib/import-machine.ts + test, archivo/[accion]/route.ts), docs/08_DECISIONES.md, docs/03_CONTRATOS.md, docs/10_TRAZABILIDAD.md, docs/manuales/tecnico.md y el expediente. Nada en nav, routes, lib/session.ts, lib/api, layouts, next.config.ts, packages/ui, components/ui, apps/api/src, package.json, lockfile ni .env.example. .agents/ y skills-lock.json no entran.
+3. Los ajustes cortos de UX del INFORME 22 (import-screen.tsx :170, :194, :221, :232-236, :247-251, :306-313; import-machine.ts :343-360) no rompen la conducta aprobada por seguridad (INFORME 20) ni la máquina de estados.
+4. Que la documentación no contradiga el código (D-037, ruta puente, comando de dev-session con --tsconfig, NODE_OPTIONS=--dns-result-order=ipv4first, API_INTERNAL_URL) ni reescriba secciones ajenas.
+5. Pasan: pnpm --filter web lint, test y build; pnpm --filter api lint y test; prettier --check sobre los archivos de código tocados y el expediente.
+
+No modifiques archivos. INFORME del protocolo: APROBADO o CAMBIOS_PEDIDOS con archivo:línea, y la lista exacta de archivos para el commit (más el reporte, que crea el orquestador).
+```
+
+## Decisiones del orquestador (5c)
+
+1. **Bloqueo de entorno:** el dev quedó BLOQUEADO porque `wslrelay.exe` ocupa `[::1]:3306`, `[::1]:6379` y `[::1]:9000` (comprobado con `netstat`). Se preguntó al usuario; recomendé usar `127.0.0.1` en vez de apagar WSL (apagarlo tumba Docker Desktop y el problema vuelve). El usuario dijo "VA, utiliza 127.0.0.1".
+2. **Sin tocar `.env`:** no puedo leerlo ni editarlo, así que apliqué 127.0.0.1 con `NODE_OPTIONS=--dns-result-order=ipv4first`, que hace que Node resuelva `localhost` a IPv4. Comprobado: tras calentar MySQL (error 45028), el script de sesión conecta.
+3. **Eficiencia (pedido del usuario):** las pruebas con sesión pendientes no volvieron al dev, las hizo `qa-tester` en su pasada; QA, seguridad y UX corrieron en paralelo con encargos acotados y un tope de 10 minutos; los 3 MEDIO de UX se resolvieron reanudando al mismo dev (con su contexto) sin repetir QA ni UX, y el `documentador` trabajó en paralelo. El revisor final verificó código y documentación en una sola pasada.
+4. **Notas de estado en docs:** tras el APROBADO del revisor, el orquestador cambió "pendiente de la revisión final" por "aprobada por `revisor-pr`, INFORME 24" en `docs/10_TRAZABILIDAD.md:56` y `docs/manuales/tecnico.md:164` (solo texto).
+5. **No se tocó `.env.example`** (archivo de Dev 1) ni se creó el manual del administrador, que no existe: quedan para decisión del usuario.
+
+## Archivos (5c)
+
+- **Nuevos** en `apps/web/app/(app)/admin/usuarios/importar/`: `page.tsx`, `_components/import-screen.tsx`, `_lib/import-guards.ts`, `_lib/import-guards.test.ts`, `_lib/import-machine.ts`, `_lib/import-machine.test.ts`, `archivo/[accion]/route.ts`
+- **Documentación:** `docs/08_DECISIONES.md`, `docs/03_CONTRATOS.md`, `docs/10_TRAZABILIDAD.md`, `docs/manuales/tecnico.md`
+- Expediente y este reporte. **No se incluyen:** `.agents/`, `skills-lock.json`.
+
+## Verificación (5c)
+
+| Comando                                          | Resultado                                                               |
+| ------------------------------------------------ | ----------------------------------------------------------------------- |
+| `pnpm --filter web lint`                         | ok (aviso informativo de jsx-ast-utils)                                 |
+| `pnpm --filter web test`                         | ok, 9 archivos, **224 tests**                                           |
+| `pnpm --filter web build`                        | ok (importar como Partial Prerender; la ruta puente dinámica)           |
+| `pnpm --filter api lint` / `test`                | ok, 28 archivos, 314 tests                                              |
+| `prettier --check` (importar/, expediente, docs) | ok                                                                      |
+| Docker + API real (con `NODE_OPTIONS`)           | plantillas 200; preview 200; commit 201; 409; 422; 413; 403 con docente |
+| Logs                                             | sin nombres de archivo, correos ni contenido de celdas                  |
+| BD                                               | usuario de prueba borrado por id y `pnpm db:seed` al final              |
+
+## Pendientes (5c y F5)
+
+- **Fase 6 de Dev 2:** clonar la estructura al año siguiente y promoción en bloque (RF-15, RF-16, RN-15).
+- **Prueba manual en navegador** de toda la F5 (360 px, teclado, NVDA/VoiceOver, modo oscuro) y Playwright + axe. Importación con `.xlsx` reales y vista previa con sesión de estudiantes y apoderados.
+- **Decisiones del usuario:** crear o no `docs/manuales/administrador.md`; añadir `API_INTERNAL_URL` a `.env.example` (Dev 1); POST `/guardians` con un estudiante que no existe (404 en la API, 422 en el contrato).
+- **Para David (Dev 1):** límite de peticiones por IP, `getCurrentRole` sin cookie, fijar `X-Forwarded-Host` en el proxy de despliegue, y reemplazar el script de sesión por el login real.
+- BAJO de UX sin tocar: botón de plantilla que pierde el foco al descargar, 44 px del campo de archivo y contraste del anillo de foco.
 
 ## Expediente
 
