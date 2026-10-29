@@ -18,4 +18,16 @@ describe('loadEnv', () => {
   it('rechaza un NODE_ENV desconocido', () => {
     expect(() => loadEnv({ NODE_ENV: 'staging' })).toThrow(/NODE_ENV/);
   });
+
+  it('trata una variable vacia como no definida', () => {
+    expect(loadEnv({ TOTP_ENCRYPTION_KEY: '' }).TOTP_ENCRYPTION_KEY).toBeUndefined();
+  });
+
+  it('exige la clave TOTP en produccion', () => {
+    expect(() => loadEnv({ NODE_ENV: 'production' })).toThrow(/TOTP_ENCRYPTION_KEY/);
+  });
+
+  it('rechaza una clave TOTP que no mide 32 bytes', () => {
+    expect(() => loadEnv({ TOTP_ENCRYPTION_KEY: 'corta' })).toThrow(/TOTP_ENCRYPTION_KEY/);
+  });
 });

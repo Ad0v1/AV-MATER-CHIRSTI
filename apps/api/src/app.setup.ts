@@ -13,7 +13,13 @@ export const API_PREFIX = 'api/v1';
  */
 export const JSON_BODY_LIMIT = '512kb';
 
-export function configureApp(app: INestApplication, webOrigin = 'http://localhost:3000'): void {
+export function configureApp(
+  app: INestApplication,
+  webOrigin = 'http://localhost:3000',
+  trustProxy = 0,
+): void {
+  // Solo se confia en X-Forwarded-For si hay un proxy propio delante; si no, cualquiera podria falsearlo.
+  if (trustProxy > 0) app.getHttpAdapter().getInstance().set('trust proxy', trustProxy);
   app.setGlobalPrefix(API_PREFIX);
   // Antes de app.init(): Nest no registra su parser JSON por defecto si ya hay uno.
   (app as NestExpressApplication).useBodyParser('json', { limit: JSON_BODY_LIMIT });

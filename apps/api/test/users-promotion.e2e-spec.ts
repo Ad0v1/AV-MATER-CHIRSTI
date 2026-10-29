@@ -9,7 +9,7 @@ import { AuditSink } from './../src/common/audit/audit.service.js';
 import { SESSION_COOKIE } from './../src/common/session/session-cookie.js';
 import { SessionService } from './../src/common/session/session.service.js';
 import { PrismaClient } from './../src/generated/prisma/client.js';
-import { createTestApp, MemoryAuditSink } from './helpers.js';
+import { createDbTestApp, MemoryAuditSink } from './helpers.js';
 
 // RF-16 / RN-15 (F6, entrega 6b): promoción en bloque. Usa MySQL real con el seed cargado (solo
 // local con Docker) y deja la BD como estaba: borra sus años, matrículas y usuarios QA.
@@ -99,7 +99,7 @@ describe.skipIf(!process.env.DATABASE_URL)('Promoción en bloque RF-16 (e2e, MyS
     await cleanQaData(); // por si una corrida anterior se interrumpió
     baseline = await counts();
 
-    app = await createTestApp();
+    app = await createDbTestApp();
     sink = app.get(AuditSink) as MemoryAuditSink;
     const sessions = app.get(SessionService);
     for (const key of ['admin', 'docente01', 'estudiante01']) {

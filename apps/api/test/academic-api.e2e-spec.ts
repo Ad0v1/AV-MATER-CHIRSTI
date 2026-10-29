@@ -14,7 +14,7 @@ import {
   AcademicEventPublisher,
   type AcademicEvent,
 } from './../src/modules/academic/academic-events.js';
-import { createTestApp, MemoryAuditSink } from './helpers.js';
+import { createDbTestApp, MemoryAuditSink } from './helpers.js';
 
 // Usa MySQL real con el seed cargado (solo local con Docker). Cargan el .env de la raiz si existe.
 config({ path: fileURLToPath(new URL('../../../.env', import.meta.url)), quiet: true });
@@ -147,7 +147,7 @@ describe.skipIf(!process.env.DATABASE_URL)('API academica F2 (e2e, MySQL)', () =
     cs3AMath = await csOf('A');
     cs3BMath = await csOf('B');
 
-    app = await createTestApp();
+    app = await createDbTestApp();
     sink = app.get(AuditSink) as MemoryAuditSink;
     access = app.get(AcademicAccessService);
     events = [];

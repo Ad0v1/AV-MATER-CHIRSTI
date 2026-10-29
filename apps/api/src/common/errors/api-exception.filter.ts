@@ -55,6 +55,7 @@ export class ApiExceptionFilter implements ExceptionFilter {
         : HttpStatus.INTERNAL_SERVER_ERROR;
 
     let message = 'Error interno del servidor';
+    let code: string | undefined;
     let details: unknown[] = [];
     if (tooLarge) {
       message = PAYLOAD_TOO_LARGE_MESSAGE;
@@ -63,7 +64,8 @@ export class ApiExceptionFilter implements ExceptionFilter {
       if (typeof body === 'string') {
         message = body;
       } else if (typeof body === 'object' && body !== null) {
-        const b = body as { message?: unknown };
+        const b = body as { message?: unknown; code?: unknown };
+        if (typeof b.code === 'string') code = b.code;
         if (Array.isArray(b.message)) {
           message = 'Solicitud invalida';
           details = b.message;
@@ -79,7 +81,7 @@ export class ApiExceptionFilter implements ExceptionFilter {
     }
 
     res.status(status).json({
-      error: { code: CODE_BY_STATUS[status] ?? 'ERROR', message, details },
+      error: { code: code ?? CODE_BY_STATUS[status] ?? 'ERROR', message, details },
       requestId,
     });
   }

@@ -12,6 +12,9 @@ import { HealthController } from './health/health.controller.js';
 import { AcademicModule } from './modules/academic/academic.module.js';
 import { AuthController } from './modules/auth/auth.controller.js';
 import { UsersModule } from './modules/users/users.module.js';
+import { AuthService } from './modules/auth/auth.service.js';
+import { PasswordService } from './modules/auth/password.service.js';
+import { TotpService } from './modules/auth/totp.service.js';
 
 @Module({
   imports: [
@@ -28,6 +31,9 @@ import { UsersModule } from './modules/users/users.module.js';
   ],
   controllers: [HealthController, AuthController],
   providers: [
+    AuthService,
+    PasswordService,
+    TotpService,
     // Orden: primero el limite de peticiones, luego los permisos por rol.
     { provide: APP_GUARD, useClass: ThrottlerGuard },
     { provide: APP_GUARD, useClass: RolesGuard },

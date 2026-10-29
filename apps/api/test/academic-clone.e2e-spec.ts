@@ -9,7 +9,7 @@ import { AuditSink } from './../src/common/audit/audit.service.js';
 import { SESSION_COOKIE } from './../src/common/session/session-cookie.js';
 import { SessionService } from './../src/common/session/session.service.js';
 import { PrismaClient } from './../src/generated/prisma/client.js';
-import { createTestApp, MemoryAuditSink } from './helpers.js';
+import { createDbTestApp, MemoryAuditSink } from './helpers.js';
 
 // RF-15 (F6, entrega 6a): clonar la estructura de un año en otro. Usa MySQL real con el seed
 // cargado (solo local con Docker) y deja la BD como estaba: borra sus años, cursos y usuarios QA.
@@ -106,7 +106,7 @@ describe.skipIf(!process.env.DATABASE_URL)('Clonar estructura RF-15 (e2e, MySQL)
     year2025Id = (await prisma.academicYear.findUniqueOrThrow({ where: { year: 2025 } })).id;
     year2026Id = (await prisma.academicYear.findUniqueOrThrow({ where: { year: 2026 } })).id;
 
-    app = await createTestApp();
+    app = await createDbTestApp();
     sink = app.get(AuditSink) as MemoryAuditSink;
     const sessions = app.get(SessionService);
 

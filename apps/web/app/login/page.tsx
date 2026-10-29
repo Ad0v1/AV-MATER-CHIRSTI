@@ -1,5 +1,17 @@
-import { PlaceholderPage } from '@/components/placeholder-page';
+import { LoginForm } from '@/components/auth/login-form';
 
-export default function Page() {
-  return <PlaceholderPage title="Iniciar sesión" owner="Dev 1" requirements="RF-01..08" />;
+export const metadata = { title: 'Iniciar sesión · Aula Virtual' };
+
+export default function LoginPage() {
+  return (
+    <main className="flex min-h-screen items-center justify-center p-4">
+      <div className="w-full max-w-sm rounded-xl border bg-card p-6 shadow-sm">
+        <h1 className="text-2xl font-semibold">Aula Virtual</h1>
+        <p className="mt-1 mb-6 text-sm text-muted-foreground">
+          Ingresa con tu cuenta para continuar.
+        </p>
+        <LoginForm />
+      </div>
+    </main>
+  );
 }
