@@ -1,0 +1,48 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "api",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": [
+        "--filter",
+        "api",
+        "start"
+      ],
+      "env": {
+        "NODE_OPTIONS": "--dns-result-order=ipv4first"
+      },
+      "port": 4000
+    },
+    {
+      "name": "web",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": [
+        "--filter",
+        "web",
+        "dev"
+      ],
+      "env": {
+        "NODE_OPTIONS": "--dns-result-order=ipv4first"
+      },
+      "port": 3000
+    },
+    {
+      "name": "prisma-studio",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": [
+        "exec",
+        "prisma",
+        "studio",
+        "--port",
+        "5555",
+        "--browser",
+        "none"
+      ],
+      "env": {
+        "NODE_OPTIONS": "--dns-result-order=ipv4first"
+      },
+      "port": 5555
+    }
+  ]
+}

@@ -45,6 +45,10 @@ model AcademicPeriod {
 
   academicYear AcademicYear @relation(fields: [academicYearId], references: [id], onDelete: Restrict, onUpdate: Restrict)
 
+  // Relación inversa de Dev 3, autorizado por el usuario el 29/10/2026
+  materials   Material[]
+  assignments Assignment[]
+
   @@unique([academicYearId, sequence])
   @@unique([academicYearId, kind])
 }
@@ -89,6 +93,11 @@ model CourseSection {
   course  Course  @relation(fields: [courseId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   teacher User?   @relation("CourseSectionTeacher", fields: [teacherId], references: [id], onDelete: Restrict, onUpdate: Restrict)
 
+  // Relación inversa de Dev 3, autorizado por el usuario el 29/10/2026
+  materials   Material[]
+  assignments Assignment[]
+  storedFiles StoredFile[]
+
   @@unique([sectionId, courseId])
   @@index([teacherId])
   @@index([courseId])
@@ -109,6 +118,9 @@ model Enrollment {
 
   student User    @relation("EnrollmentStudent", fields: [studentId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   section Section @relation(fields: [sectionId, academicYearId], references: [id, academicYearId], onDelete: Restrict, onUpdate: Restrict)
+
+  // Relación inversa de Dev 3, autorizado por el usuario el 29/10/2026
+  submissions Submission[]
 
   @@unique([academicYearId, studentId, isCurrent])
   @@index([studentId, effectiveFrom])

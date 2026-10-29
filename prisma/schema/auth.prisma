@@ -36,6 +36,12 @@ model User {
   guardianLinks        GuardianStudent[] @relation("GuardianStudentGuardian")
   wardLinks            GuardianStudent[] @relation("GuardianStudentStudent")
 
+  // Relaciones inversas de Dev 3 (contents.prisma); relación inversa de Dev 3, autorizado por el usuario el 29/10/2026
+  uploadedFiles      StoredFile[] @relation("StoredFileUploader")
+  createdMaterials   Material[]   @relation("MaterialCreator")
+  deletedMaterials   Material[]   @relation("MaterialDeleter")
+  createdAssignments Assignment[] @relation("AssignmentCreator")
+
   @@index([role, status])
 }
 
