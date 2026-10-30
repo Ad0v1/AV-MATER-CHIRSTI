@@ -65,6 +65,36 @@ La correspondencia de RF y dev reproduce el **Plan de Trabajo**. Los detalles de
 - **Pruebas de integración:** `apps/api/test/academic-clone.e2e-spec.ts` (clonación, docentes, segundo clon 409, origen posterior 422, bitácora sin nombres) y `apps/api/test/users-promotion.e2e-spec.ts` (18 casos: propuesta, todo o nada, huella 409, tandas con `EXCLUDE`, `YEAR_END`, origen cerrado, paralelo, límite de 2000 decisiones, bitácora solo con ids).
 - **Pendiente:** texto literal de RF-15 y RF-16 en la ERS sin confirmar; ¿los egresados pasan a `INACTIVE`? (por ahora no); revisión de Dev 1 del límite de cuerpo (512 KB) y del 413 en `app.setup.ts` y `api-exception.filter.ts`; JSON mal formado sigue en 500 (Dev 1); prueba manual en navegador. Las pruebas necesitan MySQL local con el seed: verificar en local con Docker. Sin commit ni PR; no va al repo del equipo sin acuerdo (D-038).
 
+**Nota de avance (RF-26..31, RF-33..40, RNF-03 y RNF-18; API, pantallas y pruebas; PROPUESTA del 29/10/2026, Dev 3):** archivos con antivirus y almacenamiento privado, tareas, materiales, entregas y constancia. Contrato en `03_CONTRATOS.md`, sección "API de contenidos, archivos y entregas"; decisiones D-039 a D-047 en `08_DECISIONES.md`.
+
+- Archivos y almacenamiento: `apps/api/src/modules/files/` (intent, complete y descarga; inspección del PDF y ClamAV detrás de `FileScanner`) y `apps/api/src/modules/storage/` (servicio de luchito, integrado sin duplicar).
+- Tareas: `apps/api/src/modules/contents/assignments.*`. Materiales: `contents/materials.*` y `contents-guards.ts` (período y permisos).
+- Entregas: `apps/api/src/modules/submissions/` (entrega, reentrega, historial, constancia y `SubmissionsReadService` para Dev 4).
+- Pantallas: `apps/web/app/(app)/curso/[id]/clases/`, `lecturas/` y `tareas/` (con `_materials/`).
+- Pruebas unitarias: `files.service.spec.ts`, `clamav.scanner.spec.ts`, `pdf-inspector.spec.ts`, `files-hardening.spec.ts`, `storage.service.spec.ts`, `storage.config.spec.ts`, `assignments.policy.spec.ts`, `materials.policy.spec.ts`, `contents-events.spec.ts`, `submissions.policy.spec.ts` (`pnpm --filter api test`) y `assignment-format.test.ts` (`pnpm --filter web test`).
+- Pruebas de integración (`pnpm --filter api test:e2e`, con MySQL, MinIO y ClamAV locales): `apps/api/test/files.e2e-spec.ts`, `contents-assignments.e2e-spec.ts`, `contents-materials.e2e-spec.ts`, `submissions.e2e-spec.ts` y `db-test-guard.e2e-spec.ts`.
+
+| RF | Estado | Dónde | Pruebas |
+| --- | --- | --- | --- |
+| RF-26 | Implementado (API y pantalla) | `contents/materials.*`, `_materials/` | `contents-materials.e2e-spec.ts` |
+| RF-27 | Implementado; texto legal del aviso pendiente | `materials.policy.ts`, `isReusable` (solo API) | `contents-materials.e2e-spec.ts` |
+| RF-28 | Implementado (API y pantalla de creación) | `contents/assignments.*`, `tareas/create-assignment-form.tsx` | `contents-assignments.e2e-spec.ts` |
+| RF-29 | Implementado en API; edición en pantalla pendiente | `assignments.service.ts` (RN-10) | `contents-assignments.e2e-spec.ts` |
+| RF-30 | Implementado en API (papelera de 30 días); sin pantalla | `materials.service.ts` (`restore`) | `contents-materials.e2e-spec.ts` |
+| RF-31 | Implementado en API; descarga del PDF en pantalla pendiente | `files.service.ts` (`assertCanDownload`) | `files.e2e-spec.ts` |
+| RF-33 | Implementado (API y pantalla del estudiante) | `submissions/`, `tareas/submit-form.tsx` | `submissions.e2e-spec.ts` |
+| RF-34 | Implementado (cabecera, fin de archivo, cifrado y ClamAV) | `files/pdf-inspector.ts`, `clamav.scanner.ts` | `pdf-inspector.spec.ts`, `files.e2e-spec.ts` |
+| RF-35 | Implementado (413 y borrado del objeto) | `files.service.ts` (`TOO_LARGE`) | `files-hardening.spec.ts`, `files.e2e-spec.ts` |
+| RF-36 | Implementado (versiones inmutables, RN-09) | `submissions.service.ts`, triggers de `SubmissionVersion` | `submissions.e2e-spec.ts` |
+| RF-37 | Implementado (tardía sin descuento, RN-06) | `submissions.policy.ts`, `display-status.ts` | `submissions.policy.spec.ts`, `submissions.e2e-spec.ts` |
+| RF-38 | Parcial: `PENDING`, `SUBMITTED` y `SUBMITTED_LATE`; `GRADED`, `NOT_SUBMITTED` y `EXEMPT` dependen de Dev 4 | `display-status.ts` | `submissions.policy.spec.ts` |
+| RF-39 | Implementado (constancia con referencia, fecha, archivo y estado) | `submissions.types.ts`, `tareas/receipt-view.tsx` | `submissions.e2e-spec.ts` |
+| RF-40 | Implementado (ClamAV; un archivo infectado nunca se descarga) | `clamav.scanner.ts`, `files.service.ts` | `clamav.scanner.spec.ts`, `files.e2e-spec.ts` |
+| RNF-03 | Implementado (bucket privado, claves UUID, cuarentena) | `storage/`, `files/` | `storage.service.spec.ts`, `files.e2e-spec.ts` |
+| RNF-18 | Implementado (URL firmada de 60 s tras los permisos) | `storage.config.ts`, `files.service.ts` | `storage.config.spec.ts`, `files.e2e-spec.ts` |
+
+- Pendiente: texto legal del aviso de copyright (RF-27); pantalla de descarga del PDF, edición y borrado de tareas, papelera y marca de reutilizable de materiales; estados GRADED, NOT_SUBMITTED y EXEMPT con Dev 4 (RF-38); prueba en navegador real y con lector de pantalla; ciclo de vida de `incoming/` y CORS de R2 (Dev 1); barrido de intents vencidos (Dev 5); bitácora dentro de la transacción (D-047, Dev 1). Verificar en local con Docker las pruebas e2e completas.
+
 ## Fuente original por tema
 
 | Tema | Archivo y sección/página impresa |

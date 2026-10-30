@@ -746,3 +746,111 @@ Efecto, todo o nada (si cualquier error, no se escribe nada):
 
 - El texto literal de RF-15 y RF-16 en la ERS no está confirmado. Las reglas salen del expediente, de RN-15 (`docs/04_REGLAS_ESTADOS.md`) y de D-029 y D-030.
 - ¿Los egresados (grado 5, `GRADUATE`) pasan a `INACTIVE`? Por ahora no: conservan `ACTIVE`.
+
+## API de contenidos, archivos y entregas (Dev 3, RF-26..31, RF-33..40; RNF-03/18)
+
+> **Estado: PROPUESTA (29/10/2026).** Código en `apps/api/src/modules/{files,contents,submissions,storage}/`, rama `features/adolfo`, sin PR al equipo. Revisado por `seguridad-cumplimiento` (INFORMES 6, 7 y 12) y `qa-tester` (INFORMES 8, 10 y 13). Esta sección sigue el código: si cambia una ruta, un campo, un código o un evento, se actualiza aquí.
+
+### Convenciones
+
+- Prefijo `/api/v1`. Sin sesión, 401. Los roles salen de `@Roles` de cada controlador; la pertenencia, el plazo y el período se comprueban en el servicio.
+- Ids UUID (400 si no lo son). Fechas de salida en ISO-8601 UTC; `dueAt` de entrada acepta zona horaria (`-05:00`).
+- Entrada estricta: un campo de más responde 400.
+- Errores: formato común `{ error: { code, message, details }, requestId }`. Los que no tienen código propio salen del estado (`CONFLICT`, `NOT_FOUND`, `FORBIDDEN`…).
+- Límites de petición (429): `upload-intents` 20 por minuto por usuario; `complete` 30 por minuto por usuario.
+- Bitácora después del commit. Nunca registra `originalName`, texto de tareas o materiales, ni la firma del antivirus (D-047).
+
+### Archivos (RF-33..35, RF-40, RNF-03/18)
+
+Flujo: intent, subida directa con PUT firmado a MinIO, `complete` y después la entrega, el material o el adjunto. El PUT va a la cuarentena `incoming/` (D-046); `complete` copia el objeto a su destino solo si el veredicto es CLEAN. Claves `{scope}/{año}/{mes}/{uuid}.pdf` con scope `incoming`, `materials`, `assignments` o `submissions`; nunca con el nombre original.
+
+| Método y ruta | Entrada | Respuesta | Errores |
+| --- | --- | --- | --- |
+| `POST /files/upload-intents` | `{ purpose: MATERIAL \| ASSIGNMENT_ATTACHMENT \| SUBMISSION, courseSectionId, assignmentId? (obligatorio solo en SUBMISSION), fileName (1..255), sizeBytes (entero > 0), contentType: "application/pdf" }` | 201 `{ fileId, uploadUrl, method: "PUT", headers, expiresAt, maxBytes }`. `headers` se envían con el PUT (Content-Type y Content-Length firmados). Vigencia 5 min | 400 (`assignmentId` falta o sobra); 403 (rol o sin permiso de escritura); 404 (sección o tarea); 409 `DEADLINE_PASSED`; 409 sección de solo lectura o período cerrado; 413 `FILE_TOO_LARGE` (mayor que el límite); 429 |
+| `POST /files/:id/complete` | Sin cuerpo | 200 `{ fileId, scanStatus: "CLEAN", sizeBytes, sha256, completedAt }`. `completedAt` es la hora del servidor y es el `receivedAt` de la entrega (D-039). Repetida con archivo ya CLEAN: 200 con el mismo cuerpo | 404 `FILE_NOT_FOUND` (también si la subida es de otro usuario); 409 `UPLOAD_NOT_FOUND` (el objeto aún no está en S3; se puede reintentar mientras vive el intent), `UPLOAD_EXPIRED`, `OBJECT_CHANGED` (el objeto cambió entre la lectura y la copia), `DEADLINE_PASSED` y período cerrado; 413 `FILE_TOO_LARGE`; 415 `INVALID_PDF` o `ENCRYPTED_PDF`; 422 `FILE_INFECTED`; 503 `ANTIVIRUS_UNAVAILABLE` o `STORAGE_UNAVAILABLE` (el archivo queda PENDING y se puede reintentar) |
+| `POST /files/:id/download-url` | `{ inline? }` (opcional, boolean) | 200 `{ url, method: "GET", expiresAt }`. Vigencia 60 s | 403 (apoderado o sin permiso); 404 `FILE_NOT_FOUND` (no está CLEAN, está purgado, o es un material en la papelera y lo pide un estudiante) |
+
+Quién descarga (RF-31):
+
+- Entregas (`SUBMISSION`): el alumno dueño (ACTIVE), el docente asignado y ADMIN.
+- Materiales y adjuntos publicados: cualquier miembro de la sección (estudiante con matrícula vigente, docente asignado y ADMIN).
+- Sin publicar (aún no usados por un material o una tarea): solo quien lo subió, si sigue siendo miembro, o ADMIN.
+- Apoderado: siempre 403 (D-044).
+- Archivos PENDING, INVALID o INFECTED: nunca se descargan (404).
+
+### Materiales (RF-26, RF-27, RF-29, RF-30, RF-31)
+
+Lectura: ADMIN, docente, estudiante (apoderado 403, D-044). Escritura: ADMIN o docente asignado.
+
+| Método y ruta | Entrada | Respuesta | Errores |
+| --- | --- | --- | --- |
+| `GET /course-sections/:id/materials` | Query `kind?` (`CLASS` \| `READING`), `periodId?`, `includeDeleted?` (`true` \| `false`) | 200 `{ items: MaterialView[], total }` | 400; 403 (`includeDeleted` solo para docente asignado y ADMIN); 404 |
+| `POST /course-sections/:id/materials` | `{ kind, title (1..200), description? (hasta 5000), fileId, periodId? (D-042), isReusable? (default false; solo READING) }` | 201 `MaterialView`. Publica `material.published.v1` | 400 (`isReusable` en una clase); 403; 404 (sección o período no existe); 409 período cerrado, o archivo ya usado por otro material; 422 archivo no usable (no CLEAN, de otra sección o finalidad, purgado) o período de otro año |
+| `PATCH /materials/:id` | `{ title?, description?, isReusable? }` (al menos uno). `kind`, `fileId` y `periodId` no cambian | 200 `MaterialView` | 400; 403; 404 (no existe o está en la papelera); 409 período cerrado; 422 `isReusable` en una clase |
+| `DELETE /materials/:id` | — | 204. Va a la papelera (`deletedAt` y `deletedById`) | 403; 404 (no existe o ya está en la papelera); 409 período cerrado |
+| `POST /materials/:id/restore` | — | 200 `MaterialView` | 403; 404; 409 si no está en la papelera, si pasaron 30 días desde `deletedAt` (el día 30 aún se puede) o si el archivo fue purgado |
+
+`MaterialView`: `{ id, courseSectionId, periodId | null, kind, title, description | null, fileId, isReusable, copyrightNotice | null, deletedAt | null, restorableUntil | null, createdAt, updatedAt }`. `copyrightNotice` solo existe en las lecturas (RF-27); su texto está pendiente de validación legal. `restorableUntil` es `deletedAt` + 30 días.
+
+### Tareas (RF-28, RF-29)
+
+Lectura: ADMIN, docente, estudiante (apoderado 403). Escritura: ADMIN o docente asignado. Crear, editar y borrar exigen período y año abiertos (RN-10).
+
+| Método y ruta | Entrada | Respuesta | Errores |
+| --- | --- | --- | --- |
+| `POST /course-sections/:id/assignments` | `{ periodId, title (1..200), instructions (1..10000), dueAt, maxSizeBytes? (1..52428800; por defecto 20971520), noSubmissionGrade? (0..20, hasta 2 decimales; por defecto "0.00"), allowLate? (por defecto false), attachmentFileId? (PDF de la sección) }` | 201 `AssignmentView`. Publica `assignment.created.v1` | 400; 403; 404 (sección o período); 409 período cerrado o año no activo; 409 adjunto ya usado; 422 período de otro año, `dueAt` pasado o adjunto no usable |
+| `GET /course-sections/:id/assignments` | Query `periodId?` | 200 `{ items: AssignmentView[], total }` | 400; 403; 404 |
+| `GET /assignments/:id` | — | 200 `AssignmentView` | 403; 404 (no existe o está borrada) |
+| `PATCH /assignments/:id` | `{ title?, instructions?, dueAt?, maxSizeBytes?, noSubmissionGrade?, allowLate?, attachmentFileId? }` (al menos uno; `null` quita el adjunto). El período no se cambia | 200 `AssignmentView`. Publica `assignment.updated.v1` | 400 (incluye `periodId`); 403; 404; 409 período cerrado o adjunto en uso; 422 `dueAt` pasado o adjunto no usable |
+| `DELETE /assignments/:id` | — | 204 (borrado lógico; no publica evento; el adjunto queda enlazado) | 403; 404; 409 si ya tiene entregas |
+
+`AssignmentView`: `{ id, courseSectionId, periodId, title, instructions, dueAt, maxSizeBytes, noSubmissionGrade ("12.50"), allowLate, attachmentFileId | null, periodIsOpen, createdAt, updatedAt }`. `periodIsOpen` es `false` si el período o su año están cerrados (la tarea ya no se edita).
+
+### Entregas (RF-33, RF-36, RF-37, RF-39)
+
+| Método y ruta | Entrada | Respuesta | Errores |
+| --- | --- | --- | --- |
+| `POST /assignments/:id/submissions` | `{ fileId }`. Solo STUDENT con matrícula vigente en la sección | 201 `SubmissionAccepted` (nueva versión). 200 con el mismo cuerpo si ese `fileId` ya era una entrega suya (idempotente). Publica `submission.accepted.v1` solo al crear | 400; 403 (no es estudiante vigente o usuario no activo); 404 (tarea no existe o borrada); 409 período cerrado; 409 plazo vencido sin `allowLate`; 409 archivo ya entregado en otra tarea; 409 conflicto de concurrencia tras 3 intentos; 422 archivo no válido (no CLEAN, de otro alumno, de otra tarea o purgado) |
+| `GET /assignments/:id/submissions/me` | — | 200 `MySubmissionView`: `{ assignment: { id, dueAt, allowLate, maxSizeBytes }, submissionId | null, displayStatus, isLate, isOverdue, latestVersion | null, versions[] }`. `versions` va de la más nueva a la más antigua | 403 (no es estudiante); 404 |
+| `GET /assignments/:id/submissions` | — | 200 `{ items: TeacherSubmissionItem[], total }`: una fila por matrícula vigente de la sección, con o sin entrega | 403 (no es docente asignado ni ADMIN); 404 |
+| `GET /submissions/:id/versions` | — | 200 `SubmissionVersionsView`: `{ submissionId, assignmentId, enrollmentId, versions[] }` | 403 (no es dueño ACTIVE, docente asignado ni ADMIN; apoderado siempre); 404 |
+
+Reglas de entrega:
+
+- Plazo: entrega a tiempo o tardía (`isLate`, `lateBySeconds`). Tras el plazo solo se acepta con `allowLate`, y se marca como tardía sin descuento (RN-06).
+- Reentrega: cada envío nuevo es una `SubmissionVersion`. La oficial es la de mayor `versionNumber` (RN-09). Las versiones anteriores no se modifican.
+- Período cerrado o año no activo: no se acepta ninguna entrega, tampoco tardía (D-045).
+- `SubmissionReceipt` (constancia, RF-39): `{ reference (id de la versión), submissionId, assignmentId, versionId, versionNumber, receivedAt, isLate, lateBySeconds, isOfficial, status ("SUBMITTED" \| "SUBMITTED_LATE"), file: { fileId, originalName, sizeBytes, sha256 } }`. `originalName` solo lo ven el alumno dueño, el docente asignado y ADMIN.
+- `displayStatus` (RF-38) en esta API: `PENDING`, `SUBMITTED` y `SUBMITTED_LATE`. Los demás estados dependen de la nota de Dev 4 (ver el contrato siguiente).
+
+### Eventos de contenidos y entregas (D-031)
+
+Publicados en proceso con `node:events` después del commit y de la bitácora. Solo ids, fechas ISO UTC y nombres de campos: nunca títulos, instrucciones, nombres de archivo ni datos personales. Sin cola ni reintentos: si el proceso cae tras el commit, el evento se pierde. La tabla "Eventos publicados" de arriba es el catálogo previsto; los payloads de esta sección son los reales.
+
+| Evento | Cuándo | Payload | Consumidores |
+| --- | --- | --- | --- |
+| `assignment.created.v1` | Al crear la tarea | `{ assignmentId, courseSectionId, periodId, dueAt, allowLate, createdAt }` | Dev 5 |
+| `assignment.updated.v1` | Al cambiar la tarea | `{ assignmentId, courseSectionId, periodId, dueAt, allowLate, changedFields: string[], updatedAt }`. `changedFields` son nombres de campos, sin valores de texto | Dev 5 |
+| `material.published.v1` | Al crear un material | `{ materialId, courseSectionId, periodId: string \| null, kind: "CLASS" \| "READING", publishedAt }` | Dev 5 |
+| `submission.accepted.v1` | Al crear una versión nueva (no en la repetición) | `{ assignmentId, courseSectionId, enrollmentId, submissionId, versionId, versionNumber, receivedAt, isLate }` | Dev 4, Dev 5 |
+| `submission.rejected.v1` | Al rechazar un archivo subido como entrega | `{ uploadId, assignmentId, courseSectionId, studentId, reason, rejectedAt }`. `uploadId` es el id del archivo; `reason` es `FileRejectReason`; `studentId` es opaco (D-034) | Dev 5 |
+
+### Contrato de lectura para Dev 4 (calificaciones)
+
+Exportado por `SubmissionsModule`. Dev 3 nunca escribe en `Grade`.
+
+- `SubmissionsReadService.getAssignmentForGrading(assignmentId)` devuelve `{ id, courseSectionId, periodId, dueAt, allowLate, noSubmissionGrade }` (texto "0.00"). 404 si la tarea no existe o está borrada.
+- `SubmissionsReadService.listSubmissionSummaries(assignmentId)` devuelve `{ enrollmentId, submissionId, versionCount, latestVersion: { versionId, versionNumber, receivedAt, isLate, fileId } }[]`, una fila por entrega con versiones, también de matrículas cerradas (RN-14). Las matrículas sin entrega no aparecen: se cruzan con `listCurrentEnrollments`.
+- **Advertencia (seguridad):** no comprueba permisos. El llamador debe validar antes que el actor es el docente asignado o ADMIN.
+- `computeDisplayStatus(input)` en `apps/api/src/modules/submissions/display-status.ts` es una función pura. Entrada: `{ latestVersion: { isLate } | null, gradeState: "GRADED" \| "NE" \| "EXEMPT" \| null, dueAt, allowLate, now }`. Salida: `{ status, isLate, isOverdue }`.
+- Precedencia: `EXEMPT` > `GRADED` > `NE` (estado `NOT_SUBMITTED`) > entrega (`SUBMITTED` o `SUBMITTED_LATE`) > `PENDING`. Una NE registrada gana a una versión. `status` admite los seis rótulos de RF-38.
+- `isOverdue` es `true` si no hay entrega, venció el plazo y no se admiten tardías. El rótulo sigue siendo `PENDING` hasta que Dev 4 registre la NE; la pantalla puede decir "plazo vencido".
+- `lateBySeconds(receivedAt, dueAt)` (misma carpeta) devuelve el atraso en segundos, sin descuento.
+
+### Pendientes
+
+- Texto legal del aviso de copyright de las lecturas (`READING_COPYRIGHT_NOTICE`): sin validar.
+- Dev 4: pasar `gradeState` a `computeDisplayStatus` y los rótulos definitivos (`GRADED`, `NOT_SUBMITTED`, `EXEMPT`) en pantalla.
+- Ciclo de vida de `incoming/` (24 h) y CORS de R2 (Dev 1).
+- Barrido de intents vencidos (Dev 5).
+- Bitácora dentro de la transacción (D-047, Dev 1).

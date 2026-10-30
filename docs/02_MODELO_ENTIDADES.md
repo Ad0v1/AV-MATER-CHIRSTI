@@ -30,7 +30,7 @@
 
 **Nombres finales del modelo académico (PROPUESTA del 26/10/2026, pendiente de revisión del dueño de Dev 2).** Fuente: `prisma/schema/academic.prisma` en el repo privado, migración `academic_estructura`. Depende de D-021 (FK hacia `User` en `CHAR(36)`). Enums: `AcademicPeriodKind` (`FIRST_BIMESTER`, `SECOND_BIMESTER`, `THIRD_TRIMESTER`, `FOURTH_TRIMESTER`) y `EnrollmentEndReason` (`TRANSFER`, `WITHDRAWAL`, `YEAR_END`, `CORRECTION`). Una matrícula vigente tiene `isCurrent` TRUE y no tiene `effectiveTo` ni `endReason`; una cerrada tiene `isCurrent` NULL, `effectiveTo` y `endReason`.
 | `Material` | **Dev 3** | courseSectionId, periodId?, type, title, description, fileId, reusable, deletedAt | RF-26/27/29/30/31 |
-| `Assignment` | **Dev 3** | courseSectionId, periodId, title, instructions, dueAt, maxSizeBytes, neGrade, allowLate, attachmentFileId?, deletedAt | RF-28/29, RN-05/08/10 |
+| `Assignment` | **Dev 3** | courseSectionId, periodId, title, instructions, dueAt, maxSizeBytes, noSubmissionGrade, allowLate, attachmentFileId?, deletedAt | RF-28/29, RN-05/08/10 |
 | `StoredFile` | **Dev 3** | objectKey, bytes, MIME, checksum?, uploadStatus, scanStatus, uploadedById | RNF-03/18, RF-34/35/40 |
 | `Submission` | **Dev 3** | assignmentId, enrollmentId, createdAt | RF-33/36/38; única por alumno-matrícula/tarea |
 | `SubmissionVersion` | **Dev 3** | submissionId, fileId, versionNumber, receivedAt, isLate | RF-36/37/39; historial inmutable |
@@ -44,6 +44,8 @@
 `*`: los detalles TOTP son responsabilidades de seguridad de Dev 1; nunca almacenar secreto TOTP sin protección.
 
 **Vínculo apoderado–estudiante (PROPUESTA F3, 26/10/2026, D-032).** `GuardianStudent` ya no tiene clave compuesta: tiene `id` propio (`@default(uuid(7)) @db.Char(36)`) y `isActive` vale TRUE (vigente) o NULL (revocado), nunca FALSE. Revocar escribe `isActive` NULL y `revokedAt`; el vínculo no se borra, así se conserva el historial. Índice `UNIQUE(guardianId, studentId, isActive)`: un solo vigente por par; los revocados (NULL) no chocan entre sí. Tres CHECK: `GuardianStudent_isActive_chk` (vigente sin `revokedAt`, o revocado con `revokedAt`), `GuardianStudent_dates_chk` (`revokedAt >= createdAt`) y `GuardianStudent_distinct_chk` (`guardianId <> studentId`). Migración `20261026235821_guardian_student_revocable`.
+
+**Modelo de contenidos (Dev 3, PROPUESTA del 29/10/2026).** Esquema en `prisma/schema/contents.prisma`, migración `20261029224632_contents_base`. Cinco entidades: `StoredFile`, `Material`, `Assignment`, `Submission` y `SubmissionVersion`. Enums: `MaterialKind` (`CLASS`, `READING`), `FilePurpose` (`MATERIAL`, `ASSIGNMENT_ATTACHMENT`, `SUBMISSION`), `FileUploadStatus` (`PENDING`, `COMPLETED`, `EXPIRED`), `FileScanStatus` (`PENDING`, `CLEAN`, `INFECTED`, `INVALID`) y `FileRejectReason` (`TOO_LARGE`, `NOT_PDF`, `ENCRYPTED_PDF`, `INFECTED`, `MISSING_OBJECT`). Los nombres reales difieren de la tabla en `Material.kind` (no `type`), `Material.isReusable` (no `reusable`) y `Assignment.noSubmissionGrade` (no `neGrade`; el CHECK de la migración conserva el nombre `Assignment_neGrade_chk`). `Material.periodId` es opcional (D-042). `SubmissionVersion` es inmutable: triggers `BEFORE UPDATE` y `BEFORE DELETE` con SQLSTATE 45000, como `AuditLog`. Los CHECK de tamaño, PDF limpio, finalidad y papelera van en la misma migración.
 
 ## Cardinalidades esenciales
 

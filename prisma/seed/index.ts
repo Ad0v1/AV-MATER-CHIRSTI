@@ -4,6 +4,7 @@ import 'dotenv/config';
 import { PrismaMariaDb } from '@prisma/adapter-mariadb';
 import { PrismaClient } from '../../apps/api/src/generated/prisma/client.js';
 import { seedAcademic } from './academic.js';
+import { seedDevCredentials } from './credentials.js';
 import { ALL_USERS, SEED_EMAIL_DOMAIN } from './fixtures.js';
 // Comprobaciones de entorno local compartidas con dev-session.ts (F5).
 import { assertLocalDatabase } from './local-guard.js';
@@ -21,6 +22,7 @@ async function main(): Promise<void> {
   const prisma = new PrismaClient({ adapter: new PrismaMariaDb(url) });
   try {
     await seedAcademic(prisma);
+    await seedDevCredentials(prisma);
     const [years, periods, sections, courses, courseSections, enrollments, users] =
       await Promise.all([
         prisma.academicYear.count(),

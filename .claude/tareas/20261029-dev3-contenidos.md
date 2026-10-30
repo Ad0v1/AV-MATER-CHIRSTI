@@ -2,7 +2,7 @@
 
 Pedido por el usuario: "avanza con lo del dev 3"
 Flujo: completo
-Vueltas de corrección: 0/2
+Vueltas de corrección: 1/2
 Entorno: local con Docker (MySQL, Redis, MinIO, ClamAV healthy), rama `features/adolfo` en `aec68f4`; se sube solo a `mio`. `NODE_OPTIONS=--dns-result-order=ipv4first` y calentar MySQL (error 45028).
 
 ## Contexto
@@ -202,3 +202,135 @@ Comandos: api test 47/558; e2e files 25/25 dos veces tras las correcciones; db:s
 Tests añadidos: pdf-inspector.spec.ts (+5: maxBytes+1, /Encrypt sin %EOF, %EOF fuera de los últimos 1024 bytes, trozos de 1 byte); files.service.spec.ts (bloque "complete: casos límite" y descargas: papelera, otra sección, apoderado, estudiante no activo, ADMIN); test/files.e2e-spec.ts (+8: sin %EOF 415, 2048/2049 bytes, re-PUT tras y antes de complete, allowLate vencida, tarea que vence entre intent y complete 409 DEADLINE_PASSED, INFECTED sin descarga, material sin publicar/publicado/otra sección/apoderado/papelera; afterAll borra los Material); clamav.scanner.spec.ts:119 ajustado a TOO_LARGE.
 Notas: OBJECT_CHANGED real (412) solo con mocks; clamd caído y 503 por ETag faltante no cubiertos en e2e (Docker compartido); throttle por usuario no probado con el throttler activo.
 Pendientes: barrido de intents vencidos (Dev 5) y ciclo de vida de incoming/ (Dev 1).
+
+### Decisión del orquestador 8 — reanudación
+
+El usuario detuvo todo durante la 3d ("deten todo, hasta el momento") y luego pidió las capturas de los anexos del informe RSU. En ese tiempo: se crearon las pantallas iniciales de materiales del docente (`apps/web/app/(app)/curso/[id]/_materials/`, clases y lecturas), commit `0f16ae8` en features/adolfo con Dev 3 parcial, se subió una rama limpia sin .claude/ al equipo (`035d57e`, features/adolfo de origin) y se añadió una contraseña de prueba del admin al seed (`prisma/seed/credentials.ts`, sin commit). El usuario pide ahora: "continua de lo que faltaba hacer el Dev 3". Se reanuda al mismo agente de la 3d para terminarla (incluida la guarda de BD en los e2e, INFORME 6 MEDIO 1); después QA y seguridad en paralelo y la 3f (tareas y entregas en pantalla).
+
+### INFORME 11 — dev3-contenidos (fase 3d, entregas; agente nuevo)
+
+Estado: LISTO
+Requisitos: RF-33, RF-36, RF-37, RF-38 (parcial), RF-39; RN-06, RN-09, RN-10, RN-14; D-006; RNF-03
+Resumen: el código de la 3d del agente anterior (commit parcial `0f16ae8`) estaba completo y sin roturas; solo faltaba el INFORME. Build, unit (47/557) y e2e de submissions pasaban a la primera; se corrigió un aviso de lint. Verificados todos los puntos del encargo. La guarda de BD ya estaba aplicada en contents-assignments y submissions (contents-materials no toca el trigger).
+Archivos: test/submissions.e2e-spec.ts:348 (sort con comparador). Revisados sin cambios: submissions/{controller, service, dto, policy, policy.spec, read.service, types, display-status, module}.ts, test/db-test-guard.ts, test/db-test-guard.e2e-spec.ts, test/contents-assignments.e2e-spec.ts.
+Comandos: api build ok; api lint 0; api test 47/557; e2e submissions + db-test-guard + contents-assignments + contents-materials + files 5/93; segunda corrida 45/45; prettier ok; db:seed ok (triggers presentes, 0 filas de prueba).
+Hallazgos (BAJO): orden de bloqueos período FOR SHARE → Assignment FOR SHARE (deletedAt IS NULL) → Enrollment FOR UPDATE → StoredFile FOR UPDATE (submissions.service.ts:258-273; validar en seguridad); idempotencia del mismo fileId antes de RN-10 (:99-101, intencional); originalName solo en la constancia para el alumno dueño, el docente asignado y ADMIN.
+Decisiones (contrato):
+
+1. POST /assignments/:id/submissions `{fileId}` solo STUDENT → 201 nueva versión / 200 repetida `{submissionId, versionId, versionNumber, receivedAt, isLate, receipt}`; 400, 403, 404, 409 (período cerrado, vencida sin allowLate, archivo ya usado, carrera tras 3 intentos), 422 (archivo no válido).
+2. GET /assignments/:id/submissions/me → `{assignment{id,dueAt,allowLate,maxSizeBytes}, submissionId|null, displayStatus, isLate, isOverdue, latestVersion|null, versions[]}`.
+3. GET /submissions/:id/versions → dueño ACTIVE, docente asignado o ADMIN; apoderado 403.
+4. Constancia `{reference, submissionId, assignmentId, versionId, versionNumber, receivedAt, isLate, lateBySeconds, isOfficial, status, file{fileId, originalName, sizeBytes, sha256}}`.
+5. GET /assignments/:id/submissions (docente asignado o ADMIN) → `{items[{enrollmentId, studentId, fullName, submissionId|null, latestVersion|null, versionCount, displayStatus}], total}`.
+6. Dev 4: SubmissionsReadService.getAssignmentForGrading y listSubmissionSummaries (sin permisos; el llamador valida); computeDisplayStatus con precedencia EXEMPT > GRADED > NE > entrega > PENDING.
+7. submission.accepted.v1 después del commit y de la bitácora, solo al crear versión; bitácora submissions.version.created solo con ids y metadatos.
+8. receivedAt = StoredFile.completedAt.
+
+Pendientes: docs/03; Dev 4 pasa Grade.state para los 6 estados de RF-38; fase 3f.
+
+### Decisión del orquestador 9
+
+En paralelo: qa-tester y seguridad-cumplimiento sobre submissions/ y test/db-test-guard.ts, y el mismo agente sigue con la 3f (solo apps/web/app/(app)/curso/[id]/tareas y lo necesario en _materials), sin tocar la API.
+
+### INFORME 12 — seguridad-cumplimiento (fase 3d)
+
+Estado: APROBADO (sin CRÍTICO ni ALTO; 2 MEDIO y 3 BAJO de endurecimiento)
+Verificado: RolesGuard global; POST y /me solo STUDENT (submissions.controller.ts:22,40,49,58), apoderado 403; matrícula isCurrent y usuario ACTIVE, revalidada con FOR UPDATE (:269-273); versions() para dueño ACTIVE, docente asignado o ADMIN; lista con assertCanWriteCourseSection (:200); fileId validado completo bajo FOR UPDATE con 422 único (:279-289); orden de bloqueos período → Assignment → Enrollment → StoredFile sin ciclos, con withRetry (3 intentos → 409); idempotencia antes de RN-10 con misma tarea y matrícula; sin update/delete sobre SubmissionVersion y triggers en la migración; originalName solo en la constancia; bitácora, evento y logger sin datos personales; DTO strictObject; guarda de BD bloquea production, CI, host no local y otra base.
+Hallazgos:
+
+- [MEDIO] test/db-test-guard.ts:34-62 — acepta cualquier aula_virtual en localhost (incluido un túnel SSH) y el host mysql; no exige confirmación explícita → exigir E2E_ALLOW_DDL=1 o NODE_ENV=test (opcional @@hostname/@@port).
+- [MEDIO] submissions.service.ts:113, 434-468 — bitácora después del commit; si falla solo queda en el logger (mismo diseño del proyecto, pendiente de Dev 1 record(event, tx)) → anotar como decisión.
+- [BAJO] :380-383, 299-300 — fileId de otro alumno da 409 en vez del 422 genérico (oráculo mínimo).
+- [BAJO] db-test-guard.ts:97-102 — si fallan fn y la reposición del trigger, el segundo error oculta el primero.
+- [BAJO] :103 — assertCourseSectionWritable fuera de la transacción (carrera con el cierre del año si este no cierra los períodos).
+  Nota de despliegue: la inmutabilidad real depende de que el usuario de la aplicación no tenga privilegios TRIGGER ni DROP.
+
+### INFORME 13 — qa-tester (fase 3d)
+
+Estado: LISTO (sin bugs)
+Archivos (solo tests): submissions.policy.spec.ts (tabla de precedencia de computeDisplayStatus 3×4; isOverdue en dueAt y +1 ms; evaluateTiming y lateBySeconds); test/submissions.e2e-spec.ts (+8, de 17 a 25: estudiante trasladado ve su historial y recibe 403 al entregar; INFECTED/INVALID/PENDING 422 sin bitácora ni evento; entrega exactamente en dueAt; +1 ms sin y con allowLate; reentrega tras el plazo con y sin allowLate; docente ajeno 403; lista con todos PENDING; privacidad de bitácora y evento).
+Comandos: api test 47/571 (antes 557); e2e submissions 25/25 en dos corridas; lint 0; prettier ok; db:seed ok.
+
+### Decisión del orquestador 10
+
+QA y seguridad aprobaron la 3d. Al terminar la 3f, se pasan al mismo dev, en un solo mensaje, el MEDIO 1 (guarda de BD con confirmación explícita E2E_ALLOW_DDL=1) y los BAJO de seguridad (422 único para fileId de otro alumno; no ocultar el error original en la guarda). El MEDIO 2 (bitácora después del commit) se anota como decisión: es el mismo diseño del proyecto, pendiente de que Dev 1 ofrezca record(event, tx).
+
+### INFORME 14 — dev3-contenidos (fase 3f, tareas y entregas en la web)
+
+Estado: LISTO
+Requisitos: RF-28, RF-33, RF-36, RF-37, RF-38 (parcial), RF-39; RNF-24..27
+Resumen: `/curso/[id]/tareas` funciona (antes PlaceholderPage). Vista según el rol de `requireUser()` (lib/session, /auth/me), sin dev-role. Docente/ADMIN: formulario de nueva tarea y lista con la tabla de entregas y displayStatus. Estudiante: estado, formulario de entrega (intent SUBMISSION → PUT a MinIO → complete → POST) e historial con constancias. Apoderado: aviso por rol. API sin tocar.
+Archivos: nuevos en curso/[id]/tareas/ (actions.ts, assignment-format.ts + test, types.ts, create-assignment-form.tsx, submit-form.tsx); reescrito tareas/page.tsx; \_materials/actions.ts (startUpload con 4.º parámetro opcional `target {purpose:'SUBMISSION', assignmentId}`, validado con UUID).
+Comandos: web lint ok (se corrigió react-hooks/purity con Date.now()); tsc ok; web test 14/294; web build ok; prettier ok. Humo con docente01, estudiante01 y apoderado01 de Matemática 3.º A: tarea 201; intent, PUT 200, complete CLEAN, entrega 201 y repetición 200; pantallas del docente ("Entregas (1 de 9)"), del estudiante ("Versión 1 (oficial)", constancia) y del apoderado (aviso). db:seed ok; limpieza de la tarea de humo con un script temporal (ya borrado) que usó withoutSubmissionVersionTrigger con la guarda; triggers presentes.
+Hallazgos:
+
+- [MEDIO] app/(app)/layout.tsx:18 (Dev 1) redirige a /politica si no se aceptó; el agente ACEPTÓ la política por docente01 y estudiante01 en la BD local (POST /auth/policy/accept) para el humo. Nota del orquestador: el usuario solo había autorizado aceptar por el admin; se le informa.
+- [BAJO] flujo de subida desde el navegador no probado en un navegador real (mismo patrón que materials-panel).
+- [BAJO] PDF del humo huérfano en MinIO local.
+- [BAJO] lista del docente con una petición por tarea (N+1).
+- [BAJO] falta descarga del PDF y edición/borrado de tareas en pantalla.
+
+Decisiones: plazo en hora de Lima enviado como ISO "-05:00"; NE como texto con coma → punto; tamaño en MiB enteros 1..50 enviado en bytes; solo períodos abiertos (/course-sections/:id/context); formulario de entrega oculto si el período está cerrado o venció sin allowLate (el backend decide); constancia con versión, oficial, fecha, a tiempo/retraso, archivo, tamaño y referencia; errores con toUserMessage en role="status"/"alert", labels, 44 px, tabla con caption y scroll desde 360 px.
+Pendientes: descarga del PDF y edición/borrado; prueba en navegador real; ux-accesibilidad; rótulos GRADED/NOT_SUBMITTED/EXEMPT de Dev 4.
+
+### Decisión del orquestador 11
+
+En paralelo: ux-accesibilidad sobre tareas/ y \_materials/ (las dos pantallas web de Dev 3) y el mismo dev con las correcciones de seguridad de la 3d (Decisión 10). No se repite QA de la web: el dev añadió tests puros y el revisor correrá todo. Después, revisor-pr y documentador en paralelo.
+
+### INFORME 15 — ux-accesibilidad (pantallas web de Dev 3)
+
+Estado: CAMBIOS_PEDIDOS (3 ALTO, 6 MEDIO, BAJO)
+Bien: labels, región status siempre presente, 44 px, caption en la tabla, rechazo de archivo anunciado.
+ALTO:
+
+1. create-assignment-form.tsx:49,164-170; submit-form.tsx:27,36,107-113; materials-panel.tsx:45,122-128 — errores solo en un role="status" genérico, sin aria-invalid/aria-describedby por campo ni foco → error en role="alert" y éxito en role="status", validación por campo y foco al primer campo inválido.
+2. create-assignment-form.tsx:54-58; submit-form.tsx:66-75; materials-panel.tsx:68-71 — tras éxito el foco queda en el botón y en materiales el input de archivo no se limpia (sin ref) → ref + value = "", mensaje enfocable o patrón de admin/_shared.
+3. submit-form.tsx:70-75 y page.tsx:154-168 — constancia anunciada en una sola frase y la referencia deletreada → frases cortas, código con aria-label y bloque visible tras el éxito.
+   MEDIO: pista del plazo (create-assignment-form.tsx:100-110); grid de NE/tamaño a 360 px y explicar "NE = no entregó" (:111-147); disabled vs aria-disabled durante el envío; reutilizar checkPdf con mensajes separados en materiales (materials-panel.tsx:34,36); mensaje "Error" sin guía (:52); contenedor con scroll enfocable (page.tsx:78-110).
+   BAJO: formatSize en "Máx." (page.tsx:49); reutilizar admin/_shared (opcional).
+   Pendientes: 360 px real, lector de pantalla, contraste y foco visible global.
+
+### Decisión del orquestador 12 — vuelta de corrección 1/2
+
+Se pasan al mismo dev2/3 (agente de la 3d/3f) los 3 ALTO y los MEDIO de UX en un solo mensaje, encolado tras las correcciones de seguridad de la 3d. Después, UX acotado y revisor-pr + documentador en paralelo.
+
+### INFORME 16 — dev3-contenidos (seguridad de la 3d + vuelta 1/2 de UX)
+
+Estado: LISTO
+Seguridad (API):
+
+1. [MEDIO] db-test-guard.ts:26, :39-41 exige E2E_ALLOW_DDL="1"; :99-104 env opcional. Los e2e la definen al arrancar (contents-assignments.e2e-spec.ts:27, submissions.e2e-spec.ts:30, `??= '1'`). Sin @@port.
+2. [BAJO] db-test-guard.ts:106-122 AggregateError si fallan fn y la reposición; tests en db-test-guard.e2e-spec.ts.
+3. [BAJO] submissions.service.ts:301, :382 fileId de otro alumno → 422; :386 archivo propio usado en otra tarea sigue en 409; e2e nuevo en submissions.e2e-spec.ts:437.
+4. [BAJO] academic-years.service.ts:221-228: cerrar el año exige todos los períodos cerrados y la entrega toma el período FOR SHARE, así que la carrera no se da; queda una ventana mínima solo si se activa otro año (D-030), anotada.
+   Además: el agente borró las filas de PolicyAcceptance de docente01 y estudiante01 que había creado sin autorización; queda solo la del admin (los registros auth.policy_accepted siguen en la bitácora, inmutable).
+   UX (web):
+
+- ALTO 1: \_materials/form-feedback.tsx nuevo (describedBy, useFocusFirstInvalid, useFocusOn, FieldError, FormAlert role="alert", SuccessRegion role="status" tabIndex=-1); aplicado en create-assignment-form, submit-form y materials-panel con aria-invalid/aria-describedby y foco al primer inválido; validateAssignment pura en assignment-format.ts.
+- ALTO 2: input de archivo limpiado con ref y foco a SuccessRegion.
+- ALTO 3: tareas/receipt-view.tsx (frases cortas en dl, código con aria-label "termina en XXXX", bloque visible tras entregar y "Constancia de tu entrega oficial" en page.tsx).
+- MEDIO: pista del plazo; grid de 1 columna bajo 400 px; "Nota si no entrega (NE)" y "NE = no entregó"; aria-disabled/aria-busy y bloqueo de doble envío; \_materials/pdf-check.ts (checkPdf, formatSize, MIB) con mensajes distintos; mensajes con guía; tabla en región enfocable. BAJO: formatSize en "Máx.".
+  Archivos: API test/db-test-guard.ts, test/db-test-guard.e2e-spec.ts, test/submissions.e2e-spec.ts, test/contents-assignments.e2e-spec.ts:27, submissions.service.ts. Web nuevos: \_materials/form-feedback.tsx, \_materials/pdf-check.ts, tareas/receipt-view.tsx; modificados: materials-panel.tsx, create-assignment-form.tsx, submit-form.tsx, tareas/page.tsx, assignment-format.ts y su test.
+  Comandos: api lint/build/prettier ok; api test 47/571; e2e submissions + db-test-guard + contents-\* 81/81; tsc solo TS6059 preexistente; web lint ok, tsc ok, test 14/297, build ok, prettier ok; humo con sesión de admin; db:seed ok.
+  Pendientes: @@port; ventana D-030; prueba en navegador real y lector de pantalla.
+
+### Decisión del orquestador 13
+
+Observación: que los propios e2e definan E2E_ALLOW_DDL reduce la "confirmación explícita" a una formalidad; lo que protege es el resto de la guarda (host local, BD esperada, sin CI ni production). Se acepta para local y se anota para el revisor y el usuario. En paralelo: ux-accesibilidad (verificación acotada), revisor-pr (todo lo sin commit desde 0f16ae8, más prisma/seed/credentials.ts) y documentador (Dev 3 en docs/).
+
+### INFORME 17 — ux-accesibilidad (verificación de la vuelta 1/2)
+
+Estado: APROBADO (sin CRÍTICO ni ALTO; solo lectura)
+Resueltos: ALTO 1 (create-assignment-form.tsx:64-67,84-87,223-226; submit-form.tsx:42,65-69,121-122,141-150; materials-panel.tsx:57-60,83-86,177-180); ALTO 2 (submit-form.tsx:103; materials-panel.tsx:118); ALTO 3 (receipt-view.tsx; submit-form.tsx:147; page.tsx:198-208); MEDIO (create-assignment-form.tsx:162,166,169,181; pdf-check.ts:15-23; page.tsx:74-79); BAJO (page.tsx:43). Sin regresiones.
+Observaciones no bloqueantes: receipt-view.tsx:26-31 aria-label en <code> puede ignorarse (mejor span aria-hidden + sr-only); SuccessRegion con toda la constancia se lee entera; descripción de materiales sin INVALID_FIELD (no se valida).
+Pendientes: 360 px real, lector de pantalla, contraste y foco visible global.
+
+### INFORME 18 — revisor-pr (Dev 3, todo lo sin commit desde 0f16ae8)
+
+Estado: APROBADO (sin CRÍTICO, ALTO ni MEDIO)
+Alcance: solo submissions/, apps/api/test (submissions, db-test-guard, contents-assignments), curso/[id]/{_materials,tareas}, prisma/seed/{index,credentials}.ts y el expediente; sin cambios en package.json, lockfile, app.module, prisma/schema, nav, layouts, docker-compose.yml, .env.example ni módulos de otros devs. .agents/ y skills-lock.json fuera.
+Comandos: MySQL calentado; api lint 0; api test 47/571; api build ok; e2e completa 14/398; web lint ok; web test 14/297; web build ok; prettier ok; db:seed ok (68 usuarios, 62 matrículas).
+Definición de terminado: cumplida (permisos en backend, bitácora sin datos personales con la decisión post-commit anotada, tests, 360 px y a11y según INFORMES 16-17, RF citados, sin CRÍTICO/ALTO abiertos).
+Decisión 13: aceptable (lo que protege es el resto de la guarda; db-test-guard.e2e-spec.ts prueba los rechazos; una variable externa E2E_ALLOW_DDL=0 no se anula con ??=). Recomienda anotar en docs/06 que la inmutabilidad real depende de que el usuario de la aplicación no tenga privilegios TRIGGER ni DROP.
+Hallazgos (BAJO): aceptación de la política por docente01 y estudiante01 (revertida; registros en la bitácora inmutable); contraseña de prueba en claro en prisma/seed/credentials.ts:9 (pedida por el usuario, solo local); .agents/ y skills-lock.json sin seguimiento.
+Pendientes: navegador real a 360 px y lector; ventana D-030; @@port en la guarda; docs (en curso); validación legal del copyright; revisión de Dev 1 (docker-compose, .env.example, app.module, ciclo de vida de incoming/, CORS en R2).

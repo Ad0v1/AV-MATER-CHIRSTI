@@ -2,8 +2,9 @@ import type { PrismaClient } from './../src/generated/prisma/client.js';
 import { assertNotProductionOrCi, hostOf } from './../../../prisma/seed/local-guard.js';
 
 // Guarda para los e2e que hacen DDL (quitar y reponer triggers). Pedido de seguridad (INFORME 6,
-// MEDIO 1): antes de cualquier DDL se exige BD local, BD esperada, NODE_ENV distinto de production
-// y CI apagado. Los mensajes nunca incluyen la URL ni la contraseña.
+// MEDIO 1, e INFORME 12, MEDIO 1): antes de cualquier DDL se exige la confirmación explícita
+// E2E_ALLOW_DDL=1, BD local, BD esperada, NODE_ENV distinto de production y CI apagado. Los
+// mensajes nunca incluyen la URL ni la contraseña.
 
 type Env = Record<string, string | undefined>;
 
@@ -21,6 +22,9 @@ export const DEFAULT_TEST_DB_NAME = 'aula_virtual';
 
 const WHO = 'El DDL de los e2e';
 
+/** Variable de confirmación explícita: solo el valor exacto "1" habilita el DDL. */
+export const ALLOW_DDL_ENV = 'E2E_ALLOW_DDL';
+
 /** CI activo con cualquier valor que no sea vacío, "false" o "0". */
 const ciActive = (env: Env): boolean => {
   const ci = env.CI?.trim().toLowerCase();
@@ -32,6 +36,9 @@ const ciActive = (env: Env): boolean => {
  * Devuelve el nombre de BD esperado.
  */
 export function assertLocalTestDbEnv(env: Env = process.env): string {
+  if (env[ALLOW_DDL_ENV] !== '1') {
+    throw new Error(`${WHO} exige la confirmación explícita ${ALLOW_DDL_ENV}=1.`);
+  }
   assertNotProductionOrCi(env, WHO);
   if (ciActive(env)) throw new Error(`${WHO} no se ejecuta en CI.`);
   const url = env.DATABASE_URL;
@@ -92,12 +99,25 @@ export async function ensureSubmissionVersionTrigger(ddl: PrismaClient): Promise
 export async function withoutSubmissionVersionTrigger<T>(
   ddl: PrismaClient,
   fn: () => Promise<T>,
+  env: Env = process.env,
 ): Promise<T> {
-  await assertLocalTestDb(ddl);
+  await assertLocalTestDb(ddl, env);
   await ddl.$executeRawUnsafe(`DROP TRIGGER IF EXISTS \`${NO_DELETE}\``);
+  let result: T;
   try {
-    return await fn();
-  } finally {
-    await ddl.$executeRawUnsafe(CREATE_NO_DELETE);
+    result = await fn();
+  } catch (original: unknown) {
+    // Si también falla la reposición, se informan los dos errores sin ocultar el original.
+    try {
+      await ddl.$executeRawUnsafe(CREATE_NO_DELETE);
+    } catch (restore: unknown) {
+      throw new AggregateError(
+        [original, restore],
+        `${WHO}: falló el borrado y también la reposición del trigger ${NO_DELETE}.`,
+      );
+    }
+    throw original;
   }
+  await ddl.$executeRawUnsafe(CREATE_NO_DELETE);
+  return result;
 }

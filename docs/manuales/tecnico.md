@@ -23,9 +23,9 @@ Esta fase no añade variables nuevas. El módulo usa `DATABASE_URL`, que ya exis
 5. Cargar datos ficticios: `pnpm db:seed`.
 6. Arrancar la API: `pnpm --filter api start:dev`. Las rutas cuelgan de `/api/v1` en el puerto `API_PORT`.
 
-**Seed (D-028).** Datos ficticios en `@colegio.example`: 2 años (2026 activo; 2025 inactivo y cerrado), 8 períodos, 7 secciones, 5 cursos, 30 curso-sección, 60 estudiantes (con un traslado, un retiro y un inactivo), 5 docentes, 2 apoderados y 1 admin. Es idempotente. No crea credenciales ni bitácora, así que no hay contraseñas de prueba. Se niega con `NODE_ENV=production`, con `CI=true` y si el host de `DATABASE_URL` no es local (`localhost`, `127.0.0.1`, `::1` o `mysql`).
+**Seed (D-028).** Datos ficticios en `@colegio.example`: 2 años (2026 activo; 2025 inactivo y cerrado), 8 períodos, 7 secciones, 5 cursos, 30 curso-sección, 60 estudiantes (con un traslado, un retiro y un inactivo), 5 docentes, 2 apoderados y 1 admin. Es idempotente. No crea bitácora. Desde el 30/10/2026 crea una contraseña de prueba solo para el admin del seed (ver `prisma/seed/credentials.ts` y la sección de Dev 3); el resto de usuarios no tiene contraseña. Se niega con `NODE_ENV=production`, con `CI=true` y si el host de `DATABASE_URL` no es local (`localhost`, `127.0.0.1`, `::1` o `mysql`).
 
-**Autenticación.** Todas las rutas piden sesión (401 sin ella). Como el seed no crea credenciales, para probar a mano hace falta un usuario con credencial local, según el flujo de autenticación de Dev 1. Los tests e2e crean su propia sesión con `SessionService`.
+**Autenticación.** Todas las rutas piden sesión (401 sin ella). Para probar a mano: el admin del seed entra con su contraseña de prueba (`prisma/seed/credentials.ts`); los demás roles, con la sesión de desarrollo (`prisma/seed/dev-session.ts --email`). Los tests e2e crean su propia sesión con `SessionService`.
 
 ### Pruebas
 
@@ -279,3 +279,91 @@ Todos bajo `/api/v1`, solo ADMIN activo (`ActiveActorGuard`). `:id` es el año d
 > **Aviso.** Los e2e crean y borran datos de prueba: ejecutarlos solo sobre la base local con el seed. Si MySQL acaba de arrancar, ver "Problemas frecuentes en local".
 
 **Pendiente.** Prueba manual en navegador y verificar los e2e en local con Docker.
+
+## Contenidos, archivos y entregas (Dev 3, RF-26..31, RF-33..40; RNF-03/18)
+
+> **Estado: PROPUESTA.** Código en `apps/api/src/modules/{files,contents,submissions,storage}/` y pantallas en `apps/web/app/(app)/curso/[id]/{clases,lecturas,tareas}/`. Rama `features/adolfo`, sin PR al equipo. Contrato en `docs/03_CONTRATOS.md`, sección "API de contenidos, archivos y entregas". Decisiones D-039 a D-047 en `docs/08_DECISIONES.md`.
+
+**Alcance.** Subida de PDF con validación (tamaño, cabecera, fin de archivo, cifrado y antivirus), almacenamiento privado con URL firmadas, tareas con plazo y nota NE, materiales con papelera de 30 días, entregas con versiones y constancia. Fuera: calificación (Dev 4), anuncios, purga y worker de escaneo (Dev 5).
+
+**Qué exporta.** `FilesModule` reexporta `StorageModule` y `FileScanner`. `SubmissionsModule` exporta `SubmissionsReadService` (lectura para Dev 4). `ContentsModule` exporta `ContentsEventPublisher` y `AssignmentsService`.
+
+### Variables de entorno
+
+Solo los nombres. Los valores van en el `.env` local, que no se sube al repositorio. Los nombres salen de `.env.example`.
+
+| Variable | Obligatoria | Uso |
+| --- | --- | --- |
+| `S3_ENDPOINT` | En producción | Endpoint de S3 o R2. En producción debe ser el endpoint público |
+| `S3_REGION` | No | Región del bucket (en R2, `auto`) |
+| `S3_BUCKET` | No | Bucket privado de archivos |
+| `S3_ACCESS_KEY_ID` y `S3_SECRET_ACCESS_KEY` | En producción | Credenciales del bucket. Se aceptan también `S3_ACCESS_KEY` y `S3_SECRET_KEY`. En local, `MINIO_ROOT_USER` y `MINIO_ROOT_PASSWORD` sirven de respaldo |
+| `S3_FORCE_PATH_STYLE` | No | Estilo de ruta, necesario en MinIO |
+| `S3_UPLOAD_URL_TTL_SECONDS` | No | Vigencia de la URL de subida (D-043) |
+| `S3_DOWNLOAD_URL_TTL_SECONDS` | No | Vigencia de la URL de descarga (D-043) |
+| `CLAMAV_HOST`, `CLAMAV_PORT` | No | Host y puerto de clamd |
+| `CLAMAV_TIMEOUT_MS` | No | Tiempo máximo del escaneo de un archivo |
+
+En producción, si faltan las credenciales de S3, la configuración de almacenamiento falla al cargarse.
+
+### ClamAV en local
+
+- Servicio `clamav` de `docker-compose.yml` (imagen `clamav/clamav:stable`). Espera a que el contenedor esté `healthy` antes de probar la subida: la base de firmas tarda en cargar.
+- `CLAMD_CONF_StreamMaxLength: 64M`: por defecto, clamd solo acepta 25 MB por archivo y las entregas llegan a 50 MiB (RN-08). Un archivo que supere el límite de clamd responde 413 `FILE_TOO_LARGE`, no 503. Cambio autorizado por el usuario; pendiente de revisión de Dev 1.
+- Medido en local con ClamAV real: un PDF de 30 MiB se escanea en 6,0 s y uno de 50 MiB en 7,1 s.
+
+### Almacenamiento
+
+- Bucket privado. Claves `{scope}/{año}/{mes}/{uuid}.pdf`, con scope `incoming`, `materials`, `assignments` o `submissions`. El nombre original del archivo nunca forma parte de la clave.
+- La subida va primero a `incoming/` (cuarentena, D-046). Tras el escaneo, el objeto se copia a su destino solo si el ETag no ha cambiado.
+- Pendiente de Dev 1 antes de producción: regla de ciclo de vida de 24 h para `incoming/` (huérfanos) y CORS del bucket en R2. En local no hizo falta CORS.
+
+### Pruebas
+
+| Comando | Qué prueba | Requiere |
+| --- | --- | --- |
+| `pnpm --filter api test` | Unitarios: reglas, inspección del PDF, escáner, servicio de archivos y de storage | Nada |
+| `pnpm --filter api test:e2e` | e2e de archivos (`files.e2e-spec.ts`), tareas, materiales, entregas y la guarda de BD | MySQL con el seed, MinIO y ClamAV locales; sin `DATABASE_URL` se omiten |
+| `pnpm --filter web test` | Lógica pura de las pantallas (validación, formato, comprobación del PDF) | Nada |
+
+> **Aviso (guarda de BD).** Los e2e de tareas y entregas quitan el trigger de inmutabilidad de `SubmissionVersion` para borrar sus filas de prueba y lo reponen al terminar. Antes de cualquier DDL, `apps/api/test/db-test-guard.ts` exige `E2E_ALLOW_DDL=1`, la base local (`localhost`, `127.0.0.1`, `::1` o `mysql`), el nombre de base esperado (`aula_virtual` o `E2E_DB_NAME`), `NODE_ENV` distinto de `production` y CI apagado. Los dos e2e que hacen DDL (`contents-assignments` y `submissions`) fijan `E2E_ALLOW_DDL=1` con `??=`, así que esa variable confirma poco: la protección real son las demás condiciones. No ejecutar contra otra base.
+>
+> **Inmutabilidad (D-022).** El trigger solo protege si el usuario de la aplicación no tiene privilegios `TRIGGER` ni `DROP`.
+
+### Seed y credencial de prueba
+
+El seed (`pnpm db:seed`) usa una contraseña de prueba para el admin. Está en `prisma/seed/credentials.ts`. Solo vale en local: el seed se niega con `NODE_ENV=production` o `CI=true`. No la copies a ningún otro sitio ni la subas al equipo.
+
+### Endpoints (resumen)
+
+Todos bajo `/api/v1`. Cuerpos, respuestas y errores en `docs/03_CONTRATOS.md`.
+
+| Recurso | Endpoints | Rol |
+| --- | --- | --- |
+| Archivos | `POST /files/upload-intents`, `POST /files/:id/complete`, `POST /files/:id/download-url` | ADMIN, TEACHER, STUDENT (apoderado 403) |
+| Materiales | `GET` y `POST /course-sections/:id/materials`, `PATCH` y `DELETE /materials/:id`, `POST /materials/:id/restore` | Lectura: ADMIN, TEACHER, STUDENT. Escritura: ADMIN y docente asignado |
+| Tareas | `GET` y `POST /course-sections/:id/assignments`, `GET`, `PATCH` y `DELETE /assignments/:id` | Lectura: ADMIN, TEACHER, STUDENT. Escritura: ADMIN y docente asignado |
+| Entregas | `POST /assignments/:id/submissions`, `GET /assignments/:id/submissions/me`, `GET /assignments/:id/submissions`, `GET /submissions/:id/versions` | STUDENT, TEACHER asignado, ADMIN según la ruta |
+
+**Errores.** Mismo formato que el resto de la API. Los códigos propios de archivos (`FILE_TOO_LARGE`, `INVALID_PDF`, `ENCRYPTED_PDF`, `FILE_INFECTED`, `UPLOAD_EXPIRED`, `UPLOAD_NOT_FOUND`, `OBJECT_CHANGED`, `DEADLINE_PASSED`, `ANTIVIRUS_UNAVAILABLE`, `STORAGE_UNAVAILABLE`) están en el contrato.
+
+**Eventos.** `assignment.created.v1`, `assignment.updated.v1`, `material.published.v1`, `submission.accepted.v1` y `submission.rejected.v1` se publican en proceso (D-031), después del commit y de la bitácora. Si el proceso cae justo después del commit, el evento se pierde.
+
+**Bitácora.** Módulos `contents`, `files` y `submissions`, después del commit (D-047). Sin `originalName`, textos ni firma del antivirus.
+
+### Rutas de la web
+
+| Ruta | Pantalla |
+| --- | --- |
+| `/curso/[id]/clases` | Clases (PDF) |
+| `/curso/[id]/lecturas` | Lecturas, con aviso de copyright |
+| `/curso/[id]/tareas` | Docente y ADMIN: crear tareas y ver entregas. Estudiante: entregar y ver la constancia. Apoderado: aviso |
+
+La subida desde el navegador va directa a MinIO con la URL firmada. La prueba en un navegador real está pendiente.
+
+### Pendientes
+
+- Dev 1: ciclo de vida de `incoming/` y CORS de R2; revisión de `docker-compose.yml` (StreamMaxLength) y de `.env.example`.
+- Dev 1: bitácora dentro de la transacción (D-047).
+- Luchito: el README de `apps/api/src/modules/storage/` indica 120 s para la descarga; el código y D-043 usan 60 s.
+- Dev 2: el apartado del seed (D-028) dice que no hay contraseñas de prueba; con `prisma/seed/credentials.ts` ya no es así. Revisar ese apartado.
