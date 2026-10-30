@@ -32,7 +32,7 @@ const courseItems = (withRegistro: boolean): NavItem[] => [
 
 // El menu es solo ayuda de navegacion: el backend valida rol y pertenencia (RNF-02).
 export const NAV_BY_ROLE: Record<Role, NavGroup[]> = {
-  admin: [
+  ADMIN: [
     {
       label: 'Administración',
       items: [
@@ -45,15 +45,15 @@ export const NAV_BY_ROLE: Record<Role, NavGroup[]> = {
       ],
     },
   ],
-  docente: [{ label: 'Curso de ejemplo', items: courseItems(true) }],
-  estudiante: [
+  TEACHER: [{ label: 'Curso de ejemplo', items: courseItems(true) }],
+  STUDENT: [
     { label: 'Curso de ejemplo', items: courseItems(false) },
     {
       label: 'Calificaciones',
       items: [{ label: 'Mis notas', href: ROUTES.misNotas, icon: FileText }],
     },
   ],
-  apoderado: [
+  GUARDIAN: [
     {
       label: 'Familia',
       items: [{ label: 'Panel del apoderado', href: ROUTES.apoderado, icon: Users }],

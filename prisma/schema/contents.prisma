@@ -1,0 +1,166 @@
+// Modulo de contenidos: materiales, tareas, entregas y archivos. Dueño: Dev 3
+// (RF-26..31, RF-33..40, RNF-03/18). Sin borrado fisico de lo que tiene historial
+// (RN-13/14, D-021): toda FK con Restrict. Invariantes que el ORM no cubre (CHECK y
+// triggers de inmutabilidad) van con SQL manual en la migracion contents_base.
+// Topes en bytes (MiB, decision del usuario 29/10/2026): 20 MiB = 20971520, 50 MiB = 52428800.
+
+enum MaterialKind {
+  CLASS // clase en PDF (RF-26)
+  READING // lectura con aviso de copyright (RF-27)
+}
+
+enum FilePurpose {
+  MATERIAL
+  ASSIGNMENT_ATTACHMENT
+  SUBMISSION
+}
+
+enum FileUploadStatus {
+  PENDING // intencion emitida, URL firmada vigente (TTL 5 min)
+  COMPLETED // el servidor confirmo el objeto (HEAD) y calculo sha256
+  EXPIRED // la intencion vencio sin confirmarse
+}
+
+enum FileScanStatus {
+  PENDING
+  CLEAN // unico estado descargable (RF-40)
+  INFECTED
+  INVALID // no es PDF real, cifrado, demasiado grande u objeto ausente (ver rejectReason)
+}
+
+enum FileRejectReason {
+  TOO_LARGE
+  NOT_PDF
+  ENCRYPTED_PDF
+  INFECTED
+  MISSING_OBJECT
+}
+
+// Archivo privado en S3/MinIO (RNF-03/18). objectKey es un UUID generado por el servidor,
+// nunca el nombre original. CHECK: StoredFile_size_chk, StoredFile_clean_chk, StoredFile_purpose_chk.
+// La purga (Dev 5) borra el objeto y marca purgedAt; la fila se conserva.
+model StoredFile {
+  id              String            @id @default(uuid(7)) @db.Char(36)
+  objectKey       String            @unique @db.VarChar(255)
+  purpose         FilePurpose
+  courseSectionId String            @db.Char(36)
+  assignmentId    String?           @db.Char(36) // obligatorio si purpose = SUBMISSION (CHECK)
+  uploadedById    String            @db.Char(36)
+  originalName    String            @db.VarChar(255) // saneado; solo para mostrar y descargar
+  maxBytes        Int // tope aplicado al emitir la intencion (1..52428800)
+  sizeBytes       Int? // tamaño real confirmado por HEAD
+  sha256          String?           @db.Char(64)
+  uploadStatus    FileUploadStatus  @default(PENDING)
+  scanStatus      FileScanStatus    @default(PENDING)
+  rejectReason    FileRejectReason?
+  intentExpiresAt DateTime
+  completedAt     DateTime?
+  scannedAt       DateTime?
+  purgedAt        DateTime?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  courseSection CourseSection @relation(fields: [courseSectionId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  assignment    Assignment?   @relation("SubmissionFileAssignment", fields: [assignmentId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  uploadedBy    User          @relation("StoredFileUploader", fields: [uploadedById], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  material             Material?
+  attachedToAssignment Assignment?        @relation("AssignmentAttachment")
+  submissionVersion    SubmissionVersion?
+
+  @@index([uploadedById, uploadStatus])
+  @@index([scanStatus])
+  @@index([courseSectionId])
+  @@index([assignmentId])
+}
+
+// Clase o lectura (RF-26/27). periodId opcional (D-010). Papelera de 30 dias (RF-30):
+// deletedAt y deletedById van juntos (CHECK Material_deleted_chk).
+model Material {
+  id              String       @id @default(uuid(7)) @db.Char(36)
+  courseSectionId String       @db.Char(36)
+  periodId        String?      @db.Char(36)
+  kind            MaterialKind
+  title           String       @db.VarChar(200)
+  description     String?      @db.Text
+  fileId          String       @unique @db.Char(36)
+  isReusable      Boolean      @default(false)
+  deletedAt       DateTime?
+  deletedById     String?      @db.Char(36)
+  createdById     String       @db.Char(36)
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  courseSection CourseSection   @relation(fields: [courseSectionId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  period        AcademicPeriod? @relation(fields: [periodId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  file          StoredFile      @relation(fields: [fileId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  deletedBy     User?           @relation("MaterialDeleter", fields: [deletedById], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  createdBy     User            @relation("MaterialCreator", fields: [createdById], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@index([courseSectionId, kind, deletedAt])
+}
+
+// Tarea (RF-28/29). noSubmissionGrade es la nota NE por defecto (RN-05; nombre del contrato
+// de Dev 4, docs/03). maxSizeBytes 20 MiB por defecto, tope 50 MiB (RN-08).
+// CHECK: Assignment_maxSize_chk, Assignment_neGrade_chk.
+model Assignment {
+  id                String    @id @default(uuid(7)) @db.Char(36)
+  courseSectionId   String    @db.Char(36)
+  periodId          String    @db.Char(36)
+  title             String    @db.VarChar(200)
+  instructions      String    @db.Text
+  dueAt             DateTime  @db.DateTime(3)
+  maxSizeBytes      Int       @default(20971520)
+  noSubmissionGrade Decimal   @default(0) @db.Decimal(4, 2)
+  allowLate         Boolean   @default(false)
+  attachmentFileId  String?   @unique @db.Char(36)
+  deletedAt         DateTime?
+  createdById       String    @db.Char(36)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  courseSection  CourseSection  @relation(fields: [courseSectionId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  period         AcademicPeriod @relation(fields: [periodId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  attachmentFile StoredFile?    @relation("AssignmentAttachment", fields: [attachmentFileId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  createdBy      User           @relation("AssignmentCreator", fields: [createdById], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  submissions     Submission[]
+  submissionFiles StoredFile[] @relation("SubmissionFileAssignment")
+
+  @@index([courseSectionId, periodId, dueAt])
+}
+
+// Entrega logica: una por matricula y tarea (RF-33/36/38).
+model Submission {
+  id           String   @id @default(uuid(7)) @db.Char(36)
+  assignmentId String   @db.Char(36)
+  enrollmentId String   @db.Char(36)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  assignment Assignment @relation(fields: [assignmentId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  enrollment Enrollment @relation(fields: [enrollmentId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  versions SubmissionVersion[]
+
+  @@unique([assignmentId, enrollmentId])
+  @@index([enrollmentId])
+}
+
+// Version de una entrega (RF-36/37/39). Historial inmutable: la base rechaza UPDATE y DELETE
+// con triggers (migracion contents_base), como AuditLog. La oficial es la de mayor
+// versionNumber (RN-09); solo se crean con archivo CLEAN. fileId @unique da idempotencia.
+model SubmissionVersion {
+  id            String   @id @default(uuid(7)) @db.Char(36)
+  submissionId  String   @db.Char(36)
+  versionNumber Int      @db.SmallInt
+  fileId        String   @unique @db.Char(36)
+  receivedAt    DateTime @db.DateTime(3) // hora del servidor al confirmar la subida
+  isLate        Boolean
+  createdAt     DateTime @default(now())
+
+  submission Submission @relation(fields: [submissionId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  file       StoredFile @relation(fields: [fileId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([submissionId, versionNumber])
+}

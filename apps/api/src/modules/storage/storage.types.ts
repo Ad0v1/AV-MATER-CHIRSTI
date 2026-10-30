@@ -51,3 +51,9 @@ export interface DownloadUrlOptions {
   /** true: el navegador lo abre (visor PDF de Dev 4). false: lo descarga. */
   inline?: boolean;
 }
+
+/** Resultado de headObject() (fase 3b de Dev 3). */
+export interface ObjectHead {
+  sizeBytes: number;
+  etag?: string;
+}

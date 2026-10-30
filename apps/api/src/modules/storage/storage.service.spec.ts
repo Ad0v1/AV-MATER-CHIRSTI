@@ -1,11 +1,17 @@
 import {
   BadRequestException,
+  ConflictException,
   NotFoundException,
   PayloadTooLargeException,
   ServiceUnavailableException,
   UnsupportedMediaTypeException,
 } from '@nestjs/common';
-import { GetObjectCommand, HeadObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import {
+  CopyObjectCommand,
+  GetObjectCommand,
+  HeadObjectCommand,
+  S3Client,
+} from '@aws-sdk/client-s3';
 import { describe, expect, it, vi, type MockInstance } from 'vitest';
 import { StorageService } from './storage.service.js';
 import type { StorageConfig } from './storage.types.js';
@@ -216,5 +222,65 @@ describe('StorageService.isHealthy', () => {
     const { service, send } = createService();
     send.mockRejectedValue(new Error('timeout'));
     await expect(service.isHealthy()).resolves.toBe(false);
+  });
+});
+
+// Fase 3b de Dev 3: lectura completa, copia desde la cuarentena y TTL de descarga.
+describe('StorageService: métodos de la fase 3b', () => {
+  const INCOMING = buildObjectKey(
+    'incoming',
+    new Date('2026-10-15T12:00:00Z'),
+    '11111111-2222-4333-8444-555555555555',
+  );
+
+  it('acepta el prefijo de cuarentena incoming/', () => {
+    expect(isValidObjectKey(INCOMING)).toBe(true);
+  });
+
+  it('headObject devuelve tamaño y ETag', async () => {
+    const { service, send } = createService();
+    send.mockResolvedValue({ ContentLength: 1234, ETag: '"e1"' });
+    await expect(service.headObject(INCOMING)).resolves.toEqual({ sizeBytes: 1234, etag: '"e1"' });
+  });
+
+  it('openObjectStream lee con If-Match y traduce 412 a 409 OBJECT_CHANGED', async () => {
+    const { service, send } = createService();
+    send.mockRejectedValue(
+      Object.assign(new Error('Precondition Failed'), {
+        name: 'PreconditionFailed',
+        $metadata: { httpStatusCode: 412 },
+      }),
+    );
+    await expect(service.openObjectStream(INCOMING, '"e1"')).rejects.toBeInstanceOf(
+      ConflictException,
+    );
+    const command = send.mock.calls[0][0] as GetObjectCommand;
+    expect(command.input.IfMatch).toBe('"e1"');
+  });
+
+  it('copyObject copia desde la cuarentena solo si el ETag coincide', async () => {
+    const { service, send } = createService();
+    send.mockResolvedValue({});
+    await service.copyObject(INCOMING, KEY, '"e1"');
+    const command = send.mock.calls[0][0] as CopyObjectCommand;
+    expect(command).toBeInstanceOf(CopyObjectCommand);
+    expect(command.input).toMatchObject({
+      Bucket: 'aula-privado',
+      Key: KEY,
+      CopySource: `aula-privado/${INCOMING}`,
+      CopySourceIfMatch: '"e1"',
+    });
+  });
+
+  it('la URL de descarga dura lo configurado (60 s por defecto)', async () => {
+    const s3 = new S3Client({
+      endpoint: config.endpoint,
+      region: config.region,
+      forcePathStyle: true,
+      credentials: { accessKeyId: 'k', secretAccessKey: 's' },
+    });
+    const service = new StorageService(s3, { ...config, downloadUrlTtlSeconds: 60 });
+    const result = await service.createDownloadUrl(KEY);
+    expect(new URL(result.url).searchParams.get('X-Amz-Expires')).toBe('60');
   });
 });

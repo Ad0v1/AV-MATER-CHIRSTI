@@ -16,7 +16,10 @@ export class PrismaAuditSink extends AuditSink {
         actorId: record.actorId ?? null,
         action: record.action,
         module: record.module,
-        ip: record.ip ?? null,
+        entityType: record.entityType ?? null,
+        entityId: record.entityId ?? null,
+        // La columna es VARCHAR(45): se trunca para no fallar con valores mas largos.
+        ip: record.ip?.slice(0, 45) ?? null,
         beforeState: toJson(record.beforeState),
         afterState: toJson(record.afterState),
         occurredAt: record.occurredAt,

@@ -19,6 +19,10 @@ export class RedisSessionStore extends SessionStore implements OnModuleDestroy {
     await this.redis.set(key, value, 'EX', ttlSeconds);
   }
 
+  async setIfAbsent(key: string, value: string, ttlSeconds: number): Promise<boolean> {
+    return (await this.redis.set(key, value, 'EX', ttlSeconds, 'NX')) === 'OK';
+  }
+
   get(key: string): Promise<string | null> {
     return this.redis.get(key);
   }

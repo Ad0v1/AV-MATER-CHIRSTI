@@ -10,7 +10,7 @@ describe('loadStorageConfig', () => {
     expect(config.accessKeyId).toBe('minio_dev');
     expect(config.forcePathStyle).toBe(true);
     expect(config.uploadUrlTtlSeconds).toBe(300);
-    expect(config.downloadUrlTtlSeconds).toBe(120);
+    expect(config.downloadUrlTtlSeconds).toBe(60);
   });
 
   it('reutiliza las credenciales de MinIO si no hay S3_ACCESS_KEY', () => {
@@ -28,6 +28,17 @@ describe('loadStorageConfig', () => {
     });
     expect(config.accessKeyId).toBe('r2-key');
     expect(config.secretAccessKey).toBe('r2-secret');
+  });
+
+  it('acepta S3_ACCESS_KEY_ID y S3_SECRET_ACCESS_KEY (los de los respaldos)', () => {
+    const config = loadStorageConfig({
+      S3_ACCESS_KEY_ID: 'id',
+      S3_SECRET_ACCESS_KEY: 'secreto',
+      MINIO_ROOT_USER: 'usuario',
+      MINIO_ROOT_PASSWORD: 'clave',
+    });
+    expect(config.accessKeyId).toBe('id');
+    expect(config.secretAccessKey).toBe('secreto');
   });
 
   it('en producción exige credenciales explícitas', () => {

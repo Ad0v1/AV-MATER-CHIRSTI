@@ -23,5 +23,10 @@ export const PDF_CONTENT_TYPE = 'application/pdf';
 /** Los PDF válidos empiezan con estos bytes. */
 export const PDF_MAGIC_BYTES = '%PDF-';
 
-/** Prefijos permitidos dentro del bucket. */
-export const OBJECT_SCOPES = ['materials', 'assignments', 'submissions'] as const;
+/**
+ * Prefijos permitidos dentro del bucket. `incoming` es la cuarentena (fase 3b de Dev 3): la URL
+ * PUT apunta ahí y, tras validar y escanear, el objeto se copia a su prefijo definitivo, así un
+ * segundo PUT con la misma URL nunca cambia un archivo ya aprobado. Admite una regla de
+ * ciclo de vida del bucket que borre `incoming/` a las 24 h.
+ */
+export const OBJECT_SCOPES = ['materials', 'assignments', 'submissions', 'incoming'] as const;

@@ -3,7 +3,7 @@ import { BadRequestException } from '@nestjs/common';
 import type { ObjectScope } from './storage.types.js';
 
 const KEY_PATTERN =
-  /^(materials|assignments|submissions)\/\d{4}\/(0[1-9]|1[0-2])\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.pdf$/;
+  /^(materials|assignments|submissions|incoming)\/\d{4}\/(0[1-9]|1[0-2])\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.pdf$/;
 
 /**
  * Genera la clave del objeto en el bucket: {scope}/{año}/{mes}/{uuid}.pdf

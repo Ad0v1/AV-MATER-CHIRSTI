@@ -57,6 +57,11 @@ services:
   clamav:
     image: clamav/clamav:stable
     restart: unless-stopped
+    # Dev 3, autorizado por el usuario; pendiente de revisión por Dev 1. INSTREAM admite hasta
+    # 25M por defecto y las entregas llegan a 50 MiB (RN-08): se sube el límite con las
+    # variables CLAMD_CONF_* que la imagen escribe en clamd.conf al arrancar (MaxFileSize ya es 100M).
+    environment:
+      CLAMD_CONF_StreamMaxLength: 64M
     ports:
       - '${CLAMAV_PORT:-3310}:3310'
     volumes:

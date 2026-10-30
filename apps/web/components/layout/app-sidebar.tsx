@@ -11,7 +11,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from '@/components/ui/sidebar';
-import { DevRoleSwitcher } from '@/components/layout/dev-role-switcher';
+import { LogoutButton } from '@/components/layout/logout-button';
 import { NAV_BY_ROLE } from '@/lib/nav';
 import { ROLE_LABELS, type Role } from '@/lib/roles';
 
@@ -43,11 +43,9 @@ export function AppSidebar({ role }: { role: Role }) {
           </SidebarGroup>
         ))}
       </SidebarContent>
-      {process.env.NODE_ENV !== 'production' && (
-        <SidebarFooter>
-          <DevRoleSwitcher role={role} />
-        </SidebarFooter>
-      )}
+      <SidebarFooter>
+        <LogoutButton />
+      </SidebarFooter>
     </Sidebar>
   );
 }

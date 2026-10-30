@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   Inject,
   Injectable,
   Logger,
@@ -8,7 +9,9 @@ import {
   ServiceUnavailableException,
   UnsupportedMediaTypeException,
 } from '@nestjs/common';
+import type { Readable } from 'node:stream';
 import {
+  CopyObjectCommand,
   DeleteObjectCommand,
   GetObjectCommand,
   HeadBucketCommand,
@@ -28,6 +31,7 @@ import {
 } from './storage.constants.js';
 import type {
   DownloadUrlOptions,
+  ObjectHead,
   SignedUrl,
   StorageConfig,
   StoredObjectInfo,
@@ -182,6 +186,54 @@ export class StorageService {
     );
   }
 
+  // --- Añadido en la fase 3b de Dev 3 (29/10/2026) para POST /files/:id/complete ---------
+
+  /** HEAD del objeto: tamaño real y ETag. 404 FILE_NOT_FOUND si no existe; 503 si S3 falla. */
+  async headObject(key: string): Promise<ObjectHead> {
+    assertValidObjectKey(key);
+    const head = await this.call(
+      () => this.s3.send(new HeadObjectCommand({ Bucket: this.config.bucket, Key: key })),
+      key,
+    );
+    return { sizeBytes: Number(head.ContentLength ?? 0), etag: head.ETag };
+  }
+
+  /**
+   * Abre el objeto como stream para leerlo de principio a fin (sha256, PDF, antivirus).
+   * Con `etag` se lee exactamente la versión inspeccionada con HEAD (If-Match): si alguien la
+   * reemplazó entretanto, S3 responde 412 y se traduce a 409 OBJECT_CHANGED.
+   */
+  async openObjectStream(key: string, etag?: string): Promise<Readable> {
+    assertValidObjectKey(key);
+    const response = await this.callWithPrecondition(
+      () =>
+        this.s3.send(new GetObjectCommand({ Bucket: this.config.bucket, Key: key, IfMatch: etag })),
+      key,
+    );
+    if (!response.Body) throw this.unavailable();
+    return response.Body as Readable;
+  }
+
+  /** Copia un objeto dentro del bucket (cuarentena → prefijo definitivo), solo si el ETag coincide. */
+  async copyObject(sourceKey: string, targetKey: string, etag?: string): Promise<void> {
+    assertValidObjectKey(sourceKey);
+    assertValidObjectKey(targetKey);
+    await this.callWithPrecondition(
+      () =>
+        this.s3.send(
+          new CopyObjectCommand({
+            Bucket: this.config.bucket,
+            Key: targetKey,
+            CopySource: `${this.config.bucket}/${sourceKey}`,
+            CopySourceIfMatch: etag,
+            ContentType: PDF_CONTENT_TYPE,
+            MetadataDirective: 'REPLACE',
+          }),
+        ),
+      sourceKey,
+    );
+  }
+
   /** Para el health check y Uptime Kuma (Dev 1). */
   async isHealthy(): Promise<boolean> {
     try {
@@ -238,6 +290,21 @@ export class StorageService {
       }
       this.logger.error(`Error de almacenamiento con "${key}": ${this.describe(error)}`);
       throw this.unavailable();
+    }
+  }
+
+  private async callWithPrecondition<T>(operation: () => Promise<T>, key: string): Promise<T> {
+    try {
+      return await operation();
+    } catch (error) {
+      const e = error as { name?: string; $metadata?: { httpStatusCode?: number } } | null;
+      if (e?.name === 'PreconditionFailed' || e?.$metadata?.httpStatusCode === 412) {
+        throw new ConflictException({
+          code: 'OBJECT_CHANGED',
+          message: 'El archivo cambió mientras se revisaba. Vuelve a subirlo.',
+        });
+      }
+      return this.call(() => Promise.reject(error as Error), key);
     }
   }
 

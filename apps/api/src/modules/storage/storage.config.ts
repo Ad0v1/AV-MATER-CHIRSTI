@@ -14,11 +14,15 @@ const storageEnvSchema = z.object({
   // En producción (R2) se usan credenciales propias. En local se reutilizan las de MinIO.
   S3_ACCESS_KEY: z.string().optional(),
   S3_SECRET_KEY: z.string().optional(),
+  // Nombres que ya usan los respaldos (.env.example). Fase 3b de Dev 3 (29/10/2026).
+  S3_ACCESS_KEY_ID: z.string().optional(),
+  S3_SECRET_ACCESS_KEY: z.string().optional(),
   MINIO_ROOT_USER: z.string().optional(),
   MINIO_ROOT_PASSWORD: z.string().optional(),
   S3_FORCE_PATH_STYLE: z.enum(['true', 'false']).default('true'),
   S3_UPLOAD_URL_TTL_SECONDS: z.coerce.number().int().min(30).max(3600).default(300),
-  S3_DOWNLOAD_URL_TTL_SECONDS: z.coerce.number().int().min(30).max(3600).default(120),
+  // 60 s: decisión del usuario del 29/10/2026 (expediente Dev 3, decisión 4).
+  S3_DOWNLOAD_URL_TTL_SECONDS: z.coerce.number().int().min(30).max(3600).default(60),
 });
 
 // Valores de desarrollo; coinciden con .env.example.
@@ -42,10 +46,12 @@ export function loadStorageConfig(source: NodeJS.ProcessEnv = process.env): Stor
 
   const accessKeyId =
     nonEmpty(env.S3_ACCESS_KEY) ??
+    nonEmpty(env.S3_ACCESS_KEY_ID) ??
     nonEmpty(env.MINIO_ROOT_USER) ??
     (isProduction ? undefined : DEV_ACCESS_KEY);
   const secretAccessKey =
     nonEmpty(env.S3_SECRET_KEY) ??
+    nonEmpty(env.S3_SECRET_ACCESS_KEY) ??
     nonEmpty(env.MINIO_ROOT_PASSWORD) ??
     (isProduction ? undefined : DEV_SECRET_KEY);
 
