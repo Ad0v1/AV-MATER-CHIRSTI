@@ -1,4 +1,5 @@
 import type { PrismaClient } from './../src/generated/prisma/client.js';
+// @ts-ignore TS6059: el seed vive fuera de rootDir; solo lo importan los tests (no entra en el build).
 import { assertNotProductionOrCi, hostOf } from './../../../prisma/seed/local-guard.js';
 
 // Guarda para los e2e que hacen DDL (quitar y reponer triggers). Pedido de seguridad (INFORME 6,

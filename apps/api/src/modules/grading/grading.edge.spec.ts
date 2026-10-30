@@ -9,6 +9,8 @@ const enrollment = {
   effectiveFrom: new Date('2026-03-01T00:00:00.000Z'),
   effectiveTo: null as Date | null,
 };
+const valueOf = (d: object): string | null | undefined =>
+  'value' in d ? (d.value as string | null) : undefined;
 const reason = (n: number) => 'x'.repeat(n);
 
 describe('gradeInputSchema: límites', () => {
@@ -21,7 +23,7 @@ describe('gradeInputSchema: límites', () => {
   ])('RN-01: GRADED %s es válida y queda %s', (value, expected) => {
     const r = gradeInputSchema.safeParse({ state: 'GRADED', value });
     expect(r.success).toBe(true);
-    if (r.success) expect(r.data.value).toBe(expected);
+    if (r.success) expect('value' in r.data ? r.data.value : undefined).toBe(expected);
   });
 
   it.each(['20.01', '21', '-0.01', '-1', 'abc', ''])('RN-01: GRADED %j se rechaza', (value) => {
@@ -33,8 +35,8 @@ describe('gradeInputSchema: límites', () => {
   });
 
   it('RF-45: NE sin value → null; NE con value se normaliza; NE con value fuera de rango se rechaza', () => {
-    expect(gradeInputSchema.parse({ state: 'NE' }).value ?? null).toBeNull();
-    expect(gradeInputSchema.parse({ state: 'NE', value: '2.5' }).value).toBe('2.50');
+    expect(valueOf(gradeInputSchema.parse({ state: 'NE' })) ?? null).toBeNull();
+    expect(valueOf(gradeInputSchema.parse({ state: 'NE', value: '2.5' }))).toBe('2.50');
     expect(gradeInputSchema.safeParse({ state: 'NE', value: '20.01' }).success).toBe(false);
   });
 

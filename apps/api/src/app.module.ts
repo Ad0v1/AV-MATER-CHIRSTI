@@ -16,6 +16,13 @@ import { UsersModule } from './modules/users/users.module.js';
 import { ContentsModule } from './modules/contents/contents.module.js';
 import { FilesModule } from './modules/files/files.module.js';
 import { GradingModule } from './modules/grading/grading.module.js';
+// Colas y trabajos de Dev 5 (RNF-19), registrados con autorización del usuario (30/10/2026).
+import { JobsModule } from './modules/jobs/jobs.module.js';
+import { QueueModule } from './modules/queue/queue.module.js';
+// Configuración institucional (RF-61) y calendario (RF-54) de Dev 5, autorizados el 30/10/2026.
+import { CalendarModule } from './modules/notifications/calendar.module.js';
+import { LiteralScaleModule } from './modules/settings/literal-scale.provider.js';
+import { SettingsModule } from './modules/settings/settings.module.js';
 import { SubmissionsModule } from './modules/submissions/submissions.module.js';
 import { AuthService } from './modules/auth/auth.service.js';
 import { PasswordService } from './modules/auth/password.service.js';
@@ -37,6 +44,11 @@ import { TotpService } from './modules/auth/totp.service.js';
     ContentsModule,
     SubmissionsModule,
     GradingModule,
+    QueueModule,
+    JobsModule,
+    LiteralScaleModule,
+    SettingsModule,
+    CalendarModule,
   ],
   controllers: [HealthController, AuthController],
   providers: [

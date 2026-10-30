@@ -14,6 +14,7 @@ import {
   WITHDRAWN_STUDENT,
   YEARS,
   email,
+  // @ts-ignore TS6059: el seed vive fuera de rootDir; solo lo importan los tests (no entra en el build).
 } from './../../../prisma/seed/fixtures.js';
 
 // Estos tests usan MySQL real (solo local con Docker). Cargan el .env de la raiz si existe.

@@ -1,6 +1,7 @@
 import {
   BarChart3,
   BookOpen,
+  CalendarDays,
   ClipboardList,
   FileText,
   GraduationCap,
@@ -30,6 +31,12 @@ const courseItems = (withRegistro: boolean): NavItem[] => [
     : []),
 ];
 
+// Calendario de plazos (RF-54, Dev 5): autorizado por el usuario el 30/10/2026.
+const agenda: NavGroup = {
+  label: 'Agenda',
+  items: [{ label: 'Calendario', href: ROUTES.calendario, icon: CalendarDays }],
+};
+
 // El menu es solo ayuda de navegacion: el backend valida rol y pertenencia (RNF-02).
 export const NAV_BY_ROLE: Record<Role, NavGroup[]> = {
   ADMIN: [
@@ -45,18 +52,20 @@ export const NAV_BY_ROLE: Record<Role, NavGroup[]> = {
       ],
     },
   ],
-  TEACHER: [{ label: 'Curso de ejemplo', items: courseItems(true) }],
+  TEACHER: [{ label: 'Curso de ejemplo', items: courseItems(true) }, agenda],
   STUDENT: [
     { label: 'Curso de ejemplo', items: courseItems(false) },
     {
       label: 'Calificaciones',
       items: [{ label: 'Mis notas', href: ROUTES.misNotas, icon: FileText }],
     },
+    agenda,
   ],
   GUARDIAN: [
     {
       label: 'Familia',
       items: [{ label: 'Panel del apoderado', href: ROUTES.apoderado, icon: Users }],
     },
+    agenda,
   ],
 };

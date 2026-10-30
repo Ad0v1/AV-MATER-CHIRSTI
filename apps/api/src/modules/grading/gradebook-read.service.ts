@@ -2,13 +2,16 @@ import {
   ForbiddenException,
   Injectable,
   NotFoundException,
+  Optional,
   UnprocessableEntityException,
 } from '@nestjs/common';
 import {
   buildGradebook,
+  DEFAULT_LITERAL_SCALE,
   isNeEligible,
   type GradebookCell,
   type GradebookEntry,
+  type LiteralScale,
 } from '@aula/shared';
 import type { AuthenticatedUser } from '../../common/auth/roles.js';
 import { PrismaService } from '../../common/prisma/prisma.service.js';
@@ -21,6 +24,8 @@ import { MSG as ACADEMIC_MSG } from '../academic/academic.errors.js';
 import { assertCanWriteCourseSection } from '../contents/contents-guards.js';
 import { computeDisplayStatus } from '../submissions/display-status.js';
 import { SubmissionsReadService } from '../submissions/submissions-read.service.js';
+// Tabla de literales configurada (RF-61, Dev 5). Cambio autorizado por el usuario el 30/10/2026.
+import { LiteralScaleProvider } from '../settings/literal-scale.provider.js';
 import { decimalText, toGradeEntry, type GradeRow } from './grading.policy.js';
 import type {
   GradebookCellView,
@@ -36,6 +41,8 @@ import { NeMaterializer } from './ne-materializer.service.js';
 // motor de packages/shared (un solo redondeo, literal, NE virtual A2, EXEMPT fuera, D-026).
 // Filas: matrículas vigentes de la sección + cerradas con nota o entrega (RN-14).
 // Exportado: Dev 5 (reportes) usa buildCourseSectionGradebook tras comprobar permisos.
+// Literal y riesgo con la tabla de RF-61 (LiteralScaleProvider de Dev 5); sin el proveedor
+// (tests aislados) o si la tabla guardada no es válida, DEFAULT_LITERAL_SCALE.
 
 type AssignmentLite = {
   id: string;
@@ -87,7 +94,13 @@ export class GradebookReadService {
     private readonly access: AcademicAccessService,
     private readonly submissions: SubmissionsReadService,
     private readonly materializer: NeMaterializer,
+    @Optional() private readonly scales?: LiteralScaleProvider,
   ) {}
+
+  /** Tabla de literales vigente (RF-61) o la tabla por defecto. */
+  private scale(): Promise<LiteralScale> {
+    return this.scales ? this.scales.current() : Promise.resolve(DEFAULT_LITERAL_SCALE);
+  }
 
   /** GET /course-sections/:id/gradebook (docente asignado o ADMIN). */
   async gradebook(
@@ -126,7 +139,7 @@ export class GradebookReadService {
       enrollments.map((e) => e.id),
     );
     const rows = this.visibleEnrollments(enrollments, assignments, cells);
-    const book = this.build(assignments, rows, cells, now);
+    const book = this.build(assignments, rows, cells, now, await this.scale());
 
     return {
       courseSection: {
@@ -186,7 +199,7 @@ export class GradebookReadService {
       enrollments.map((e) => e.id),
     );
     const rows = this.visibleEnrollments(enrollments, [assignment], cells);
-    const book = this.build([assignment], rows, cells, now);
+    const book = this.build([assignment], rows, cells, now, await this.scale());
     const bySubmission = new Map(summaries.map((s) => [s.enrollmentId, s]));
 
     return {
@@ -318,6 +331,7 @@ export class GradebookReadService {
     }
 
     const now = new Date();
+    const scale = await this.scale();
     const [enrollments, periods] = await Promise.all([
       this.prisma.enrollment.findMany({
         where: { studentId, academicYearId: year.id },
@@ -373,7 +387,7 @@ export class GradebookReadService {
               (e.isCurrent === true || isNeEligible(e, a.dueAt) || cells.has(key(a.id, e.id))),
           );
           if (shown.length === 0 && e.isCurrent !== true) continue;
-          const book = this.build(shown, [e], cells, now);
+          const book = this.build(shown, [e], cells, now, scale);
           coursePeriods.push({
             ...p,
             average: book.rows[0].average,
@@ -503,6 +517,7 @@ export class GradebookReadService {
     enrollments: EnrollmentLite[],
     cells: Map<string, StoredCell>,
     now: Date,
+    scale: LiteralScale,
   ) {
     const input: GradebookCell[] = [];
     for (const a of assignments) {
@@ -530,6 +545,7 @@ export class GradebookReadService {
       })),
       cells: input,
       now,
+      scale,
     });
   }
 

@@ -10,11 +10,12 @@ import { NeMaterializer } from './ne-materializer.service.js';
 // Calificaciones de Dev 4 (RF-41..52, RN-01..07). Registrado por el orquestador (30/10/2026).
 // Motor de notas en @aula/shared (Decisión del orquestador 3). PrismaModule y AuditModule son
 // globales. Exporta GradebookReadService (reportes de Dev 5) y GradingEventPublisher
-// (grade.updated.v1, notificaciones RF-53).
+// (grade.updated.v1, notificaciones RF-53). NeMaterializer: barrido de NE del worker de Dev 5
+// (maintenance:ne-sweep), exportado con autorizacion del usuario (30/10/2026).
 @Module({
   imports: [AcademicModule, SubmissionsModule],
   controllers: [GradingController],
   providers: [GradesService, GradebookReadService, NeMaterializer, GradingEventPublisher],
-  exports: [GradebookReadService, GradingEventPublisher],
+  exports: [GradebookReadService, GradingEventPublisher, NeMaterializer],
 })
 export class GradingModule {}
