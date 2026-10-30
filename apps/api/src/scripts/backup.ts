@@ -1,4 +1,5 @@
 import { loadBackupConfig } from '../backup/backup.config.js';
+import { loadDotenv } from '../config/dotenv.js';
 import {
   pruneBackups,
   restoreBackup,
@@ -21,6 +22,8 @@ const USAGE = `Uso: pnpm --filter api backup <comando>
 
 const log: Log = (msg, extra) =>
   console.log(JSON.stringify({ time: new Date().toISOString(), msg, ...extra }));
+
+loadDotenv();
 
 async function main(): Promise<void> {
   const [command, ...args] = process.argv.slice(2);
