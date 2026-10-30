@@ -1,5 +1,6 @@
 import Image from 'next/image';
-import { GraduationCap } from 'lucide-react';
+import { ChevronDown, GraduationCap } from 'lucide-react';
+import { GoogleSignIn } from '@/components/auth/google-sign-in';
 import { LoginForm } from '@/components/auth/login-form';
 
 export const metadata = { title: 'Iniciar sesión · Aula Virtual' };
@@ -43,7 +44,20 @@ export default function LoginPage() {
           <p className="mt-1 mb-6 text-center text-sm text-ink-2">
             Ingresa con tu cuenta institucional.
           </p>
-          <LoginForm />
+          <GoogleSignIn />
+
+          <details className="group mt-6 border-t border-line pt-4">
+            <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between rounded-lg px-1 text-sm font-medium text-brand outline-none focus-visible:ring-3 focus-visible:ring-ring/50 [&::-webkit-details-marker]:hidden">
+              Acceso del administrador
+              <ChevronDown
+                className="size-4 transition-transform group-open:rotate-180 motion-reduce:transition-none"
+                aria-hidden="true"
+              />
+            </summary>
+            <div className="pt-4">
+              <LoginForm />
+            </div>
+          </details>
           <p className="mt-6 border-t border-line pt-4 text-xs text-ink-3">
             Si no puedes ingresar, comunícate con el administrador del colegio.
           </p>

@@ -150,7 +150,7 @@ export function LoginForm() {
         {pending && (
           <Loader2 className="animate-spin motion-reduce:animate-none" aria-hidden="true" />
         )}
-        {pending ? 'Ingresando…' : needsTotp ? 'Verificar e ingresar' : 'Ingresar al aula'}
+        {pending ? 'Ingresando…' : needsTotp ? 'Verificar e ingresar' : 'Ingresar'}
       </Button>
     </form>
   );
