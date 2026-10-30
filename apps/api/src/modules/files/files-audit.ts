@@ -9,7 +9,8 @@ export type FilesAction =
   | 'upload.accepted'
   | 'upload.rejected'
   | 'upload.expired'
-  | 'download-url.issued';
+  | 'download-url.issued'
+  | 'file.purge';
 
 /**
  * Bitácora del módulo de archivos: module 'files', action 'files.<verbo>', entityType
@@ -19,7 +20,7 @@ export type FilesAction =
  */
 export async function recordFiles(
   audit: AuditService,
-  actor: Actor,
+  actor: Actor | null, // null = sistema (barridos y purga del worker)
   action: FilesAction,
   fileId: string,
   after: Record<string, unknown>,
@@ -27,8 +28,8 @@ export async function recordFiles(
   const fullAction = `files.${action}`;
   try {
     await audit.record({
-      actorId: actor.id,
-      ip: actor.ip,
+      actorId: actor?.id,
+      ip: actor?.ip,
       module: 'files',
       action: fullAction,
       entityType: 'StoredFile',
@@ -41,7 +42,7 @@ export async function recordFiles(
       `Fallo al registrar la bitácora: ${JSON.stringify({
         action: fullAction,
         entityId: fileId,
-        actorId: actor.id,
+        actorId: actor?.id ?? null,
         error: error instanceof Error ? error.name : typeof error,
         code: typeof code === 'string' ? code : undefined,
       })}`,
