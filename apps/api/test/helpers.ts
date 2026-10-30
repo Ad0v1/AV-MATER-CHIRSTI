@@ -104,3 +104,18 @@ export async function createTestApp(): Promise<TestApp> {
   await app.init();
   return { app, prisma, audit };
 }
+
+// Igual que createTestApp pero con MySQL real (Prisma sin reemplazar): la usan los e2e de Dev 2
+// (academic-api, academic-clone, users-promotion). Añadido al integrar develop el 29/10/2026.
+export async function createDbTestApp(): Promise<INestApplication<App>> {
+  const moduleFixture = await Test.createTestingModule({ imports: [AppModule] })
+    .overrideProvider(SessionStore)
+    .useValue(new MemorySessionStore())
+    .overrideProvider(AuditSink)
+    .useValue(new MemoryAuditSink())
+    .compile();
+  const app = moduleFixture.createNestApplication<INestApplication<App>>();
+  configureApp(app);
+  await app.init();
+  return app;
+}

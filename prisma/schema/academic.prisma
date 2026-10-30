@@ -1,0 +1,145 @@
+// Modulo academico: estructura y matriculas. Dueño: Dev 2 (RF-09..25).
+// Sin borrado fisico de lo que tiene historial (RN-13/14, D-021): toda FK con Restrict.
+// Invariantes que el ORM no cubre: columnas marcador TRUE/NULL + UNIQUE, y CHECK con SQL
+// manual en la migracion academic_estructura.
+
+enum AcademicPeriodKind {
+  FIRST_BIMESTER // I Bimestre (D-002)
+  SECOND_BIMESTER // II Bimestre
+  THIRD_TRIMESTER // III Trimestre
+  FOURTH_TRIMESTER // IV Trimestre
+}
+
+enum EnrollmentEndReason {
+  TRANSFER // traslado de seccion (RF-24)
+  WITHDRAWAL // retiro (RF-23)
+  YEAR_END // cierre de año / promocion (RF-16)
+  CORRECTION // matricula registrada por error
+}
+
+model AcademicYear {
+  id        String    @id @default(uuid(7)) @db.Char(36)
+  year      Int       @unique @db.SmallInt
+  // TRUE = activo; NULL = no activo; nunca FALSE (CHECK). UNIQUE admite varios NULL:
+  // asegura un solo año activo (RN-11) incluso con transacciones concurrentes.
+  isActive  Boolean?  @unique
+  closedAt  DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  periods  AcademicPeriod[]
+  sections Section[]
+}
+
+model AcademicPeriod {
+  id             String             @id @default(uuid(7)) @db.Char(36)
+  academicYearId String             @db.Char(36)
+  sequence       Int                @db.TinyInt
+  kind           AcademicPeriodKind
+  label          String             @db.VarChar(32)
+  startDate      DateTime           @db.Date
+  endDate        DateTime           @db.Date
+  closedAt       DateTime?
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  academicYear AcademicYear @relation(fields: [academicYearId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  // Relación inversa de Dev 3, autorizado por el usuario el 29/10/2026
+  materials   Material[]
+  assignments Assignment[]
+
+  @@unique([academicYearId, sequence])
+  @@unique([academicYearId, kind])
+}
+
+model Section {
+  id             String   @id @default(uuid(7)) @db.Char(36)
+  academicYearId String   @db.Char(36)
+  gradeLevel     Int      @db.TinyInt
+  code           String   @db.VarChar(8)
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  academicYear   AcademicYear    @relation(fields: [academicYearId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  courseSections CourseSection[]
+  enrollments    Enrollment[]
+
+  @@unique([academicYearId, gradeLevel, code])
+  @@unique([id, academicYearId]) // destino de la FK compuesta de Enrollment
+}
+
+model Course {
+  id        String   @id @default(uuid(7)) @db.Char(36)
+  name      String   @unique @db.VarChar(120)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  courseSections CourseSection[]
+}
+
+model CourseSection {
+  id        String   @id @default(uuid(7)) @db.Char(36)
+  sectionId String   @db.Char(36)
+  courseId  String   @db.Char(36)
+  teacherId String?  @db.Char(36) // null mientras no hay docente (clonacion RF-15); asignar y reasignar va a la bitacora (RF-14)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  section Section @relation(fields: [sectionId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  course  Course  @relation(fields: [courseId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  teacher User?   @relation("CourseSectionTeacher", fields: [teacherId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  // Relación inversa de Dev 3, autorizado por el usuario el 29/10/2026
+  materials   Material[]
+  assignments Assignment[]
+  storedFiles StoredFile[]
+
+  @@unique([sectionId, courseId])
+  @@index([teacherId])
+  @@index([courseId])
+}
+
+model Enrollment {
+  id             String               @id @default(uuid(7)) @db.Char(36)
+  studentId      String               @db.Char(36)
+  sectionId      String               @db.Char(36)
+  academicYearId String               @db.Char(36) // copia del año de la seccion; la FK compuesta asegura que coincidan
+  // TRUE = vigente; NULL = cerrada. UNIQUE(academicYearId, studentId, isCurrent): una vigente por año (invariante 2).
+  isCurrent      Boolean?             @default(true)
+  effectiveFrom  DateTime             @default(now())
+  effectiveTo    DateTime?
+  endReason      EnrollmentEndReason?
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+
+  student User    @relation("EnrollmentStudent", fields: [studentId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  section Section @relation(fields: [sectionId, academicYearId], references: [id, academicYearId], onDelete: Restrict, onUpdate: Restrict)
+
+  // Relación inversa de Dev 3, autorizado por el usuario el 29/10/2026
+  submissions Submission[]
+
+  @@unique([academicYearId, studentId, isCurrent])
+  @@index([studentId, effectiveFrom])
+  @@index([sectionId, academicYearId, isCurrent])
+}
+
+model GuardianStudent {
+  id         String    @id @default(uuid(7)) @db.Char(36)
+  guardianId String    @db.Char(36)
+  studentId  String    @db.Char(36)
+  // TRUE = vigente; NULL = revocado; nunca FALSE (CHECK). UNIQUE(guardianId, studentId, isActive):
+  // un solo vínculo vigente por par; los revocados se conservan (RN-13/14, D-032).
+  isActive   Boolean?  @default(true)
+  createdAt  DateTime  @default(now())
+  revokedAt  DateTime?
+
+  guardian User @relation("GuardianStudentGuardian", fields: [guardianId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  student  User @relation("GuardianStudentStudent", fields: [studentId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([guardianId, studentId, isActive])
+  @@index([studentId])
+}
