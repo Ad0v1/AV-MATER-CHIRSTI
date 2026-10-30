@@ -1,6 +1,6 @@
 # Manual del estudiante
 
-> **Estado: PROPUESTA.** Cubre clases, lecturas y entregas de tareas (Dev 3). Las calificaciones se documentarán con el módulo de calificaciones.
+> **Estado: PROPUESTA.** Cubre clases, lecturas y entregas de tareas (Dev 3), y **Mis notas** (Dev 4).
 
 ## Ver clases y lecturas
 
@@ -25,3 +25,12 @@ Por ahora la pantalla no tiene botón para descargar el PDF.
 - El período está cerrado. El formulario no aparece.
 
 Si la tarea admite entregas tardías, puedes entregar después del plazo. La entrega aparece como **entregada con retraso**, sin descuento. La fecha de recepción es la del momento en que el sistema confirma la subida.
+
+## Ver mis notas (RF-51)
+
+1. En el menú, entra a **Calificaciones > Mis notas**.
+2. Verás tus cursos del año activo. Cada curso muestra sus períodos, con el **promedio** del período (por ejemplo, `15 · A (logro esperado)`) o **Sin notas** si todavía no hay notas que cuenten.
+3. Debajo de cada período está cada tarea, con su nota, **NE** (no entregó) o **Exonerado**, su estado de entrega y el comentario del docente, si lo hay.
+4. Si una tarea venció y no la entregaste, aparece como **NE**, con la nota NE de la tarea (por defecto, 0).
+5. Un exonerado no tiene nota y no cuenta en el promedio. El motivo de la exoneración no aparece en tu pantalla.
+6. Todavía no hay promedio anual: el promedio es por período.

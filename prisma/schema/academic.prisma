@@ -121,6 +121,8 @@ model Enrollment {
 
   // Relación inversa de Dev 3, autorizado por el usuario el 29/10/2026
   submissions Submission[]
+  // Relación inversa de Dev 4, autorizado por el usuario el 30/10/2026
+  grades      Grade[]
 
   @@unique([academicYearId, studentId, isCurrent])
   @@index([studentId, effectiveFrom])

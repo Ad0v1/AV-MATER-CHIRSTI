@@ -200,6 +200,9 @@ importers:
 
   apps/api:
     dependencies:
+      '@aula/shared':
+        specifier: workspace:*
+        version: link:../../packages/shared
       '@aws-sdk/client-s3':
         specifier: ^3.1159.0
         version: 3.1159.0

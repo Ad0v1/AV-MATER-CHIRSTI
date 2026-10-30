@@ -15,6 +15,7 @@ import { UsersModule } from './modules/users/users.module.js';
 // Módulos de Dev 3, registrados con autorización del usuario (29/10/2026); pendiente de revisión por Dev 1.
 import { ContentsModule } from './modules/contents/contents.module.js';
 import { FilesModule } from './modules/files/files.module.js';
+import { GradingModule } from './modules/grading/grading.module.js';
 import { SubmissionsModule } from './modules/submissions/submissions.module.js';
 import { AuthService } from './modules/auth/auth.service.js';
 import { PasswordService } from './modules/auth/password.service.js';
@@ -35,6 +36,7 @@ import { TotpService } from './modules/auth/totp.service.js';
     FilesModule,
     ContentsModule,
     SubmissionsModule,
+    GradingModule,
   ],
   controllers: [HealthController, AuthController],
   providers: [

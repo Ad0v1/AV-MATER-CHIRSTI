@@ -127,6 +127,9 @@ model Assignment {
   submissions     Submission[]
   submissionFiles StoredFile[] @relation("SubmissionFileAssignment")
 
+  // Relación inversa de Dev 4, autorizado por el usuario el 30/10/2026
+  grades Grade[]
+
   @@index([courseSectionId, periodId, dueAt])
 }
 

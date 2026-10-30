@@ -24,6 +24,7 @@
     "backup": "nest build && node dist/scripts/backup.js"
   },
   "dependencies": {
+    "@aula/shared": "workspace:*",
     "@aws-sdk/client-s3": "^3.1159.0",
     "@aws-sdk/lib-storage": "^3.1159.0",
     "@aws-sdk/s3-request-presigner": "^3.1159.0",

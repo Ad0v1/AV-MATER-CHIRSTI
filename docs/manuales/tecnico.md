@@ -367,3 +367,73 @@ La subida desde el navegador va directa a MinIO con la URL firmada. La prueba en
 - Dev 1: bitácora dentro de la transacción (D-047).
 - Luchito: el README de `apps/api/src/modules/storage/` indica 120 s para la descarga; el código y D-043 usan 60 s.
 - Dev 2: el apartado del seed (D-028) dice que no hay contraseñas de prueba; con `prisma/seed/credentials.ts` ya no es así. Revisar ese apartado.
+
+## Módulo de calificaciones (Dev 4, RF-41..52; RN-01..07; RNF-31)
+
+> **Estado: PROPUESTA.** Código en `apps/api/src/modules/grading/` y `packages/shared/src/grading/`; pantallas en `apps/web/app/(app)/curso/[id]/registro/`, `mis-notas/` y `apoderado/`. Rama `features/adolfo`, sin PR aún. Contrato en `docs/03_CONTRATOS.md`, sección "API de calificaciones"; modelo en `docs/02_MODELO_ENTIDADES.md`; decisiones D-048 a D-057 en `docs/08_DECISIONES.md`.
+
+**Alcance.** Notas de 0 a 20, NE manual y automática, exoneración con motivo, registro auxiliar con promedios y dashboard, Mis notas y vista de solo lectura del apoderado. Fuera: promedio anual (D-014), ponderación, exportaciones y notificaciones (Dev 5).
+
+**Qué exporta.** `GradingModule` exporta:
+
+- `GradebookReadService`: lecturas del registro, para los reportes de Dev 5. `buildCourseSectionGradebook` no comprueba permisos: el llamador debe comprobar antes que el actor es el docente asignado o ADMIN, y nunca devolver el resultado a STUDENT ni a GUARDIAN.
+- `GradingEventPublisher`: `publisher.on('grade.updated.v1', handler)` devuelve la función para desuscribirse.
+
+**Dependencias.**
+
+- `@aula/shared` es dependencia de `apps/api` (`"workspace:*"`). La API importa el paquete compilado (`main`: `dist/index.js`). Tras cambiar el motor, ejecuta `pnpm --filter shared build` antes de probar o arrancar la API.
+- `GradingModule` importa `AcademicModule` (pertenencia, cierre de período y matrículas) y `SubmissionsModule` (tarea y entregas, por `SubmissionsReadService`).
+
+### NE automática (`NeMaterializer`)
+
+- Escribe filas `Grade` con `source: AUTO` y `state: NE`. Lo hace al abrir el registro o el resumen de una tarea, solo con período y año abiertos, y al recibir `period.closed.v1`.
+- Se suscribe a `period.closed.v1` con `AcademicEventPublisher` en `onModuleInit`. Es un evento en proceso (D-031): si el proceso cae justo después del cierre, las NE no quedan fijas. Con el período cerrado, la lectura muestra la NE virtual.
+- `materializePeriod` es `@internal`: no lo expongas en un controlador ni lo llames desde otro módulo.
+- Cada tarea se escribe en su propia transacción, con el período bloqueado (`FOR SHARE`). Ante P2002 o bloqueo mutuo, reintenta hasta tres veces; si no puede, lo registra en el log y la lectura sigue con la NE virtual.
+- No uses `createMany({ skipDuplicates: true })`: en MySQL convierte los CHECK en avisos.
+
+### Eventos
+
+- Publica `grade.updated.v1` (payload en `docs/03_CONTRATOS.md`), después del commit y de la bitácora.
+- Consume `period.closed.v1` (`{ periodId, academicYearId, closedAt }`) de Dev 2.
+
+**Cuidado al preparar datos de prueba.** `period.closed.v1` crea filas `Grade` en las tareas vencidas del período. `Grade` tiene FK `Restrict` (RN-14): para borrar esas tareas en una prueba, borra antes sus filas `Grade`. Es un hallazgo MEDIO del INFORME 5 del expediente `.claude/tareas/20261030-dev4-calificaciones.md`, sin cambio.
+
+### Variables de entorno
+
+Ninguna nueva. Las pruebas de integración usan `DATABASE_URL`, que ya existe en `.env.example (raíz del repositorio)`.
+
+### Cómo se prueba
+
+| Comando | Qué prueba | Requiere |
+| --- | --- | --- |
+| `pnpm --filter shared test` | Motor: RN-01..07, NE virtual, vigencia de matrículas, registro auxiliar y normalización de la nota | Nada |
+| `pnpm --filter api test` | Política de escritura, servicio con Prisma simulado, bordes de la nota y de la NE | Nada |
+| `pnpm --filter api test:e2e` (`grading.e2e-spec.ts`) | 21 casos: estados, 409 con período cerrado, NE automática, privacidad del motivo, vínculos y traslados | MySQL local con el seed |
+| `pnpm --filter web test` (`grading-format.test.ts`) | Formato de notas y promedios, mensajes de los 422 | Nada |
+
+> **Aviso.** La prueba e2e escribe datos: ejecútala solo sobre la base local con el seed, nunca sobre datos reales.
+
+### Endpoints (resumen)
+
+Todos bajo `/api/v1`. Cuerpos, vistas y códigos completos en `docs/03_CONTRATOS.md`.
+
+| Método y ruta | Rol |
+| --- | --- |
+| `PUT /grades/:assignmentId/:enrollmentId` | TEACHER asignado, ADMIN |
+| `GET /assignments/:id/grade-summary` | TEACHER asignado, ADMIN |
+| `GET /course-sections/:id/gradebook` | TEACHER asignado, ADMIN |
+| `GET /me/grades` | STUDENT |
+| `GET /guardian/students` | GUARDIAN |
+| `GET /guardian/students/:studentId/grades` | GUARDIAN con vínculo vigente |
+
+**Errores.** Formato común. Los 422 de negocio traen `error.code`: `NO_SUBMISSION`, `HAS_SUBMISSION`, `NOT_OVERDUE`, `ENROLLMENT_OUT_OF_SECTION` y `ENROLLMENT_NOT_ELIGIBLE`. Período o año cerrado: 409.
+
+**Bitácora.** Módulo `grading`, entidad `Grade`, acciones `grading.grade.create`, `update` y `auto_ne`, después del commit (D-047). Solo lleva `{ state, value, source }` y nombres de campos: nunca comentario ni motivo de exoneración.
+
+### Pendientes
+
+- Dev 5: notificación RF-53 con `grade.updated.v1`; job de NE en el worker; tabla literal configurable (RF-61); reportes y anuncios del apoderado.
+- Dev 3: integrar `gradeState` en sus listados (hoy se pasa `null`).
+- Promedio anual (D-014): pendiente de la institución.
+- Medir la cobertura combinada de la API (RNF-31) y verificar en local con Docker las pruebas e2e.
