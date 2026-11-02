@@ -315,3 +315,11 @@ Comandos: install frozen ok. API: lint 0, tsc 0, test 70/797, build ok. Web: lin
 Hallazgos (BAJO): anotar notifications/ y calendario/ en docs/AGENTES_IA.md; quedan nosniff e img-src para 5g.
 Commits propuestos: feat(admin) RF-61 y feat(notifications) RF-54; files/ (Dev 3) aparte.
 Pendientes: WorkerModule debe importar LiteralScaleModule (5f); branding en el layout (Dev 1); docs/02 y docs/03.
+
+### Decisión del orquestador 8
+
+- El usuario pidió "Commit y seguir". Se hicieron los commits c39a2c9 (stub files/) y 95fd504 (Dev 5, 5a-5e, con el reporte parcial) y se subieron a mio.
+- Se lanzan en paralelo dos agentes dev5: 5d (RF-32 y RF-53) y 5g (RF-55/56, RF-62..67).
+- Ambos agentes pueden tocar app.module.ts, worker.module.ts, nav.ts y routes.ts, solo con inserciones mínimas mediante Edit, y releyendo el archivo antes de cada cambio.
+- RF-63: el ADMIN sí descarga el PERSONAL_DATA_EXPORT, porque atiende el pedido ARCO, con bitácora job.download (seguridad, hallazgo MEDIO 3).
+- 5g crea la utilidad ZIP compartida en jobs/, que 5f va a reutilizar.

@@ -41,6 +41,7 @@ function setup() {
       Promise.resolve([] as Array<{ id: string; resultObjectKey: string | null }>),
     ),
     updateMany: vi.fn(() => Promise.resolve({ count: 1 })),
+    count: vi.fn(() => Promise.resolve(0)),
   };
   const prisma = { backgroundJob: db } as unknown as PrismaService;
   const queues = { enqueue: vi.fn(() => Promise.resolve(ID)) };

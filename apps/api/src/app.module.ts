@@ -21,6 +21,14 @@ import { JobsModule } from './modules/jobs/jobs.module.js';
 import { QueueModule } from './modules/queue/queue.module.js';
 // Configuración institucional (RF-61) y calendario (RF-54) de Dev 5, autorizados el 30/10/2026.
 import { CalendarModule } from './modules/notifications/calendar.module.js';
+// Anuncios (RF-32) y notificaciones (RF-53) de Dev 5, autorizados el 30/10/2026 (fase 5d).
+import { AnnouncementsModule } from './modules/announcements/announcements.module.js';
+import { NotificationsModule } from './modules/notifications/notifications.module.js';
+// Bitácora (RF-62, RF-55/56), ciclo de vida (RF-63, RF-65..67) y descarga de trabajos de Dev 5,
+// autorizados el 30/10/2026 (fase 5g).
+import { AdminAuditModule } from './modules/admin-audit/admin-audit.module.js';
+import { JobsHttpModule } from './modules/jobs/jobs-http.module.js';
+import { LifecycleModule } from './modules/lifecycle/lifecycle.module.js';
 import { LiteralScaleModule } from './modules/settings/literal-scale.provider.js';
 import { SettingsModule } from './modules/settings/settings.module.js';
 import { SubmissionsModule } from './modules/submissions/submissions.module.js';
@@ -49,6 +57,11 @@ import { TotpService } from './modules/auth/totp.service.js';
     LiteralScaleModule,
     SettingsModule,
     CalendarModule,
+    AnnouncementsModule,
+    NotificationsModule,
+    AdminAuditModule,
+    JobsHttpModule,
+    LifecycleModule,
   ],
   controllers: [HealthController, AuthController],
   providers: [

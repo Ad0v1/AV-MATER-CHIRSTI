@@ -4,6 +4,8 @@ import { PrismaModule } from '../../common/prisma/prisma.module.js';
 import { ConfigModule } from '../../config/config.module.js';
 import { FilesModule } from '../files/files.module.js';
 import { GradingModule } from '../grading/grading.module.js';
+import { NotificationsWorkerModule } from '../notifications/notifications-worker.module.js';
+import { LifecycleWorkerModule } from '../lifecycle/lifecycle-worker.module.js';
 import { JobsModule } from './jobs.module.js';
 import { IntentSweepProcessor } from './processors/intent-sweep.processor.js';
 import { MailCheckProcessor } from './processors/mail-check.processor.js';
@@ -15,7 +17,16 @@ import { workerHostProviders } from './worker.host.js';
 // Dev 5 agrega aqui su modulo de procesadores (5c..5g). Los procesadores se registran solos
 // en JobProcessorRegistry (onModuleInit) y WorkerHost los consume.
 @Module({
-  imports: [ConfigModule, PrismaModule, AuditModule, JobsModule, GradingModule, FilesModule],
+  imports: [
+    ConfigModule,
+    PrismaModule,
+    AuditModule,
+    JobsModule,
+    GradingModule,
+    FilesModule,
+    NotificationsWorkerModule,
+    LifecycleWorkerModule,
+  ],
   providers: [
     NeSweepProcessor,
     IntentSweepProcessor,
