@@ -8,6 +8,8 @@ export const ROUTES = {
   adminBitacora: '/admin/bitacora',
   adminAlmacenamiento: '/admin/almacenamiento',
   misNotas: '/mis-notas',
+  // RF-54 (Dev 5): estudiante, docente y apoderado. Autorizado por el usuario (30/10/2026).
+  calendario: '/calendario',
   apoderado: '/apoderado',
 } as const;
 

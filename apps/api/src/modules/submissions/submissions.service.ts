@@ -296,8 +296,9 @@ export class SubmissionsService {
       include: { ...versionInclude, submission: { select: { enrollmentId: true } } },
     });
     if (used) {
+      // Archivo de otro alumno: el mismo 422 genérico, sin revelar que ya se entregó (INFORME 12).
       if (used.submission.enrollmentId !== enrollmentId) {
-        throw new ConflictException(SUBMISSION_MSG.fileUsedElsewhere);
+        throw new UnprocessableEntityException(SUBMISSION_MSG.invalidFile);
       }
       return { created: false, version: used, dueAt: assignment.dueAt };
     }
@@ -376,10 +377,12 @@ export class SubmissionsService {
       },
     });
     if (!version) return null;
-    if (
-      version.submission.assignmentId !== assignmentId ||
-      version.submission.enrollmentId !== enrollmentId
-    ) {
+    // Archivo de otro alumno: el mismo 422 genérico que un archivo inválido (sin oráculo, INFORME 12).
+    if (version.submission.enrollmentId !== enrollmentId) {
+      throw new UnprocessableEntityException(SUBMISSION_MSG.invalidFile);
+    }
+    // Archivo propio ya entregado en otra tarea: 409 (no revela nada ajeno).
+    if (version.submission.assignmentId !== assignmentId) {
       throw new ConflictException(SUBMISSION_MSG.fileUsedElsewhere);
     }
     return version;

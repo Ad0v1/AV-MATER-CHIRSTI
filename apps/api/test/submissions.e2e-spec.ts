@@ -24,6 +24,10 @@ import { createDbTestApp, MemoryAuditSink } from './helpers.js';
 // MySQL real con el seed (solo local). Las tareas y los StoredFile CLEAN se insertan directo
 // (la subida real es de la fase 3b). La limpieza de versiones usa la guarda de db-test-guard.ts.
 config({ path: fileURLToPath(new URL('../../../.env', import.meta.url)), quiet: true });
+// Confirmación explícita del DDL de limpieza (INFORME 12): este e2e quita y repone el trigger de
+// SubmissionVersion. La guarda sigue exigiendo BD local y esperada, sin CI ni production; quien
+// ejecute fuera de ese entorno recibe el error de la guarda antes de cualquier DDL.
+process.env.E2E_ALLOW_DDL ??= '1';
 
 const API = '/api/v1';
 const TITLE_PREFIX = 'QA-3D ';
@@ -260,6 +264,44 @@ describe.skipIf(!process.env.DATABASE_URL)('Entregas de Dev 3, fase 3d (e2e, MyS
   });
 
   // ---------------------------------------------------------------------------
+  describe('Estudiante trasladado (RN-12, RN-14)', () => {
+    it('ve su historial de la sección vieja, pero no entrega ni consulta su estado ahí', async () => {
+      const assignmentId = await makeAssignment();
+      const cs = await prisma.courseSection.findUniqueOrThrow({ where: { id: cs3AMath } });
+      const old = await prisma.enrollment.findFirstOrThrow({
+        where: { studentId: ids.get('estudiante03'), sectionId: cs.sectionId },
+      });
+      expect(old.isCurrent).toBeNull();
+      const fileId = await makeFile(assignmentId, { uploader: 'estudiante03' });
+      const file = await prisma.storedFile.findUniqueOrThrow({ where: { id: fileId } });
+      const sub = await prisma.submission.create({
+        data: {
+          assignmentId,
+          enrollmentId: old.id,
+          versions: {
+            create: { versionNumber: 1, fileId, receivedAt: file.completedAt!, isLate: false },
+          },
+        },
+      });
+      const h = await get('estudiante03', `/submissions/${sub.id}/versions`).expect(200);
+      expect(h.body.versions).toHaveLength(1);
+      await submit(
+        'estudiante03',
+        assignmentId,
+        await makeFile(assignmentId, { uploader: 'estudiante03' }),
+      ).expect(403);
+      await get('estudiante03', `/assignments/${assignmentId}/submissions/me`).expect(403);
+      expect(await prisma.submissionVersion.count({ where: { submissionId: sub.id } })).toBe(1);
+      // Otro estudiante no ve ese historial; la lista del docente excluye la matrícula vieja.
+      await get('estudiante01', `/submissions/${sub.id}/versions`).expect(403);
+      const list = await get('docente01', `/assignments/${assignmentId}/submissions`).expect(200);
+      expect(list.body.items.some((i: Json) => i.studentId === ids.get('estudiante03'))).toBe(
+        false,
+      );
+    });
+  });
+
+  // ---------------------------------------------------------------------------
   describe('Entregar y reentregar (RF-33, RF-36, RN-09)', () => {
     it('QA-007: dos versiones antes del plazo; la última es la oficial; bitácora y evento', async () => {
       const assignmentId = await makeAssignment();
@@ -345,7 +387,7 @@ describe.skipIf(!process.env.DATABASE_URL)('Entregas de Dev 3, fase 3d (e2e, MyS
       const results = await Promise.all(
         [1, 2, 3].map(() => submit('estudiante01', assignmentId, fileId)),
       );
-      expect(results.map((r) => r.status).sort()).toEqual([200, 200, 201]);
+      expect(results.map((r) => r.status).sort((a, b) => a - b)).toEqual([200, 200, 201]);
       expect(new Set(results.map((r) => r.body.versionId)).size).toBe(1);
       expect(await prisma.submissionVersion.count({ where: { fileId } })).toBe(1);
     });
@@ -365,12 +407,40 @@ describe.skipIf(!process.env.DATABASE_URL)('Entregas de Dev 3, fase 3d (e2e, MyS
       expect(await prisma.submission.count({ where: { assignmentId } })).toBe(0);
     });
 
+    it('422: archivo INFECTED, INVALID o con escaneo PENDING; nada se crea', async () => {
+      const assignmentId = await makeAssignment();
+      const mk = async (data: Record<string, unknown>) => {
+        const id = await makeFile(assignmentId);
+        await prisma.storedFile.update({ where: { id }, data });
+        return id;
+      };
+      for (const fileId of [
+        await mk({ scanStatus: 'INFECTED' }),
+        await mk({ scanStatus: 'PENDING' }),
+        await mk({ scanStatus: 'INVALID', rejectReason: 'NOT_PDF' }),
+      ]) {
+        await submit('estudiante01', assignmentId, fileId).expect(422);
+      }
+      expect(await prisma.submission.count({ where: { assignmentId } })).toBe(0);
+      expect(auditOf('submissions.version.created')).toHaveLength(0);
+      expect(accepted()).toHaveLength(0);
+    });
+
     it('409: un archivo ya entregado no se usa en otra tarea', async () => {
       const assignmentId = await makeAssignment();
       const fileId = await makeFile(assignmentId);
       await submit('estudiante01', assignmentId, fileId).expect(201);
       const other = await makeAssignment();
       await submit('estudiante01', other, fileId).expect(409);
+    });
+
+    it('422 genérico (sin oráculo): el archivo ya entregado por otro alumno', async () => {
+      const assignmentId = await makeAssignment();
+      const fileId = await makeFile(assignmentId);
+      await submit('estudiante01', assignmentId, fileId).expect(201);
+      const res = await submit('estudiante02', assignmentId, fileId).expect(422);
+      expect(res.body.error.message).toBe('El archivo no es válido para esta entrega');
+      expect(await prisma.submissionVersion.count({ where: { fileId } })).toBe(1);
     });
 
     it('RN-10: período cerrado → 409; tarea borrada → 404', async () => {
@@ -424,6 +494,73 @@ describe.skipIf(!process.env.DATABASE_URL)('Entregas de Dev 3, fase 3d (e2e, MyS
         200,
       );
       expect(me.body).toMatchObject({ displayStatus: 'PENDING', isOverdue: true, versions: [] });
+    });
+
+    it('QA-009: exactamente en dueAt es a tiempo; dueAt + 1 ms es tarde y se bloquea sin allowLate', async () => {
+      const dueAt = new Date(Date.now() - HOUR);
+      const assignmentId = await makeAssignment({ dueAt });
+      const onTime = await submit(
+        'estudiante01',
+        assignmentId,
+        await makeFile(assignmentId, { completedAt: dueAt }),
+      ).expect(201);
+      expect(onTime.body).toMatchObject({ isLate: false, receipt: { lateBySeconds: 0 } });
+
+      const strict = await makeAssignment({ dueAt });
+      await submit(
+        'estudiante01',
+        strict,
+        await makeFile(strict, { completedAt: new Date(dueAt.getTime() + 1) }),
+      ).expect(409);
+      expect(await prisma.submission.count({ where: { assignmentId: strict } })).toBe(0);
+    });
+
+    it('QA-008: dueAt + 1 ms con allowLate se acepta marcada tarde con lateBySeconds 0', async () => {
+      const dueAt = new Date(Date.now() - HOUR);
+      const assignmentId = await makeAssignment({ dueAt, allowLate: true });
+      const res = await submit(
+        'estudiante01',
+        assignmentId,
+        await makeFile(assignmentId, { completedAt: new Date(dueAt.getTime() + 1) }),
+      ).expect(201);
+      expect(res.body.isLate).toBe(true);
+      expect(res.body.receipt).toMatchObject({ status: 'SUBMITTED_LATE', lateBySeconds: 0 });
+    });
+
+    it('reentrega tras el plazo: con allowLate v2 tarde y oficial; sin allowLate se bloquea y v1 se conserva', async () => {
+      const dueAt = new Date(Date.now() - HOUR);
+      const early = new Date(dueAt.getTime() - 60_000);
+      const assignmentId = await makeAssignment({ dueAt, allowLate: true });
+      const v1 = await submit(
+        'estudiante01',
+        assignmentId,
+        await makeFile(assignmentId, { completedAt: early }),
+      ).expect(201);
+      expect(v1.body.isLate).toBe(false);
+      const v2 = await submit('estudiante01', assignmentId, await makeFile(assignmentId)).expect(
+        201,
+      );
+      expect(v2.body).toMatchObject({ versionNumber: 2, isLate: true });
+      const me = await get('estudiante01', `/assignments/${assignmentId}/submissions/me`).expect(
+        200,
+      );
+      expect(me.body).toMatchObject({ displayStatus: 'SUBMITTED_LATE', isLate: true });
+      expect(me.body.versions.map((v: Json) => [v.versionNumber, v.isLate, v.isOfficial])).toEqual([
+        [2, true, true],
+        [1, false, false],
+      ]);
+
+      const strict = await makeAssignment({ dueAt });
+      const s1 = await submit(
+        'estudiante01',
+        strict,
+        await makeFile(strict, { completedAt: early }),
+      ).expect(201);
+      await submit('estudiante01', strict, await makeFile(strict)).expect(409);
+      const h = await get('estudiante01', `/submissions/${s1.body.submissionId}/versions`).expect(
+        200,
+      );
+      expect(h.body.versions).toHaveLength(1);
     });
 
     it('D-006: la hora de entrega es completedAt; subida confirmada antes del plazo es a tiempo', async () => {
@@ -508,6 +645,43 @@ describe.skipIf(!process.env.DATABASE_URL)('Entregas de Dev 3, fase 3d (e2e, MyS
       await get('admin', `/assignments/${assignmentId}/submissions`).expect(200);
       await get('docente02', `/assignments/${assignmentId}/submissions`).expect(403);
       await get('estudiante01', `/assignments/${assignmentId}/submissions`).expect(403);
+    });
+
+    it('docente ajeno: 403 en lista e historial; /me no es de docentes', async () => {
+      const assignmentId = await makeAssignment();
+      const res = await submit('estudiante01', assignmentId, await makeFile(assignmentId)).expect(
+        201,
+      );
+      await get('docente02', `/assignments/${assignmentId}/submissions`).expect(403);
+      await get('docente02', `/submissions/${res.body.submissionId}/versions`).expect(403);
+      await get('docente01', `/assignments/${assignmentId}/submissions/me`).expect(403);
+      await get('docente02', `/assignments/${assignmentId}/submissions/me`).expect(403);
+    });
+
+    it('lista del docente: matrículas sin entrega son PENDING aunque haya vencido; sin datos de archivo', async () => {
+      const assignmentId = await makeAssignment({ dueAt: new Date(Date.now() - HOUR) });
+      const res = await get('docente01', `/assignments/${assignmentId}/submissions`).expect(200);
+      expect(res.body.items.length).toBeGreaterThan(1);
+      for (const item of res.body.items as Json[]) {
+        expect(item).toMatchObject({
+          submissionId: null,
+          latestVersion: null,
+          versionCount: 0,
+          displayStatus: 'PENDING',
+        });
+      }
+      expect(JSON.stringify(res.body)).not.toContain('originalName');
+    });
+
+    it('privacidad: bitácora y evento solo llevan ids y metadatos, sin nombres ni originalName', async () => {
+      const assignmentId = await makeAssignment();
+      await submit('estudiante01', assignmentId, await makeFile(assignmentId)).expect(201);
+      expect(auditOf('submissions.version.created')).toHaveLength(1);
+      expect(accepted()).toHaveLength(1);
+      const dump = JSON.stringify([sink.records, events]);
+      for (const forbidden of ['originalName', 'Ficticio', '.pdf', 'sha256', 'fullName']) {
+        expect(dump).not.toContain(forbidden);
+      }
     });
 
     it('SubmissionsReadService (contrato de Dev 4)', async () => {

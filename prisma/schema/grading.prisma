@@ -1,0 +1,38 @@
+// Modulo de calificaciones. Dueño: Dev 4 (RF-41..52, RN-01..07). Un unico dueño de NE (docs/02).
+// Sin borrado fisico (RN-14): toda FK con Restrict y sin DELETE desde la API. Sin FK a User (D-032):
+// quien califico queda en la bitacora. El cierre se lee de AcademicPeriod.closedAt (RN-10).
+// Invariantes que el ORM no cubre (CHECK) van con SQL manual en la migracion grading_base.
+
+enum GradeState {
+  GRADED // nota vigesimal con entrega (RF-41)
+  NE // no entrego: nota por defecto de la tarea o editada (RF-44/45, RN-05)
+  EXEMPT // exonerado con motivo; no cuenta en el promedio (RF-46)
+}
+
+enum GradeSource {
+  MANUAL // la registro un docente o ADMIN
+  AUTO // NE materializada por el sistema al vencer o cerrar el periodo (solo state = NE)
+}
+
+// Nota de una matricula en una tarea (RF-41..46). value es null solo si EXEMPT.
+// exemptionReason solo para docente y ADMIN; nunca va a la bitacora ni a Mis notas.
+// CHECK: Grade_value_chk, Grade_state_chk, Grade_source_chk.
+model Grade {
+  id              String      @id @default(uuid(7)) @db.Char(36)
+  assignmentId    String      @db.Char(36)
+  enrollmentId    String      @db.Char(36)
+  state           GradeState
+  value           Decimal?    @db.Decimal(4, 2) // 0..20 (RN-01)
+  comment         String?     @db.Text
+  exemptionReason String?     @db.VarChar(500)
+  source          GradeSource @default(MANUAL)
+  gradedAt        DateTime    @db.DateTime(3)
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  assignment Assignment @relation(fields: [assignmentId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  enrollment Enrollment @relation(fields: [enrollmentId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([assignmentId, enrollmentId])
+  @@index([enrollmentId])
+}

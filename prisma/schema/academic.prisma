@@ -29,6 +29,10 @@ model AcademicYear {
 
   periods  AcademicPeriod[]
   sections Section[]
+
+  // Relación inversa de Dev 5, autorizado por el usuario el 30/10/2026
+  announcements  Announcement[]
+  backgroundJobs BackgroundJob[]
 }
 
 model AcademicPeriod {
@@ -94,9 +98,11 @@ model CourseSection {
   teacher User?   @relation("CourseSectionTeacher", fields: [teacherId], references: [id], onDelete: Restrict, onUpdate: Restrict)
 
   // Relación inversa de Dev 3, autorizado por el usuario el 29/10/2026
-  materials   Material[]
-  assignments Assignment[]
-  storedFiles StoredFile[]
+  materials     Material[]
+  assignments   Assignment[]
+  storedFiles   StoredFile[]
+  // Relación inversa de Dev 5, autorizado por el usuario el 30/10/2026
+  announcements Announcement[]
 
   @@unique([sectionId, courseId])
   @@index([teacherId])
@@ -121,6 +127,8 @@ model Enrollment {
 
   // Relación inversa de Dev 3, autorizado por el usuario el 29/10/2026
   submissions Submission[]
+  // Relación inversa de Dev 4, autorizado por el usuario el 30/10/2026
+  grades      Grade[]
 
   @@unique([academicYearId, studentId, isCurrent])
   @@index([studentId, effectiveFrom])

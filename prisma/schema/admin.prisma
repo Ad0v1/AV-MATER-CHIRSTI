@@ -1,0 +1,130 @@
+// Modulo de administracion: anuncios, notificaciones, configuracion institucional y trabajos en
+// segundo plano. Dueño: Dev 5 (RF-32, RF-53..67, RNF-19). Sin FK a User (D-032): autor, destinatario
+// y solicitante son Char(36) sin relacion; quien hizo que queda en la bitacora. Sin borrado fisico de
+// lo que tiene historial (RN-14): toda FK con Restrict. Invariantes que el ORM no cubre (CHECK) van
+// con SQL manual en la migracion admin_base.
+
+enum AnnouncementScope {
+  INSTITUTION // toda la institucion
+  GRADE // un grado (gradeLevel 1..5) del año
+  COURSE_SECTION // un curso-seccion
+}
+
+enum NotificationType {
+  ASSIGNMENT_CREATED
+  ASSIGNMENT_DUE_SOON
+  GRADE_PUBLISHED
+  ANNOUNCEMENT_PUBLISHED
+}
+
+enum EmailStatus {
+  PENDING // por enviar
+  SENT // enviado (emailSentAt obligatorio)
+  SKIPPED // no corresponde correo (preferencia o destinatario sin correo)
+  FAILED // agoto los reintentos
+}
+
+enum JobType {
+  SECTION_EXPORT // RF-57/58
+  BULK_EXPORT // RF-59
+  YEAR_BACKUP // RF-64/65
+  PERSONAL_DATA_EXPORT // RF-63
+  PURGE_YEAR // RF-66
+}
+
+enum JobStatus {
+  QUEUED
+  RUNNING
+  SUCCEEDED
+  FAILED
+  EXPIRED // el resultado vencio (U6) y su objeto se borro
+}
+
+// Anuncio (RF-32). El alcance decide que columna va: INSTITUTION sin gradeLevel ni courseSectionId,
+// GRADE con gradeLevel 1..5, COURSE_SECTION con courseSectionId. Borrado logico: deletedAt y
+// deletedById van juntos. CHECK: Announcement_scope_chk, Announcement_deleted_chk.
+model Announcement {
+  id              String            @id @default(uuid(7)) @db.Char(36)
+  academicYearId  String            @db.Char(36)
+  scope           AnnouncementScope
+  gradeLevel      Int?              @db.TinyInt
+  courseSectionId String?           @db.Char(36)
+  title           String            @db.VarChar(150)
+  body            String            @db.Text
+  authorId        String            @db.Char(36) // sin FK (D-032)
+  publishedAt     DateTime          @default(now()) @db.DateTime(3)
+  deletedAt       DateTime?         @db.DateTime(3)
+  deletedById     String?           @db.Char(36) // sin FK (D-032)
+  createdAt       DateTime          @default(now()) @db.DateTime(3)
+  updatedAt       DateTime          @updatedAt @db.DateTime(3)
+
+  academicYear  AcademicYear   @relation(fields: [academicYearId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  courseSection CourseSection? @relation(fields: [courseSectionId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@index([academicYearId, scope, deletedAt, publishedAt])
+  @@index([courseSectionId, deletedAt, publishedAt])
+  @@index([authorId])
+}
+
+// Aviso en la plataforma (RF-53). Sin textos: la API los arma con type y entityId al leer, asi no
+// se copian datos de menores. entityId apunta a Assignment, Grade o Announcement segun type (sin FK).
+// dedupeKey hace idempotente al listener y al barrido (U2). CHECK: Notification_email_chk.
+model Notification {
+  id          String           @id @default(uuid(7)) @db.Char(36)
+  recipientId String           @db.Char(36) // sin FK (D-032)
+  type        NotificationType
+  entityId    String           @db.Char(36)
+  dedupeKey   String           @unique @db.VarChar(191)
+  readAt      DateTime?        @db.DateTime(3)
+  emailStatus EmailStatus      @default(PENDING)
+  emailSentAt DateTime?        @db.DateTime(3)
+  createdAt   DateTime         @default(now()) @db.DateTime(3)
+
+  @@index([recipientId, readAt, createdAt])
+  @@index([emailStatus, createdAt])
+}
+
+// Configuracion institucional (RF-61, U11): una sola fila con id = 1. El logo vive en S3
+// institution/ (U5), fuera de StoredFile. literalScale tiene la forma de LiteralScale (shared).
+// CHECK: InstitutionSettings_id_chk, InstitutionSettings_purge_chk, InstitutionSettings_logo_chk,
+// InstitutionSettings_scale_chk. La fila por defecto la inserta la migracion admin_base.
+model InstitutionSettings {
+  id             Int      @id @default(1) @db.TinyInt
+  name           String   @db.VarChar(150)
+  logoObjectKey  String?  @db.VarChar(255)
+  logoMime       String?  @db.VarChar(20) // image/png o image/jpeg
+  literalScale   Json
+  purgeAfterDays Int      @default(60) @db.SmallInt
+  updatedById    String?  @db.Char(36) // sin FK (D-032); null en la fila inicial
+  createdAt      DateTime @default(now()) @db.DateTime(3)
+  updatedAt      DateTime @updatedAt @db.DateTime(3)
+}
+
+// Trabajo en segundo plano (RNF-19). params solo lleva ids, nunca datos personales.
+// academicYearId se copia de params en YEAR_BACKUP y PURGE_YEAR para que la purga verifique
+// los respaldos por indice (U7). requestedById null = lo lanzo el sistema.
+// CHECK: BackgroundJob_status_chk, BackgroundJob_result_chk, BackgroundJob_attempts_chk,
+// BackgroundJob_params_chk.
+model BackgroundJob {
+  id              String    @id @default(uuid(7)) @db.Char(36)
+  type            JobType
+  status          JobStatus @default(QUEUED)
+  params          Json
+  academicYearId  String?   @db.Char(36)
+  requestedById   String?   @db.Char(36) // sin FK (D-032)
+  resultObjectKey String?   @db.VarChar(255)
+  resultBytes     BigInt?
+  errorCode       String?   @db.VarChar(64)
+  attempts        Int       @default(0) @db.SmallInt
+  startedAt       DateTime? @db.DateTime(3)
+  finishedAt      DateTime? @db.DateTime(3)
+  expiresAt       DateTime? @db.DateTime(3)
+  createdAt       DateTime  @default(now()) @db.DateTime(3)
+  updatedAt       DateTime  @updatedAt @db.DateTime(3)
+
+  academicYear AcademicYear? @relation(fields: [academicYearId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@index([requestedById, createdAt])
+  @@index([status, expiresAt])
+  @@index([academicYearId, type, status])
+}

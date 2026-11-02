@@ -60,7 +60,7 @@ El máximo por defecto es 20 MB y el tope configurable por tarea es 50 MB (RF-28
 | `assignment.created.v1` | Dev 3 | Dev 5 | assignmentId, courseSectionId, dueAt |
 | `submission.accepted.v1` | Dev 3 | Dev 4/5 | assignmentId, enrollmentId, submissionId, versionId, receivedAt, isLate |
 | `submission.rejected.v1` | Dev 3 | Dev 5 | uploadId, reason, studentId |
-| `grade.updated.v1` | Dev 4 | Dev 5 | assignmentId, enrollmentId, gradeStatus |
+| `grade.updated.v1` | Dev 4 | Dev 5 | gradeId, assignmentId, enrollmentId, courseSectionId, gradeStatus, source, updatedAt (ver "API de calificaciones") |
 | `period.closed.v1` | Dev 2 | Dev 3/4/5 | periodId, academicYearId, closedAt |
 | `period.reopened.v1` | Dev 2 (en proceso, D-031) | Dev 3/4/5 | periodId, academicYearId, reopenedAt |
 | `academic-year.closed.v1` | Dev 2 (en proceso, D-031) | Dev 3/4/5 | academicYearId, year, closedAt |
@@ -111,7 +111,7 @@ Pendiente (D-022, D-023, D-024): validar largo y formato de `entityType`/`entity
 
 Funciones puras: sin NestJS, Prisma, I/O ni fecha del sistema. No guardan nada: la API pasa las notas y persiste el resultado.
 
-Errores: `GradingError` con `code` (`INVALID_GRADE`, `INVALID_STATE` o `INVALID_SCALE`) e `issues` (solo con `INVALID_SCALE`).
+Errores: `GradingError` con `code` (`INVALID_GRADE`, `INVALID_STATE`, `INVALID_SCALE` o `INVALID_INPUT`) e `issues` (solo con `INVALID_SCALE`).
 
 **Tipos**
 
@@ -121,7 +121,7 @@ Errores: `GradingError` con `code` (`INVALID_GRADE`, `INVALID_STATE` o `INVALID_
 - `GradeEntry`: `{ state: 'GRADED' | 'NE', value }` o `{ state: 'EXEMPT' }` (sin valor).
 - `AverageResult`: `{ status: 'OK', rounded, sumCents, counted, exempt }` o `{ status: 'NO_GRADES', counted: 0, exempt }`.
 - `LiteralBand` (`{ literal, min, max }`), `LiteralScale` (lista de tramos), `LiteralScaleIssue` (`{ code, index?, message }`) y `LiteralScaleIssueCode`.
-- `GradingErrorCode`: `'INVALID_GRADE' | 'INVALID_STATE' | 'INVALID_SCALE'`.
+- `GradingErrorCode`: `'INVALID_GRADE' | 'INVALID_STATE' | 'INVALID_SCALE' | 'INVALID_INPUT'`.
 
 **Constantes**
 
@@ -158,7 +158,17 @@ Errores: `GradingError` con `code` (`INVALID_GRADE`, `INVALID_STATE` o `INVALID_
 - Los reportes (Dev 5) **no recalculan** promedios ni literales: leen `AverageResult` y usan `toLiteral` del motor.
 - Un promedio sin notas que cuenten es `NO_GRADES`, nunca `0` (D-026). La interfaz muestra "sin nota".
 - `toLiteral` recibe el `rounded` de `calculateAverage`, nunca un promedio sin redondear.
-- `apps/api` todavía no declara `@aula/shared` como dependencia: se añade con la tarea de la API de grading.
+- `apps/api` declara `@aula/shared` (`workspace:*`) desde la API de calificaciones. La API lee el paquete compilado (`main`: `dist/index.js`): tras cambiar el motor, ejecuta `pnpm --filter shared build`.
+
+**Funciones añadidas en la fase 4a (Dev 4, PROPUESTA del 30/10/2026)**
+
+Están en `packages/shared/src/grading/` y las exporta `index.ts`. Son puras: no leen el reloj ni la BD; la API pasa `now`.
+
+- `resolveEffectiveEntry(input): EffectiveEntry`. Entrada: `{ grade?, hasSubmission, dueAt, now, noSubmissionGrade?, neEligible? }`. Salida: `{ state, value, virtual, needsRegrade }`. Una fila `Grade` guardada manda. Sin fila, una tarea vencida sin entrega y con matrícula elegible da NE virtual con la nota NE de la tarea (A2). En otro caso, `state: null`. Lanza `INVALID_STATE` o `INVALID_INPUT`.
+- `isNeEligible(enrollment, dueAt): boolean`. Entrada: `{ effectiveFrom, effectiveTo? }`. La matrícula estaba vigente al vencer la tarea, con intervalo `[effectiveFrom, effectiveTo)`: en un traslado, una tarea que vence justo en el instante del traslado es de la matrícula nueva. Lanza `INVALID_INPUT` si una fecha no es válida.
+- `buildGradebook({ assignments, students, cells, now, scale? }): Gradebook`. Registro auxiliar completo: `rows` (promedio por estudiante y `atRisk`), `columns` (promedio y conteos por tarea) y `dashboard` (`distribution` por literal, `noGrades`, `counts`, `riskLiteral` y `atRisk`). Lanza `INVALID_INPUT` ante ids repetidos o celdas de tareas o matrículas que no están en la entrada.
+- `normalizeGradeInput(body: unknown): { ok: true, data } | { ok: false, issues }`. Valida y normaliza el cuerpo del PUT (ver "API de calificaciones") sin lanzar. `issues` lleva `path` y `message`. Solo acepta punto decimal, como RN-01 (`"13,5"` no es válida). La API lo envuelve en un esquema Zod (`gradeInputSchema`), porque `shared` no depende de Zod (Decisión del orquestador 2 del expediente `20261030-dev4-calificaciones`).
+- Exportados además: `summarizeAverage(entries, scale?)` (promedio con literal sobre entradas efectivas) y `riskLiteralOf(scale?)` (literal del tramo que contiene 0).
 
 ## API académica (Dev 2, RF-09..14 y RF-17)
 
@@ -746,3 +756,242 @@ Efecto, todo o nada (si cualquier error, no se escribe nada):
 
 - El texto literal de RF-15 y RF-16 en la ERS no está confirmado. Las reglas salen del expediente, de RN-15 (`docs/04_REGLAS_ESTADOS.md`) y de D-029 y D-030.
 - ¿Los egresados (grado 5, `GRADUATE`) pasan a `INACTIVE`? Por ahora no: conservan `ACTIVE`.
+
+## API de contenidos, archivos y entregas (Dev 3, RF-26..31, RF-33..40; RNF-03/18)
+
+> **Estado: PROPUESTA (29/10/2026).** Código en `apps/api/src/modules/{files,contents,submissions,storage}/`, rama `features/adolfo`, sin PR al equipo. Revisado por `seguridad-cumplimiento` (INFORMES 6, 7 y 12) y `qa-tester` (INFORMES 8, 10 y 13). Esta sección sigue el código: si cambia una ruta, un campo, un código o un evento, se actualiza aquí.
+
+### Convenciones
+
+- Prefijo `/api/v1`. Sin sesión, 401. Los roles salen de `@Roles` de cada controlador; la pertenencia, el plazo y el período se comprueban en el servicio.
+- Ids UUID (400 si no lo son). Fechas de salida en ISO-8601 UTC; `dueAt` de entrada acepta zona horaria (`-05:00`).
+- Entrada estricta: un campo de más responde 400.
+- Errores: formato común `{ error: { code, message, details }, requestId }`. Los que no tienen código propio salen del estado (`CONFLICT`, `NOT_FOUND`, `FORBIDDEN`…).
+- Límites de petición (429): `upload-intents` 20 por minuto por usuario; `complete` 30 por minuto por usuario.
+- Bitácora después del commit. Nunca registra `originalName`, texto de tareas o materiales, ni la firma del antivirus (D-047).
+
+### Archivos (RF-33..35, RF-40, RNF-03/18)
+
+Flujo: intent, subida directa con PUT firmado a MinIO, `complete` y después la entrega, el material o el adjunto. El PUT va a la cuarentena `incoming/` (D-046); `complete` copia el objeto a su destino solo si el veredicto es CLEAN. Claves `{scope}/{año}/{mes}/{uuid}.pdf` con scope `incoming`, `materials`, `assignments` o `submissions`; nunca con el nombre original.
+
+| Método y ruta | Entrada | Respuesta | Errores |
+| --- | --- | --- | --- |
+| `POST /files/upload-intents` | `{ purpose: MATERIAL \| ASSIGNMENT_ATTACHMENT \| SUBMISSION, courseSectionId, assignmentId? (obligatorio solo en SUBMISSION), fileName (1..255), sizeBytes (entero > 0), contentType: "application/pdf" }` | 201 `{ fileId, uploadUrl, method: "PUT", headers, expiresAt, maxBytes }`. `headers` se envían con el PUT (Content-Type y Content-Length firmados). Vigencia 5 min | 400 (`assignmentId` falta o sobra); 403 (rol o sin permiso de escritura); 404 (sección o tarea); 409 `DEADLINE_PASSED`; 409 sección de solo lectura o período cerrado; 413 `FILE_TOO_LARGE` (mayor que el límite); 429 |
+| `POST /files/:id/complete` | Sin cuerpo | 200 `{ fileId, scanStatus: "CLEAN", sizeBytes, sha256, completedAt }`. `completedAt` es la hora del servidor y es el `receivedAt` de la entrega (D-039). Repetida con archivo ya CLEAN: 200 con el mismo cuerpo | 404 `FILE_NOT_FOUND` (también si la subida es de otro usuario); 409 `UPLOAD_NOT_FOUND` (el objeto aún no está en S3; se puede reintentar mientras vive el intent), `UPLOAD_EXPIRED`, `OBJECT_CHANGED` (el objeto cambió entre la lectura y la copia), `DEADLINE_PASSED` y período cerrado; 413 `FILE_TOO_LARGE`; 415 `INVALID_PDF` o `ENCRYPTED_PDF`; 422 `FILE_INFECTED`; 503 `ANTIVIRUS_UNAVAILABLE` o `STORAGE_UNAVAILABLE` (el archivo queda PENDING y se puede reintentar) |
+| `POST /files/:id/download-url` | `{ inline? }` (opcional, boolean) | 200 `{ url, method: "GET", expiresAt }`. Vigencia 60 s | 403 (apoderado o sin permiso); 404 `FILE_NOT_FOUND` (no está CLEAN, está purgado, o es un material en la papelera y lo pide un estudiante) |
+
+Quién descarga (RF-31):
+
+- Entregas (`SUBMISSION`): el alumno dueño (ACTIVE), el docente asignado y ADMIN.
+- Materiales y adjuntos publicados: cualquier miembro de la sección (estudiante con matrícula vigente, docente asignado y ADMIN).
+- Sin publicar (aún no usados por un material o una tarea): solo quien lo subió, si sigue siendo miembro, o ADMIN.
+- Apoderado: siempre 403 (D-044).
+- Archivos PENDING, INVALID o INFECTED: nunca se descargan (404).
+
+### Materiales (RF-26, RF-27, RF-29, RF-30, RF-31)
+
+Lectura: ADMIN, docente, estudiante (apoderado 403, D-044). Escritura: ADMIN o docente asignado.
+
+| Método y ruta | Entrada | Respuesta | Errores |
+| --- | --- | --- | --- |
+| `GET /course-sections/:id/materials` | Query `kind?` (`CLASS` \| `READING`), `periodId?`, `includeDeleted?` (`true` \| `false`) | 200 `{ items: MaterialView[], total }` | 400; 403 (`includeDeleted` solo para docente asignado y ADMIN); 404 |
+| `POST /course-sections/:id/materials` | `{ kind, title (1..200), description? (hasta 5000), fileId, periodId? (D-042), isReusable? (default false; solo READING) }` | 201 `MaterialView`. Publica `material.published.v1` | 400 (`isReusable` en una clase); 403; 404 (sección o período no existe); 409 período cerrado, o archivo ya usado por otro material; 422 archivo no usable (no CLEAN, de otra sección o finalidad, purgado) o período de otro año |
+| `PATCH /materials/:id` | `{ title?, description?, isReusable? }` (al menos uno). `kind`, `fileId` y `periodId` no cambian | 200 `MaterialView` | 400; 403; 404 (no existe o está en la papelera); 409 período cerrado; 422 `isReusable` en una clase |
+| `DELETE /materials/:id` | — | 204. Va a la papelera (`deletedAt` y `deletedById`) | 403; 404 (no existe o ya está en la papelera); 409 período cerrado |
+| `POST /materials/:id/restore` | — | 200 `MaterialView` | 403; 404; 409 si no está en la papelera, si pasaron 30 días desde `deletedAt` (el día 30 aún se puede) o si el archivo fue purgado |
+
+`MaterialView`: `{ id, courseSectionId, periodId | null, kind, title, description | null, fileId, isReusable, copyrightNotice | null, deletedAt | null, restorableUntil | null, createdAt, updatedAt }`. `copyrightNotice` solo existe en las lecturas (RF-27); su texto está pendiente de validación legal. `restorableUntil` es `deletedAt` + 30 días.
+
+### Tareas (RF-28, RF-29)
+
+Lectura: ADMIN, docente, estudiante (apoderado 403). Escritura: ADMIN o docente asignado. Crear, editar y borrar exigen período y año abiertos (RN-10).
+
+| Método y ruta | Entrada | Respuesta | Errores |
+| --- | --- | --- | --- |
+| `POST /course-sections/:id/assignments` | `{ periodId, title (1..200), instructions (1..10000), dueAt, maxSizeBytes? (1..52428800; por defecto 20971520), noSubmissionGrade? (0..20, hasta 2 decimales; por defecto "0.00"), allowLate? (por defecto false), attachmentFileId? (PDF de la sección) }` | 201 `AssignmentView`. Publica `assignment.created.v1` | 400; 403; 404 (sección o período); 409 período cerrado o año no activo; 409 adjunto ya usado; 422 período de otro año, `dueAt` pasado o adjunto no usable |
+| `GET /course-sections/:id/assignments` | Query `periodId?` | 200 `{ items: AssignmentView[], total }` | 400; 403; 404 |
+| `GET /assignments/:id` | — | 200 `AssignmentView` | 403; 404 (no existe o está borrada) |
+| `PATCH /assignments/:id` | `{ title?, instructions?, dueAt?, maxSizeBytes?, noSubmissionGrade?, allowLate?, attachmentFileId? }` (al menos uno; `null` quita el adjunto). El período no se cambia | 200 `AssignmentView`. Publica `assignment.updated.v1` | 400 (incluye `periodId`); 403; 404; 409 período cerrado o adjunto en uso; 422 `dueAt` pasado o adjunto no usable |
+| `DELETE /assignments/:id` | — | 204 (borrado lógico; no publica evento; el adjunto queda enlazado) | 403; 404; 409 si ya tiene entregas |
+
+`AssignmentView`: `{ id, courseSectionId, periodId, title, instructions, dueAt, maxSizeBytes, noSubmissionGrade ("12.50"), allowLate, attachmentFileId | null, periodIsOpen, createdAt, updatedAt }`. `periodIsOpen` es `false` si el período o su año están cerrados (la tarea ya no se edita).
+
+### Entregas (RF-33, RF-36, RF-37, RF-39)
+
+| Método y ruta | Entrada | Respuesta | Errores |
+| --- | --- | --- | --- |
+| `POST /assignments/:id/submissions` | `{ fileId }`. Solo STUDENT con matrícula vigente en la sección | 201 `SubmissionAccepted` (nueva versión). 200 con el mismo cuerpo si ese `fileId` ya era una entrega suya (idempotente). Publica `submission.accepted.v1` solo al crear | 400; 403 (no es estudiante vigente o usuario no activo); 404 (tarea no existe o borrada); 409 período cerrado; 409 plazo vencido sin `allowLate`; 409 archivo ya entregado en otra tarea; 409 conflicto de concurrencia tras 3 intentos; 422 archivo no válido (no CLEAN, de otro alumno, de otra tarea o purgado) |
+| `GET /assignments/:id/submissions/me` | — | 200 `MySubmissionView`: `{ assignment: { id, dueAt, allowLate, maxSizeBytes }, submissionId | null, displayStatus, isLate, isOverdue, latestVersion | null, versions[] }`. `versions` va de la más nueva a la más antigua | 403 (no es estudiante); 404 |
+| `GET /assignments/:id/submissions` | — | 200 `{ items: TeacherSubmissionItem[], total }`: una fila por matrícula vigente de la sección, con o sin entrega | 403 (no es docente asignado ni ADMIN); 404 |
+| `GET /submissions/:id/versions` | — | 200 `SubmissionVersionsView`: `{ submissionId, assignmentId, enrollmentId, versions[] }` | 403 (no es dueño ACTIVE, docente asignado ni ADMIN; apoderado siempre); 404 |
+
+Reglas de entrega:
+
+- Plazo: entrega a tiempo o tardía (`isLate`, `lateBySeconds`). Tras el plazo solo se acepta con `allowLate`, y se marca como tardía sin descuento (RN-06).
+- Reentrega: cada envío nuevo es una `SubmissionVersion`. La oficial es la de mayor `versionNumber` (RN-09). Las versiones anteriores no se modifican.
+- Período cerrado o año no activo: no se acepta ninguna entrega, tampoco tardía (D-045).
+- `SubmissionReceipt` (constancia, RF-39): `{ reference (id de la versión), submissionId, assignmentId, versionId, versionNumber, receivedAt, isLate, lateBySeconds, isOfficial, status ("SUBMITTED" \| "SUBMITTED_LATE"), file: { fileId, originalName, sizeBytes, sha256 } }`. `originalName` solo lo ven el alumno dueño, el docente asignado y ADMIN.
+- `displayStatus` (RF-38) en esta API: `PENDING`, `SUBMITTED` y `SUBMITTED_LATE`. Los demás estados dependen de la nota de Dev 4 (ver el contrato siguiente).
+
+### Eventos de contenidos y entregas (D-031)
+
+Publicados en proceso con `node:events` después del commit y de la bitácora. Solo ids, fechas ISO UTC y nombres de campos: nunca títulos, instrucciones, nombres de archivo ni datos personales. Sin cola ni reintentos: si el proceso cae tras el commit, el evento se pierde. La tabla "Eventos publicados" de arriba es el catálogo previsto; los payloads de esta sección son los reales.
+
+| Evento | Cuándo | Payload | Consumidores |
+| --- | --- | --- | --- |
+| `assignment.created.v1` | Al crear la tarea | `{ assignmentId, courseSectionId, periodId, dueAt, allowLate, createdAt }` | Dev 5 |
+| `assignment.updated.v1` | Al cambiar la tarea | `{ assignmentId, courseSectionId, periodId, dueAt, allowLate, changedFields: string[], updatedAt }`. `changedFields` son nombres de campos, sin valores de texto | Dev 5 |
+| `material.published.v1` | Al crear un material | `{ materialId, courseSectionId, periodId: string \| null, kind: "CLASS" \| "READING", publishedAt }` | Dev 5 |
+| `submission.accepted.v1` | Al crear una versión nueva (no en la repetición) | `{ assignmentId, courseSectionId, enrollmentId, submissionId, versionId, versionNumber, receivedAt, isLate }` | Dev 4, Dev 5 |
+| `submission.rejected.v1` | Al rechazar un archivo subido como entrega | `{ uploadId, assignmentId, courseSectionId, studentId, reason, rejectedAt }`. `uploadId` es el id del archivo; `reason` es `FileRejectReason`; `studentId` es opaco (D-034) | Dev 5 |
+
+### Contrato de lectura para Dev 4 (calificaciones)
+
+Exportado por `SubmissionsModule`. Dev 3 nunca escribe en `Grade`.
+
+- `SubmissionsReadService.getAssignmentForGrading(assignmentId)` devuelve `{ id, courseSectionId, periodId, dueAt, allowLate, noSubmissionGrade }` (texto "0.00"). 404 si la tarea no existe o está borrada.
+- `SubmissionsReadService.listSubmissionSummaries(assignmentId)` devuelve `{ enrollmentId, submissionId, versionCount, latestVersion: { versionId, versionNumber, receivedAt, isLate, fileId } }[]`, una fila por entrega con versiones, también de matrículas cerradas (RN-14). Las matrículas sin entrega no aparecen: se cruzan con `listCurrentEnrollments`.
+- **Advertencia (seguridad):** no comprueba permisos. El llamador debe validar antes que el actor es el docente asignado o ADMIN.
+- `computeDisplayStatus(input)` en `apps/api/src/modules/submissions/display-status.ts` es una función pura. Entrada: `{ latestVersion: { isLate } | null, gradeState: "GRADED" \| "NE" \| "EXEMPT" \| null, dueAt, allowLate, now }`. Salida: `{ status, isLate, isOverdue }`.
+- Precedencia: `EXEMPT` > `GRADED` > `NE` (estado `NOT_SUBMITTED`) > entrega (`SUBMITTED` o `SUBMITTED_LATE`) > `PENDING`. Una NE registrada gana a una versión. `status` admite los seis rótulos de RF-38.
+- `isOverdue` es `true` si no hay entrega, venció el plazo y no se admiten tardías. El rótulo sigue siendo `PENDING` hasta que Dev 4 registre la NE; la pantalla puede decir "plazo vencido".
+- `lateBySeconds(receivedAt, dueAt)` (misma carpeta) devuelve el atraso en segundos, sin descuento.
+
+### Pendientes
+
+- Texto legal del aviso de copyright de las lecturas (`READING_COPYRIGHT_NOTICE`): sin validar.
+- Dev 4: pasar `gradeState` a `computeDisplayStatus` y los rótulos definitivos (`GRADED`, `NOT_SUBMITTED`, `EXEMPT`) en pantalla.
+- Ciclo de vida de `incoming/` (24 h) y CORS de R2 (Dev 1).
+- Barrido de intents vencidos (Dev 5).
+- Bitácora dentro de la transacción (D-047, Dev 1).
+
+## API de calificaciones (Dev 4, RF-41..52; RN-01..07; RNF-31)
+
+> **Estado: PROPUESTA.** Implementado en `apps/api/src/modules/grading/` y en el motor `packages/shared/src/grading/` (rama `features/adolfo`, sin PR aún). Pantallas en `apps/web/app/(app)/curso/[id]/registro/`, `mis-notas/` y `apoderado/`. Esta sección sigue el código: si cambia una ruta, un campo, un código o un evento, se actualiza aquí.
+
+### Convenciones
+
+- Prefijo `/api/v1`. Todos los endpoints requieren sesión (401).
+- Roles por método (`@Roles`): registro y calificación, TEACHER asignado a la sección o ADMIN (en modo soporte; queda en la bitácora); Mis notas, STUDENT; apoderado, GUARDIAN con vínculo vigente. Un usuario que no está ACTIVE recibe 403.
+- Notas como texto con 2 decimales (`"13.50"`) y punto decimal. La web acepta la coma y la convierte antes de llamar a la API.
+- Consultas estrictas: un parámetro desconocido responde 400. Los campos desconocidos del cuerpo se ignoran y no se guardan.
+- `exemptionReason` solo aparece en las vistas del docente y ADMIN (`GradeView`, `GradeSummaryView`). No aparece en `StudentGradesView`, en la bitácora ni en los eventos (D-049). Tampoco `comment` en la bitácora ni en los eventos.
+- Errores con el formato común (`error.code`, `message`, `details`). Los 422 de negocio llevan un `code` propio (ver "Reglas de escritura").
+
+### Endpoints
+
+| Método y ruta | Rol | Entrada | Respuesta | Errores |
+| --- | --- | --- | --- | --- |
+| `PUT /grades/:assignmentId/:enrollmentId` | TEACHER asignado, ADMIN | Cuerpo (ver "Cuerpo de la calificación") | 200 `GradeView` | 400; 401; 403; 404 tarea o matrícula; 409; 422 |
+| `GET /assignments/:id/grade-summary` | TEACHER asignado, ADMIN | — | 200 `GradeSummaryView` | 400; 401; 403; 404 tarea |
+| `GET /course-sections/:id/gradebook` | TEACHER asignado, ADMIN | Query `periodId?` (UUID; por defecto, el período actual) | 200 `GradebookView` | 400; 401; 403; 404 curso-sección o período; 422 período de otro año |
+| `GET /me/grades` | STUDENT | Query `academicYearId?` (por defecto, el año activo) | 200 `StudentGradesView` | 400; 401; 403; 404 año |
+| `GET /guardian/students` | GUARDIAN | — | 200 `GuardianStudentsView` | 401; 403 |
+| `GET /guardian/students/:studentId/grades` | GUARDIAN con vínculo vigente | Query `academicYearId?` | 200 `StudentGradesView` | 400; 401; 403 si no está vinculado; 404 año |
+
+### Cuerpo de la calificación (PUT)
+
+Discriminado por `state`:
+
+| `state` | Campos | Reglas |
+| --- | --- | --- |
+| `GRADED` | `value` (obligatorio) | Nota de 0 a 20 con hasta 2 decimales (RN-01). `"05"` se guarda como `"5.00"` (A4). |
+| `NE` | `value` (opcional) | Sin `value`, la API usa la nota NE de la tarea (`noSubmissionGrade`, por defecto `"0.00"`, RN-05). |
+| `EXEMPT` | `exemptionReason` (obligatorio) | Texto de 10 a 500 caracteres tras recortar espacios (RF-46). No lleva `value`. |
+| todos | `comment` (opcional) | Hasta 2000 caracteres tras recortar; vacío equivale a sin comentario (RF-42). |
+
+Un cuerpo inválido responde 400 `VALIDATION_ERROR` con `details: [{ path, message }]`, donde `path` es el campo (`state`, `value`, `exemptionReason` o `comment`) o vacío.
+
+```json
+{ "state": "GRADED", "value": "13.5", "comment": "Buen trabajo" }
+```
+
+### Reglas de escritura (PUT)
+
+Orden de las comprobaciones: 404 tarea → 403 → 404 matrícula → 422 `ENROLLMENT_OUT_OF_SECTION` → 409 período o año no escribible → bloqueo del período y relectura de la matrícula → 422 de reglas.
+
+- **409** `CONFLICT`: período cerrado, o año no activo o cerrado (RN-10, RF-50). Con el período cerrado, ni el ADMIN puede calificar. Si tres intentos seguidos chocan con otras escrituras, también 409 "vuelve a intentarlo".
+- **422** `BUSINESS_RULE_VIOLATION`, con `error.code`:
+
+| `error.code` | Cuándo |
+| --- | --- |
+| `NO_SUBMISSION` | `GRADED` sin entrega. |
+| `HAS_SUBMISSION` | `NE` con entrega: califícala con nota. |
+| `NOT_OVERDUE` | `NE` antes del plazo. |
+| `ENROLLMENT_OUT_OF_SECTION` | La matrícula no es de la sección de la tarea. |
+| `ENROLLMENT_NOT_ELIGIBLE` | `NE` con matrícula que no estaba vigente al vencer la tarea; `EXEMPT` con matrícula que no está vigente ni era elegible. |
+
+- Una escritura que no cambia nada responde 200 con la fila actual y no genera bitácora ni evento.
+- Toda escritura manual queda con `source: "MANUAL"` (A1).
+
+### Vistas
+
+`GradeView` (respuesta del PUT):
+
+```ts
+{
+  id: string; assignmentId: string; enrollmentId: string;
+  state: 'GRADED' | 'NE' | 'EXEMPT';
+  value: string | null;            // "13.50"; null en EXEMPT
+  comment: string | null;
+  exemptionReason: string | null;  // solo docente y ADMIN (D-049)
+  source: 'MANUAL' | 'AUTO';
+  gradedAt: string; updatedAt: string; // ISO UTC
+}
+```
+
+- `GradeSummaryView` (`grade-summary`): `assignment` (`{ id, title, courseSectionId, periodId, dueAt, allowLate, noSubmissionGrade, periodIsOpen }`); `items[]`, una por matrícula visible, con `enrollmentId`, `studentId`, `fullName`, `isCurrent`, `neEligible`, `grade` (`{ id, state, value, virtual, needsRegrade, comment, exemptionReason, source, gradedAt }`), `submission` (`{ submissionId, versionCount, latestVersion }` o `null`), `displayStatus`, `isLate` e `isOverdue`; y `average` y `counts` de la tarea.
+- `GradebookView` (`gradebook`): `courseSection` (`{ id, readOnly, course, section }`); `period` y `periods[]` (`{ id, label, sequence, isOpen }`); `assignments[]` (`{ id, title, dueAt, allowLate, noSubmissionGrade, average, counts }`); `students[]` (`{ enrollmentId, studentId, fullName, isCurrent, average, atRisk, cells[] }`), donde cada celda es `{ assignmentId, state, value, virtual, needsRegrade, source, neEligible, hasSubmission, isLate, displayStatus }`; y `dashboard` (`{ distribution, noGrades, counts, riskLiteral, atRisk }`). `distribution` cuenta estudiantes por literal; `atRisk` son ids de matrícula.
+- `StudentGradesView` (`me/grades` y `guardian/students/:studentId/grades`): `student` (`{ id, fullName }`), `academicYear` (`{ id, year }` o `null`) y `courses[]` (`{ courseSectionId, enrollmentId, isCurrent, course, section, periods[] }`). Cada período tiene `{ id, label, sequence, isOpen, average, assignments[] }` y cada tarea `{ assignmentId, title, dueAt, state, value, comment, displayStatus, isLate }`. No lleva `exemptionReason` ni `source`, ni promedio anual (D-014).
+- `GuardianStudentsView` (`guardian/students`): `{ items: [{ studentId, fullName, currentSection: { id, gradeLevel, code } | null }] }`.
+- `average` tiene dos formas: `{ status: 'OK', rounded, literal, counted, exempt }` o `{ status: 'NO_GRADES', counted: 0, exempt }`. Sin notas que cuenten es `NO_GRADES`, nunca `0` (D-026).
+
+### Reglas de lectura
+
+- Filas: matrículas vigentes de la sección, más las cerradas con nota o entrega (RN-14). Una matrícula cerrada muestra solo las tareas que le correspondían o que tienen datos.
+- Evaluación efectiva (A2): manda la fila guardada. Sin fila, con tarea vencida sin entrega y matrícula elegible, la NE es virtual y usa la nota NE de la tarea. Una NE con entrega posterior tiene `needsRegrade: true` (RF-45).
+- Promedio (A6): simple, se calcula al leer, con un solo redondeo (.5 hacia arriba, D-026). Los exonerados no cuentan.
+- Riesgo (A5): promedio en el tramo que contiene 0. Con la tabla por defecto, es el literal C.
+- Período: por defecto, el actual. Un período de otro año responde 422; uno que no existe, 404.
+
+### NE automática (`NeMaterializer`, RF-44, U1, A3)
+
+- Escribe filas `Grade` con `source: "AUTO"` y `state: "NE"` en dos momentos: al abrir el registro o el resumen de una tarea (con período y año abiertos), y al recibir `period.closed.v1`.
+- Con el período abierto, una NE `AUTO` sigue la nota NE de la tarea (A3). Si un docente la edita, pasa a `MANUAL` y deja de seguirla.
+- Cada tarea se escribe en una transacción. Si otro proceso escribe a la vez, reintenta hasta tres veces; si no puede, registra el fallo en el log y la lectura sigue con la NE virtual.
+
+### Eventos
+
+`grade.updated.v1` (en proceso, D-031):
+
+```ts
+type GradingEventMap = {
+  'grade.updated.v1': {
+    gradeId: string;
+    assignmentId: string;
+    enrollmentId: string;
+    courseSectionId: string;
+    gradeStatus: 'GRADED' | 'NE' | 'EXEMPT';
+    source: 'MANUAL' | 'AUTO';
+    updatedAt: string; // ISO UTC
+  };
+};
+```
+
+- Se publica después del commit y de la bitácora, y solo si hubo cambio. No lleva nota, comentario ni motivo.
+- Lo emiten el PUT y la NE automática (`source: "AUTO"`, `gradeStatus: "NE"`).
+- Consumidor previsto: Dev 5 (notificación RF-53). Puede ignorar `source: "AUTO"`.
+- Dev 4 consume `period.closed.v1` de Dev 2 (`{ periodId, academicYearId, closedAt }`).
+
+### Bitácora de calificaciones
+
+- `module: "grading"`, `entityType: "Grade"`, `entityId`: id de la fila. Después del commit, como D-047.
+- Acciones: `grading.grade.create` y `grading.grade.update` (con actor), y `grading.grade.auto_ne` (sin actor: sistema).
+- `beforeState` y `afterState` contienen solo `{ state, value, source }`. El estado posterior añade `assignmentId`, `enrollmentId` y `changedFields` (nombres de campos, sin valores). Nunca comentario ni motivo (U2, U3).
+
+### Pendientes
+
+- Dev 5: notificación RF-53 con `grade.updated.v1`; job de NE en el worker; tabla literal configurable (RF-61); reportes desde `GradebookReadService`; anuncios del apoderado (RF-32).
+- Dev 3: integrar `gradeState` en `computeDisplayStatus` de sus listados (hoy pasa `null`) y los rótulos definitivos en pantalla.
+- Promedio anual (D-014): pendiente de la institución.
+- Prueba en navegador real del visor PDF (iframe) y de las pantallas de Dev 4.
