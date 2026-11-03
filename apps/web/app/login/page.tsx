@@ -1,18 +1,23 @@
 import Image from 'next/image';
-import { ChevronDown, GraduationCap } from 'lucide-react';
+import { ChevronDown } from 'lucide-react';
 import { GoogleSignIn } from '@/components/auth/google-sign-in';
 import { LoginForm } from '@/components/auth/login-form';
 
-export const metadata = { title: 'Iniciar sesión · Aula Virtual' };
+export const metadata = { title: 'Iniciar sesión' };
 
 export default function LoginPage() {
   return (
     <main className="grid min-h-dvh grid-cols-[minmax(0,1fr)] grid-rows-[auto_1fr] lg:grid-rows-1 lg:grid-cols-[minmax(0,5fr)_minmax(0,4fr)]">
       <aside className="flex flex-col justify-between gap-12 border-b-4 border-gold bg-brand px-6 py-6 text-ink-inverse lg:border-r-0 lg:border-b-0 lg:p-12">
         <div className="flex items-center gap-3">
-          <span className="grid size-11 place-items-center rounded-xl bg-gold text-brand-dark">
-            <GraduationCap className="size-6" aria-hidden="true" />
-          </span>
+          <Image
+            src="/brand/logo-mater-christi.webp"
+            alt=""
+            width={44}
+            height={44}
+            unoptimized
+            className="size-11 object-contain"
+          />
           <span className="text-lg font-semibold">Aula Virtual</span>
         </div>
 
@@ -32,8 +37,8 @@ export default function LoginPage() {
       <section className="flex items-center justify-center bg-canvas px-4 py-10 sm:px-8">
         <div className="w-full max-w-sm rounded-2xl border border-line bg-surface p-6 shadow-sm sm:p-8">
           <Image
-            src="/brand/escudo.webp"
-            alt="Escudo del colegio Mater Christi, Cañete"
+            src="/brand/logo-mater-christi.webp"
+            alt="Logo del colegio Mater Christi, Cañete"
             width={112}
             height={112}
             priority

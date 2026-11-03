@@ -1,3 +1,5 @@
+export const metadata = { title: 'Inicio' };
+
 export default function Home() {
   return (
     <main className="mx-auto w-full max-w-3xl p-4 sm:p-8">

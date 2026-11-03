@@ -65,6 +65,8 @@ import {
 
 const CRUMB_ROOT = { href: USERS_PATH, label: 'Usuarios' };
 
+export const metadata = { title: 'Usuario' };
+
 export default function Page({ params, searchParams }: PageProps<'/admin/usuarios/[id]'>) {
   return (
     <PageShell>
