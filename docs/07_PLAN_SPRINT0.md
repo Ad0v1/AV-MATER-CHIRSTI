@@ -14,12 +14,14 @@ Un proyecto reproducible con `docker compose up`, estructura monorepo acordada, 
 | 4 | Monorepo pnpm/Turborepo; scaffolds Nest/Next | Dev 1 | `pnpm install` y scripts de arranque pasan |
 | 5 | Docker Compose para MySQL/Redis/MinIO y servicios del stack | Dev 1 (coordina) | Servicios saludables en equipo ajeno |
 | 6 | Prisma base/migración inicial coordinada | Dev 2 con cada dueño | Migrate + `seed` sobre DB vacía |
-| 7 | Seed ficticio: año 2026, cuatro periodos, grados, secciones, cursos, 5 docentes, 60 estudiantes y admin | Dev 2 | Comando repetible e idempotente |
+| 7 | Seed ficticio: año 2026, cuatro periodos, grados, secciones, cursos, 5 docentes, 60 estudiantes y admin | Dev 2 | Comando repetible e idempotente: `pnpm db:seed` (D-028, PROPUESTA) |
 | 8 | Servicio de almacenamiento MinIO inicial y tests | **Dev 3** | Upload privado + metadata + descarga autorizada (sin afirmar RF-40 completo) |
 | 9 | Motor notas `decimal.js` con pruebas | Dev 4 | Casos redondeo y NE/Exoneración pasan |
 | 10 | Base de worker, BullMQ y Mailpit | Dev 5 | Worker procesando job falso y correo local de prueba |
 | 11 | GitHub Actions CI y ramas protegidas | Dev 1 | PR falla si test/lint/build falla |
 | 12 | Ensayo de integración y README de instalación | Todos | Nuevo clon y bootstrap reproducible |
+
+**Nota de avance (orden 7, PROPUESTA del 26/10/2026):** el seed está implementado en el repo privado de Dev 2 (`prisma/seed/`) con el comando `pnpm db:seed`. Es idempotente y solo corre contra una base local (Docker/MySQL). Pendiente de revisión del dueño de Dev 2 y de la aceptación de D-021 antes de llevarlo al equipo.
 
 ## Qué puede comenzar Dev 3 **hoy** sin bloquear a nadie
 

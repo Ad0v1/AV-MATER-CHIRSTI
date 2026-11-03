@@ -1,0 +1,19 @@
+packages:
+  - 'apps/*'
+  - 'packages/*'
+
+# Scripts de build de dependencias: solo se permiten los aprobados explicitamente.
+allowBuilds:
+  sharp: false
+  unrs-resolver: false
+  esbuild: false
+  workerd: false
+  prisma: true
+  '@prisma/engines': true
+  argon2: true
+
+# Versiones forzadas por seguridad (27/10/2026): @nestjs/platform-express 12.x fija multer 2.4.0 y
+# express 5.3.0 trae body-parser 2.3.x, ambas con avisos altos de DoS. Quitar cuando Nest las actualice.
+overrides:
+  multer: 2.5.0
+  body-parser: 2.4.0
