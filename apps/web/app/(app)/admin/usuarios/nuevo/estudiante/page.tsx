@@ -13,6 +13,8 @@ import { getActiveYearSections } from '../../_lib/data';
 import type { ActiveYearSections } from '../../_lib/types';
 import { USERS_PATH, enrollTargets } from '../../_lib/users';
 
+export const metadata = { title: 'Nuevo estudiante' };
+
 export default function Page() {
   return (
     <PageShell>

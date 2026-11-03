@@ -4,7 +4,7 @@ import { AcceptPolicyButton } from '@/components/auth/accept-policy-button';
 import { HOME_BY_ROLE } from '@/lib/roles';
 import { requireUser } from '@/lib/session';
 
-export const metadata = { title: 'Política y términos · Aula Virtual' };
+export const metadata = { title: 'Política y términos' };
 
 export default function PolicyPage() {
   return (

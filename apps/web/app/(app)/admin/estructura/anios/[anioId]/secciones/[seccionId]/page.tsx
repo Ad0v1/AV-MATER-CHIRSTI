@@ -32,6 +32,8 @@ import { isUuid } from '../../../../_lib/validation';
 import { ApiError } from '@/lib/api/errors';
 import { cn } from '@/lib/utils';
 
+export const metadata = { title: 'Sección' };
+
 export default function Page({
   params,
 }: PageProps<'/admin/estructura/anios/[anioId]/secciones/[seccionId]'>) {

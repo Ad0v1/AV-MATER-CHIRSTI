@@ -4,6 +4,8 @@ import { PageHeader, PageShell } from '../../../_shared/components/page-bits';
 import { NewGuardianForm } from '../../_components/new-user-forms';
 import { USERS_PATH } from '../../_lib/users';
 
+export const metadata = { title: 'Nuevo apoderado' };
+
 export default function Page() {
   return (
     <PageShell>

@@ -9,6 +9,8 @@ import {
 } from '@/app/(app)/admin/_shared/components/page-bits';
 import { listYears } from '../../_lib/data';
 
+export const metadata = { title: 'Nuevo año académico' };
+
 export default function Page() {
   return (
     <PageShell>
