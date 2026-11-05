@@ -10,6 +10,8 @@ export function proxy(request: NextRequest) {
 }
 
 export const config = {
-  // Excluye la API, los archivos de Next, el icono y el login.
-  matcher: ['/((?!api|_next/static|_next/image|favicon.ico|login).*)'],
+  // Excluye la API, los archivos de Next, los iconos, la marca y el login.
+  matcher: [
+    '/((?!api|_next/static|_next/image|favicon.ico|icon.png|apple-icon.png|brand|login|recuperar).*)',
+  ],
 };

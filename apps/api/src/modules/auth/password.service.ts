@@ -1,13 +1,14 @@
 import { Injectable } from '@nestjs/common';
-import { argon2id, hash, verify } from 'argon2';
+import { verify } from 'argon2';
+import { hashPassword } from './password-hash.js';
 
 @Injectable()
 export class PasswordService {
-  // Hash usado para gastar el mismo tiempo cuando el correo no existe (evita deducir cuentas por tiempo).
+  // Hash usado para gastar el mismo tiempo cuando el codigo no existe (evita deducir cuentas por tiempo).
   private dummyHash?: Promise<string>;
 
   hash(password: string): Promise<string> {
-    return hash(password, { type: argon2id });
+    return hashPassword(password);
   }
 
   async verify(passwordHash: string, password: string): Promise<boolean> {

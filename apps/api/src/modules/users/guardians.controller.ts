@@ -3,8 +3,12 @@ import { Roles } from '../../common/auth/roles.decorator.js';
 import { actorOf, type RequestWithUser } from '../academic/request-user.js';
 import { ZodValidationPipe } from '../academic/zod-validation.pipe.js';
 import { ActiveActorGuard } from './active-actor.guard.js';
-import { GuardianLinksService, type LinkList } from './guardian-links.service.js';
-import type { GuardianLinkView, UserView } from './user-views.js';
+import {
+  GuardianLinksService,
+  type CreatedGuardianResult,
+  type LinkList,
+} from './guardian-links.service.js';
+import type { GuardianLinkView } from './user-views.js';
 import {
   createGuardianSchema,
   idSchema,
@@ -26,7 +30,7 @@ export class GuardiansController {
   create(
     @Body(new ZodValidationPipe(createGuardianSchema)) dto: CreateGuardianDto,
     @Req() req: RequestWithUser,
-  ): Promise<{ user: UserView; links: GuardianLinkView[] }> {
+  ): Promise<CreatedGuardianResult> {
     return this.links.createGuardian(dto, actorOf(req));
   }
 

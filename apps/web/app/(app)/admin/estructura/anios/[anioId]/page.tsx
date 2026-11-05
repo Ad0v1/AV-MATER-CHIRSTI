@@ -22,6 +22,8 @@ import { isUuid } from '../../_lib/validation';
 import { ApiError } from '@/lib/api/errors';
 import { cn } from '@/lib/utils';
 
+export const metadata = { title: 'Año académico' };
+
 export default function Page({ params }: PageProps<'/admin/estructura/anios/[anioId]'>) {
   return (
     <PageShell>

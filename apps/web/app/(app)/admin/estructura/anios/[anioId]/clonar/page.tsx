@@ -18,6 +18,8 @@ import type { YearDetail } from '../../../_lib/types';
 import { isUuid } from '../../../_lib/validation';
 import { ApiError } from '@/lib/api/errors';
 
+export const metadata = { title: 'Copiar estructura' };
+
 export default function Page({ params }: PageProps<'/admin/estructura/anios/[anioId]/clonar'>) {
   return (
     <PageShell>

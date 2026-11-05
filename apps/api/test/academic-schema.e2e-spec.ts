@@ -398,6 +398,8 @@ describe.skipIf(!process.env.DATABASE_URL)('Esquema academico (e2e, MySQL)', () 
       const users = await prisma.user.findMany({ select: { institutionalEmail: true } });
       expect(users.length).toBeGreaterThanOrEqual(ALL_USERS.length);
       for (const u of users) {
+        // Los usuarios nuevos nacen sin correo del colegio (D-058): solo se revisan los que lo tienen.
+        if (u.institutionalEmail === null) continue;
         expect(u.institutionalEmail.endsWith(`@${SEED_EMAIL_DOMAIN}`)).toBe(true);
       }
     });

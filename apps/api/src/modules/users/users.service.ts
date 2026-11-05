@@ -1,11 +1,17 @@
 import { ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { AuditService } from '../../common/audit/audit.service.js';
 import { PrismaService } from '../../common/prisma/prisma.service.js';
+import { SessionService } from '../../common/session/session.service.js';
 import type { UserRole, UserStatus } from '../../generated/prisma/enums.js';
 import { AcademicAccessService } from '../academic/academic-access.service.js';
 import { AcademicEventPublisher } from '../academic/academic-events.js';
 import { MSG, mapPrismaError } from '../academic/academic.errors.js';
 import type { Actor } from '../academic/request-user.js';
+import {
+  CredentialIssuerService,
+  type IssuedCredentials,
+} from '../auth/credential-issuer.service.js';
+import { LoginAttemptsService } from '../auth/login-attempts.service.js';
 import { INSTITUTION_EMAIL_DOMAIN } from './institution-domain.js';
 import {
   enrollmentInclude,
@@ -14,6 +20,7 @@ import {
   toEnrollmentView,
   toGuardianLinkView,
   toUserView,
+  type CredentialStatus,
   type EnrollmentView,
   type GuardianLinkView,
   type SectionRef,
@@ -36,6 +43,7 @@ import {
 import { assertEmailFree } from './users-queries.js';
 import type {
   ChangeStatusDto,
+  CorrectDniDto,
   CreateTeacherDto,
   ListUsersQuery,
   UpdateUserDto,
@@ -50,6 +58,9 @@ export type UserListPage = {
 };
 
 export type UserDetail = UserView & {
+  // RF-87: estado de las credenciales y bloqueo por intentos fallidos.
+  credentialStatus: CredentialStatus;
+  locked: boolean;
   currentEnrollment?: EnrollmentView | null;
   guardians?: GuardianLinkView[];
   students?: GuardianLinkView[];
@@ -70,11 +81,24 @@ export const SEARCH_IDS_LIMIT = 5000;
 
 const listSelect = {
   id: true,
+  code: true,
   institutionalEmail: true,
+  contactEmail: true,
+  emailVerifiedAt: true,
+  dniVerifiedAt: true,
   fullName: true,
   role: true,
   status: true,
+  localCredential: { select: { mustChangePassword: true } },
 } as const;
+
+export type CreatedTeacher = { user: UserView; credentials: IssuedCredentials };
+export type ReissuedCredentials = { user: UserView; credentials: IssuedCredentials };
+
+function credentialStatus(credential: { mustChangePassword: boolean } | null): CredentialStatus {
+  if (!credential) return 'NONE';
+  return credential.mustChangePassword ? 'PENDING' : 'READY';
+}
 
 // RF-19, RF-22, RF-23, RF-25 (Decisión 3). Solo ADMIN (lo exige el controlador).
 @Injectable()
@@ -84,6 +108,9 @@ export class UsersService {
     private readonly audit: AuditService,
     private readonly access: AcademicAccessService,
     private readonly events: AcademicEventPublisher,
+    private readonly issuer: CredentialIssuerService,
+    private readonly sessions: SessionService,
+    private readonly attempts: LoginAttemptsService,
     @Inject(INSTITUTION_EMAIL_DOMAIN) private readonly domain: string | null,
   ) {}
 
@@ -106,14 +133,36 @@ export class UsersService {
       rows.filter((r) => r.role === 'STUDENT').map((r) => r.id),
       academicYearId,
     );
-    const items = rows.map((r) => ({ ...r, currentSection: sections.get(r.id) ?? null }));
+    const items = await Promise.all(
+      rows.map(async (r): Promise<UserListItem> => ({
+        id: r.id,
+        code: r.code,
+        institutionalEmail: r.institutionalEmail,
+        contactEmail: r.contactEmail,
+        emailVerified: r.emailVerifiedAt !== null,
+        dniVerified: r.dniVerifiedAt !== null,
+        fullName: r.fullName,
+        role: r.role,
+        status: r.status,
+        currentSection: sections.get(r.id) ?? null,
+        credentialStatus: credentialStatus(r.localCredential),
+        locked: r.code ? await this.attempts.isLocked(r.code) : false,
+      })),
+    );
     return { items, total, page: query.page, pageSize: query.pageSize };
   }
 
   async get(id: string): Promise<UserDetail> {
-    const user = await this.prisma.user.findUnique({ where: { id } });
+    const user = await this.prisma.user.findUnique({
+      where: { id },
+      include: { localCredential: { select: { mustChangePassword: true } } },
+    });
     if (!user) throw new NotFoundException(USERS_MSG.userNotFound);
-    const view: UserDetail = toUserView(user);
+    const view: UserDetail = {
+      ...toUserView(user),
+      credentialStatus: credentialStatus(user.localCredential),
+      locked: user.code ? await this.attempts.isLocked(user.code) : false,
+    };
     if (user.role === 'STUDENT') {
       const active = await this.access.getActiveYear();
       const current = active
@@ -224,6 +273,8 @@ export class UsersService {
     const user = toUserView(await this.prisma.user.findUniqueOrThrow({ where: { id } }));
     if (!result.changed) return { user, closedEnrollments: [] };
 
+    // RF-78: una baja cierra las sesiones abiertas del usuario (RF-08).
+    if (dto.status !== 'ACTIVE') await this.sessions.revokeAll(id);
     await recordUsers(this.audit, actor, 'user.status_change', 'User', id, {
       before: { status: result.previous },
       after: { status: dto.status, ...(dto.reason !== undefined ? { reason: dto.reason } : {}) },
@@ -260,23 +311,100 @@ export class UsersService {
     return { user, closedEnrollments: closedRows.map(toEnrollmentView) };
   }
 
-  // RF-19: alta de docente.
-  async createTeacher(dto: CreateTeacherDto, actor: Actor): Promise<UserView> {
-    assertEmailDomain(dto.institutionalEmail, 'TEACHER', this.domain);
-    await assertEmailFree(this.prisma, dto.institutionalEmail);
-    const user = await this.prisma.user
-      .create({
-        data: {
-          institutionalEmail: dto.institutionalEmail,
+  // RF-19: alta de docente, con su codigo y su contrasena inicial (RF-68, RF-70).
+  async createTeacher(dto: CreateTeacherDto, actor: Actor): Promise<CreatedTeacher> {
+    if (dto.institutionalEmail) {
+      assertEmailDomain(dto.institutionalEmail, 'TEACHER', this.domain);
+      await assertEmailFree(this.prisma, dto.institutionalEmail);
+    }
+    const { user, credentials } = await this.prisma
+      .$transaction((tx) =>
+        this.issuer.createUser(tx, {
           fullName: dto.fullName,
           role: 'TEACHER',
-        },
-      })
-      .catch((e: unknown) => mapPrismaError(e, USERS_MSG.emailTaken));
+          dni: dto.dni,
+          dniVerified: dto.dniVerified,
+          institutionalEmail: dto.institutionalEmail,
+        }),
+      )
+      .catch((e: unknown) => mapPrismaError(e, USERS_MSG.duplicate));
     await recordUsers(this.audit, actor, 'user.create', 'User', user.id, {
       after: { role: user.role, status: user.status },
     });
-    return toUserView(user);
+    return { user: toUserView(user), credentials };
+  }
+
+  /**
+   * RF-74: contrasena temporal nueva. Cierra las sesiones del usuario, levanta el bloqueo y lo
+   * obliga a cambiarla en su siguiente ingreso. Si el usuario es anterior al login por codigo y no
+   * tiene codigo o credencial, se le asignan. La contrasena solo viaja en esta respuesta.
+   */
+  async resetPassword(id: string, actor: Actor): Promise<ReissuedCredentials> {
+    const { user, credentials } = await this.prisma
+      .$transaction(async (tx) => {
+        const target = await lockUserForUpdate(tx, id);
+        if (!target) throw new NotFoundException(USERS_MSG.userNotFound);
+        const issued = await this.issuer.reissue(tx, id);
+        return {
+          user: await tx.user.findUniqueOrThrow({ where: { id } }),
+          credentials: { code: issued.code, initialPassword: issued.initialPassword },
+        };
+      })
+      .catch((e: unknown) => mapPrismaError(e, USERS_MSG.duplicate));
+    await this.sessions.revokeAll(id);
+    if (user.code) await this.attempts.unlock(user.code);
+    await recordUsers(this.audit, actor, 'user.reset_password', 'User', id);
+    return { user: toUserView(user), credentials };
+  }
+
+  /**
+   * RF-84: corrige el DNI. Genera un codigo nuevo (RN-16), emite una contrasena temporal, cierra las
+   * sesiones y obliga a cambiarla. El codigo anterior queda en la bitacora, junto con el motivo.
+   * El DNI nunca se registra.
+   */
+  async correctDni(id: string, dto: CorrectDniDto, actor: Actor): Promise<ReissuedCredentials> {
+    const { user, credentials, previousCode } = await this.prisma
+      .$transaction(async (tx) => {
+        const target = await lockUserForUpdate(tx, id);
+        if (!target) throw new NotFoundException(USERS_MSG.userNotFound);
+        const current = await tx.user.findUniqueOrThrow({ where: { id } });
+        if (current.dniHash === this.issuer.hashDni(dto.dni)) {
+          throw new ConflictException(USERS_MSG.sameDni);
+        }
+        await this.issuer.assertDniFree(tx, dto.dni, id);
+        const issued = await this.issuer.reissue(tx, id, { newCode: true });
+        await tx.user.update({
+          where: { id },
+          data: { ...this.issuer.dniData(dto.dni), dniVerifiedAt: null },
+        });
+        return {
+          user: await tx.user.findUniqueOrThrow({ where: { id } }),
+          credentials: { code: issued.code, initialPassword: issued.initialPassword },
+          previousCode: issued.previousCode,
+        };
+      })
+      .catch((e: unknown) => mapPrismaError(e, USERS_MSG.duplicate));
+    await this.sessions.revokeAll(id);
+    if (previousCode) await this.attempts.unlock(previousCode);
+    await recordUsers(this.audit, actor, 'user.correct_dni', 'User', id, {
+      before: { code: previousCode },
+      after: { code: credentials.code, reason: dto.reason },
+    });
+    return { user: toUserView(user), credentials };
+  }
+
+  // RF-69: el administrador marca que comparo el DNI con el documento fisico.
+  async verifyDni(id: string, actor: Actor): Promise<UserView> {
+    const user = await this.prisma.user.findUnique({ where: { id } });
+    if (!user) throw new NotFoundException(USERS_MSG.userNotFound);
+    if (!user.dniHash) throw new ConflictException(USERS_MSG.noCredential);
+    if (user.dniVerifiedAt) return toUserView(user);
+    const updated = await this.prisma.user.update({
+      where: { id },
+      data: { dniVerifiedAt: new Date() },
+    });
+    await recordUsers(this.audit, actor, 'user.verify_dni', 'User', id);
+    return toUserView(updated);
   }
 
   /**
@@ -287,7 +415,9 @@ export class UsersService {
    */
   private async searchIds(q: string): Promise<string[]> {
     const rows = await this.prisma.$queryRaw<{ id: string }[]>`
-      SELECT id FROM User WHERE LOCATE(${q}, fullName) > 0 OR LOCATE(${q}, institutionalEmail) > 0
+      SELECT id FROM User
+      WHERE LOCATE(${q}, fullName) > 0 OR LOCATE(${q}, institutionalEmail) > 0
+         OR LOCATE(${q}, contactEmail) > 0 OR LOCATE(${q}, code) > 0
       ORDER BY id LIMIT ${SEARCH_IDS_LIMIT}`;
     return rows.map((r) => r.id);
   }

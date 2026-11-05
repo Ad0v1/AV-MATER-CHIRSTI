@@ -25,6 +25,8 @@ import {
 const linkButton = (variant: 'default' | 'outline') =>
   cn(buttonVariants({ variant }), TOUCH, 'inline-flex items-center');
 
+export const metadata = { title: 'Usuarios' };
+
 export default function Page({ searchParams }: PageProps<'/admin/usuarios'>) {
   return (
     <PageShell>
