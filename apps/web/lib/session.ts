@@ -5,7 +5,12 @@ import { HOME_BY_ROLE, isRole, type Role } from '@/lib/roles';
 
 export const SESSION_COOKIE = 'aula_sid';
 
-export type SessionUser = { id: string; role: Role; mustAcceptPolicy: boolean };
+export type SessionUser = {
+  id: string;
+  role: Role;
+  mustAcceptPolicy: boolean;
+  mustChangePassword: boolean;
+};
 
 const API_URL = process.env.API_URL ?? 'http://localhost:4000';
 
@@ -30,7 +35,12 @@ export async function getSession(): Promise<SessionUser | null> {
     if (!res.ok) return null;
     const data = (await res.json()) as Partial<SessionUser>;
     if (typeof data.id !== 'string' || !isRole(data.role)) return null;
-    return { id: data.id, role: data.role, mustAcceptPolicy: data.mustAcceptPolicy === true };
+    return {
+      id: data.id,
+      role: data.role,
+      mustAcceptPolicy: data.mustAcceptPolicy === true,
+      mustChangePassword: data.mustChangePassword === true,
+    };
   } catch {
     // API caida: se trata como sin sesion en vez de romper la pagina.
     return null;

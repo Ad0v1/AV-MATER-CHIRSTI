@@ -6,4 +6,6 @@ export type UserRole = (typeof USER_ROLES)[number];
 export type AuthenticatedUser = {
   id: string;
   role: UserRole;
+  // Solo viene en true: la sesion pertenece a alguien que debe cambiar su contrasena (RF-71, RF-74).
+  mustChangePassword?: true;
 };

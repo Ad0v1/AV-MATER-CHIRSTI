@@ -13,7 +13,7 @@
 
 **RF:** 68, 70, 72, 73, 75, 78, 79 y la parte de servidor de 69.
 
-- Migración: `User` gana `code` (único), `dniEncrypted`, `dniHash` (único), `mustChangePassword`, `emailVerifiedAt`, `phone` y `address`; `institutionalEmail` pasa a opcional; `LocalCredential` para todos los roles.
+- Migración `20261105120000_auth_codigo_usuario`: `User` gana `code` (único, nulo hasta la Fase C), `dniEncrypted` y `dniHash` (único); `LocalCredential` gana `mustChangePassword` y `passwordChangedAt` y sirve para todos los roles. **Ajuste respecto al plan original:** `institutionalEmail` sigue obligatorio hasta la Fase C (que cambia las altas de usuario), y `emailVerifiedAt`, `phone` y `address` se agregan en las Fases B y C, cada uno con su migración.
 - `UserCodeService`: genera el código (año + 7 aleatorios + Luhn) con reintento ante colisión.
 - `DniService`: cifra con `SecretBox` y calcula un hash con clave (HMAC) para unicidad.
 - `AuthService.login` por código y contraseña para todos los roles; bloqueo de 15 min tras 5 fallos (contador en Redis); mensaje genérico; cierre de sesiones al cambiar la contraseña o desactivar al usuario.

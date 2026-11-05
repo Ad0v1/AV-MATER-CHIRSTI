@@ -20,6 +20,12 @@ enum UserStatus {
 model User {
   id                 String     @id @default(uuid(7)) @db.Char(36)
   institutionalEmail String     @unique
+  // Codigo de usuario de 10 digitos: es el usuario del login (RF-68, D-060). Nulo solo hasta que el
+  // alta de usuarios (fase C) lo genere; despues pasa a ser obligatorio.
+  code               String?    @unique @db.Char(10)
+  // DNI cifrado (AES-256-GCM) y su hash con clave solo para impedir repetidos (RF-69, D-059).
+  dniEncrypted       String?    @db.VarChar(255)
+  dniHash            String?    @unique @db.Char(64)
   fullName           String
   role               UserRole
   status             UserStatus @default(ACTIVE)
@@ -45,13 +51,16 @@ model User {
   @@index([role, status])
 }
 
-// Cuenta local de respaldo, solo para el administrador (RF-04).
-// El secreto TOTP se guarda cifrado; nunca en claro.
+// Contrasena de cada usuario (D-058). El secreto TOTP, que solo usa el administrador, se guarda
+// cifrado; nunca en claro.
 model LocalCredential {
-  userId              String  @id @db.Char(36)
+  userId              String    @id @db.Char(36)
   passwordHash        String
   totpSecretEncrypted String?
-  user                User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // Verdadero mientras el usuario no cambie la contrasena inicial o temporal (RF-71, RF-74).
+  mustChangePassword  Boolean   @default(false)
+  passwordChangedAt   DateTime?
+  user                User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 // Aceptacion de politica y terminos por version (RF-07).

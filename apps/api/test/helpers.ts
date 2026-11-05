@@ -19,6 +19,8 @@ export class MemoryAuditSink extends AuditSink {
 export type FakeUser = {
   id: string;
   institutionalEmail: string;
+  code: string | null;
+  dniEncrypted: string | null;
   fullName: string;
   role: 'STUDENT' | 'TEACHER' | 'ADMIN' | 'GUARDIAN';
   status: 'ACTIVE' | 'INACTIVE' | 'WITHDRAWN';
@@ -26,6 +28,8 @@ export type FakeUser = {
     userId: string;
     passwordHash: string;
     totpSecretEncrypted: string | null;
+    mustChangePassword: boolean;
+    passwordChangedAt: Date | null;
   } | null;
 };
 
@@ -35,10 +39,18 @@ export class FakePrisma {
   acceptances = new Set<string>();
 
   user = {
-    findUnique: ({ where }: { where: { id?: string; institutionalEmail?: string } }) =>
+    findUnique: ({
+      where,
+    }: {
+      where: { id?: string; code?: string; institutionalEmail?: string };
+    }) =>
       Promise.resolve(
         this.users.find((u) =>
-          where.id ? u.id === where.id : u.institutionalEmail === where.institutionalEmail,
+          where.id
+            ? u.id === where.id
+            : where.code
+              ? u.code === where.code
+              : u.institutionalEmail === where.institutionalEmail,
         ) ?? null,
       ),
   };
@@ -49,10 +61,10 @@ export class FakePrisma {
       data,
     }: {
       where: { userId: string };
-      data: { totpSecretEncrypted: string };
+      data: Partial<NonNullable<FakeUser['localCredential']>>;
     }) => {
       const cred = this.users.find((u) => u.id === where.userId)!.localCredential!;
-      cred.totpSecretEncrypted = data.totpSecretEncrypted;
+      Object.assign(cred, data);
       return Promise.resolve(cred);
     },
   };

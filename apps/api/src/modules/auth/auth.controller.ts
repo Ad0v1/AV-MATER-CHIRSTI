@@ -12,15 +12,23 @@ import {
 import { Throttle } from '@nestjs/throttler';
 import type { Request, Response } from 'express';
 import { AuditService } from '../../common/audit/audit.service.js';
+import { AllowPendingPasswordChange } from '../../common/auth/password-change.guard.js';
 import { Roles } from '../../common/auth/roles.decorator.js';
-import type { AuthenticatedUser } from '../../common/auth/roles.js';
+import type { AuthenticatedUser, UserRole } from '../../common/auth/roles.js';
 import { SESSION_COOKIE, sessionCookieOptions } from '../../common/session/session-cookie.js';
 import { SessionService } from '../../common/session/session.service.js';
 import { ENV, type Env } from '../../config/config.module.js';
-import { loginSchema, parseBody, totpCodeSchema } from './auth.dto.js';
+import { changePasswordSchema, loginSchema, parseBody, totpCodeSchema } from './auth.dto.js';
 import { AuthService } from './auth.service.js';
 
 type RequestWithUser = Request & { user?: AuthenticatedUser };
+
+type SessionInfo = {
+  id: string;
+  role: UserRole;
+  mustAcceptPolicy: boolean;
+  mustChangePassword: boolean;
+};
 
 @Controller('auth')
 export class AuthController {
@@ -39,20 +47,46 @@ export class AuthController {
     @Body() body: unknown,
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
-  ): Promise<AuthenticatedUser & { mustAcceptPolicy: boolean }> {
-    const { user, mustAcceptPolicy } = await this.auth.login(parseBody(loginSchema, body), req.ip);
+  ): Promise<SessionInfo> {
+    const { user, mustAcceptPolicy, mustChangePassword } = await this.auth.login(
+      parseBody(loginSchema, body),
+      req.ip,
+    );
     const token = await this.sessions.create(user);
     res.cookie(SESSION_COOKIE, token, this.cookieOptions());
-    return { ...user, mustAcceptPolicy };
+    return { id: user.id, role: user.role, mustAcceptPolicy, mustChangePassword };
   }
 
-  // Contrato docs/03: usuario autenticado y rol, mas si debe aceptar la politica vigente.
+  // Contrato docs/03: usuario autenticado y rol, mas si debe aceptar la politica vigente y si
+  // debe cambiar su contrasena.
   @Get('me')
-  async me(
-    @Req() req: RequestWithUser,
-  ): Promise<AuthenticatedUser & { mustAcceptPolicy: boolean }> {
+  @AllowPendingPasswordChange()
+  async me(@Req() req: RequestWithUser): Promise<SessionInfo> {
     const user = this.requireUser(req);
-    return { ...user, mustAcceptPolicy: await this.auth.mustAcceptPolicy(user.id) };
+    return {
+      id: user.id,
+      role: user.role,
+      mustAcceptPolicy: await this.auth.mustAcceptPolicy(user.id),
+      mustChangePassword: user.mustChangePassword === true,
+    };
+  }
+
+  // RF-72: cambio de contrasena. Cierra las demas sesiones del usuario (RF-78) y deja la actual
+  // abierta con un token nuevo. Limite estricto: exige la contrasena actual.
+  @Post('password')
+  @AllowPendingPasswordChange()
+  @HttpCode(204)
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  async changePassword(
+    @Body() body: unknown,
+    @Req() req: RequestWithUser,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<void> {
+    const user = this.requireUser(req);
+    await this.auth.changePassword(user.id, parseBody(changePasswordSchema, body), req.ip);
+    await this.sessions.revokeAll(user.id);
+    const token = await this.sessions.create({ id: user.id, role: user.role });
+    res.cookie(SESSION_COOKIE, token, this.cookieOptions());
   }
 
   @Post('policy/accept')
@@ -76,6 +110,7 @@ export class AuthController {
   }
 
   @Post('logout')
+  @AllowPendingPasswordChange()
   @HttpCode(204)
   async logout(
     @Req() req: RequestWithUser,

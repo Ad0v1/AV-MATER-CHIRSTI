@@ -17,8 +17,12 @@ import { ContentsModule } from './modules/contents/contents.module.js';
 import { FilesModule } from './modules/files/files.module.js';
 import { SubmissionsModule } from './modules/submissions/submissions.module.js';
 import { AuthService } from './modules/auth/auth.service.js';
+import { DniService } from './modules/auth/dni.service.js';
+import { LoginAttemptsService } from './modules/auth/login-attempts.service.js';
 import { PasswordService } from './modules/auth/password.service.js';
 import { TotpService } from './modules/auth/totp.service.js';
+import { UserCodeService } from './modules/auth/user-code.service.js';
+import { PasswordChangeGuard } from './common/auth/password-change.guard.js';
 
 @Module({
   imports: [
@@ -41,9 +45,14 @@ import { TotpService } from './modules/auth/totp.service.js';
     AuthService,
     PasswordService,
     TotpService,
-    // Orden: primero el limite de peticiones, luego los permisos por rol.
+    LoginAttemptsService,
+    DniService,
+    UserCodeService,
+    // Orden: primero el limite de peticiones, luego los permisos por rol y, al final, el cambio
+    // de contrasena pendiente (RF-71).
     { provide: APP_GUARD, useClass: ThrottlerGuard },
     { provide: APP_GUARD, useClass: RolesGuard },
+    { provide: APP_GUARD, useClass: PasswordChangeGuard },
     { provide: APP_FILTER, useClass: ApiExceptionFilter },
   ],
 })

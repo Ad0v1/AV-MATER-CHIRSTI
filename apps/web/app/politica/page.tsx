@@ -29,6 +29,7 @@ export default function PolicyPage() {
 // Lee la sesion (dato de la peticion), por eso va dentro de Suspense.
 async function PolicyAction() {
   const user = await requireUser();
+  if (user.mustChangePassword) redirect('/cambiar-clave');
   if (!user.mustAcceptPolicy) redirect(HOME_BY_ROLE[user.role]);
   return <AcceptPolicyButton role={user.role} />;
 }
