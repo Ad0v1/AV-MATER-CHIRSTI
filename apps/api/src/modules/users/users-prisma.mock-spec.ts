@@ -17,6 +17,7 @@ export type RawState = {
 
 // Anotado como Mock: el tipo inferido de vi.fn no es portable con declaration: true (TS2883).
 const fn = (): Mock => vi.fn();
+const mock = vi.fn as unknown as (impl?: (...args: never[]) => unknown) => Mock;
 
 export function makePrisma() {
   const raw: RawState = {
@@ -28,7 +29,7 @@ export function makePrisma() {
   // Registro del orden de los bloqueos y de los parámetros de cada $queryRaw.
   const rawCalls: { sql: string; values: unknown[] }[] = [];
 
-  const queryRaw: Mock = vi.fn((strings: TemplateStringsArray, ...values: unknown[]) => {
+  const queryRaw: Mock = mock((strings: TemplateStringsArray, ...values: unknown[]) => {
     const sql = strings.join('?');
     rawCalls.push({ sql, values });
     if (sql.includes('LOCATE')) return Promise.resolve(raw.searchIds.map((id) => ({ id })));
@@ -67,14 +68,14 @@ export function makePrisma() {
     section: { findUnique: fn() },
     academicYear: { findFirst: fn() },
     guardianStudent: {
-      findFirst: vi.fn(),
-      findMany: vi.fn(),
-      findUnique: vi.fn(),
-      findUniqueOrThrow: vi.fn(),
-      create: vi.fn(),
-      count: vi.fn().mockResolvedValue(0),
-      update: vi.fn(),
-      updateMany: vi.fn(),
+      findFirst: mock(),
+      findMany: mock(),
+      findUnique: mock(),
+      findUniqueOrThrow: mock(),
+      create: mock(),
+      count: mock().mockResolvedValue(0),
+      update: mock(),
+      updateMany: mock(),
     },
   };
   // La transacción usa el mismo cliente simulado.
@@ -89,18 +90,18 @@ export function makePrisma() {
  */
 export function makeIssuer() {
   const issuer = {
-    createUser: vi.fn(
+    createUser: mock(
       (_tx: unknown, input: { role: 'STUDENT' | 'TEACHER' | 'GUARDIAN' | 'ADMIN' }) =>
         Promise.resolve({
           user: userRow(input.role === 'GUARDIAN' ? 'gnuevo' : 'nuevo', input.role),
           credentials: { code: '2600000000', initialPassword: 'Clave-Inicial-9' },
         }),
     ),
-    findByDni: vi.fn().mockResolvedValue(null),
-    assertDniFree: vi.fn().mockResolvedValue(undefined),
-    hashDni: vi.fn((dni: string) => `hash-${dni}`),
-    dniData: vi.fn((dni: string) => ({ dniEncrypted: `enc-${dni}`, dniHash: `hash-${dni}` })),
-    reissue: vi.fn().mockResolvedValue({
+    findByDni: mock().mockResolvedValue(null),
+    assertDniFree: mock().mockResolvedValue(undefined),
+    hashDni: mock((dni: string) => `hash-${dni}`),
+    dniData: mock((dni: string) => ({ dniEncrypted: `enc-${dni}`, dniHash: `hash-${dni}` })),
+    reissue: mock().mockResolvedValue({
       code: '2600000000',
       initialPassword: 'Clave-Temporal-7',
       previousCode: null,
