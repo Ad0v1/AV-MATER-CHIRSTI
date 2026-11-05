@@ -14,6 +14,8 @@ import type {
   TeacherSubmissionItem,
 } from './types';
 
+export const metadata = { title: 'Tareas' };
+
 // Tareas del curso (Dev 3, fase 3f; RF-28, RF-33, RF-36..39). Lee con el BFF (D-037). La vista
 // depende del rol de la sesión, pero los permisos reales los decide el backend en cada petición.
 

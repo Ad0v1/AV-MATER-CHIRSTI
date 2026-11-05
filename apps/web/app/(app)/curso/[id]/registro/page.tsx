@@ -6,6 +6,8 @@ import { DISPLAY_STATUS_LABEL, formatDateTime } from '../tareas/assignment-forma
 import { averageText, cellText, isUuid, literalLabel } from './_lib/grading-format';
 import type { GradebookCell, GradebookView } from './_lib/types';
 
+export const metadata = { title: 'Registro auxiliar' };
+
 // Registro auxiliar (Dev 4, RF-47..49): matriz estudiantes × tareas del período con NE virtual,
 // promedios con literal (un solo redondeo, en la API) y dashboard. Solo lectura: se califica en
 // registro/tarea/[assignmentId]. Permisos: docente asignado (lo valida el backend).

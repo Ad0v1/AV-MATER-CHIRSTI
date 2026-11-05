@@ -13,6 +13,8 @@ import { SettingsForm } from './_components/settings-form';
 import { getSettings } from './_lib/data';
 import type { SettingsView } from './_lib/settings-form';
 
+export const metadata = { title: 'Configuración institucional' };
+
 export default function Page() {
   return (
     <PageShell>

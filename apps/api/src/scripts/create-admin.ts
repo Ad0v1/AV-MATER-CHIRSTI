@@ -1,4 +1,5 @@
 import { PrismaMariaDb } from '@prisma/adapter-mariadb';
+import { loadDotenv } from '../config/dotenv.js';
 import { loadEnv } from '../config/env.js';
 import { PrismaClient } from '../generated/prisma/client.js';
 import { PasswordService } from '../modules/auth/password.service.js';
@@ -6,6 +7,8 @@ import { PasswordService } from '../modules/auth/password.service.js';
 // Crea o actualiza la cuenta local del administrador (RF-04).
 // Uso: ADMIN_PASSWORD='...' pnpm --filter api admin:create -- correo@colegio.edu.pe "Nombre Completo"
 // La contrasena va por variable de entorno para que no quede en el historial del terminal.
+loadDotenv();
+
 async function main(): Promise<void> {
   const [emailArg, ...nameParts] = process.argv.slice(2);
   const password = process.env.ADMIN_PASSWORD;

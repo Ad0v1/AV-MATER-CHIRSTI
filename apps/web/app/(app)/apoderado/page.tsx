@@ -6,6 +6,8 @@ import { isUuid } from '../curso/[id]/registro/_lib/grading-format';
 import type { GuardianStudentsView, StudentGradesView } from '../curso/[id]/registro/_lib/types';
 import { StudentGrades } from '../mis-notas/_components/student-grades';
 
+export const metadata = { title: 'Panel del apoderado' };
+
 // Panel del apoderado (Dev 4, RF-52): solo lectura de las notas de sus estudiantes vinculados.
 // El backend valida el vínculo vigente en cada petición (403 si no). Anuncios: Dev 5 (RF-32).
 
