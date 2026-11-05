@@ -17,8 +17,13 @@ import { ContentsModule } from './modules/contents/contents.module.js';
 import { FilesModule } from './modules/files/files.module.js';
 import { SubmissionsModule } from './modules/submissions/submissions.module.js';
 import { AuthService } from './modules/auth/auth.service.js';
-import { PasswordService } from './modules/auth/password.service.js';
+import { CredentialsModule } from './modules/auth/credentials.module.js';
 import { TotpService } from './modules/auth/totp.service.js';
+import { PendingSetupGuard } from './common/auth/pending-setup.guard.js';
+import { MailModule } from './common/mail/mail.module.js';
+import { EmailVerificationService } from './modules/auth/email-verification.service.js';
+import { OneTimeCodeService } from './modules/auth/one-time-code.service.js';
+import { PasswordRecoveryService } from './modules/auth/password-recovery.service.js';
 
 @Module({
   imports: [
@@ -30,6 +35,8 @@ import { TotpService } from './modules/auth/totp.service.js';
     PrismaModule,
     AuditModule,
     SessionModule,
+    MailModule,
+    CredentialsModule,
     AcademicModule,
     UsersModule,
     FilesModule,
@@ -39,11 +46,15 @@ import { TotpService } from './modules/auth/totp.service.js';
   controllers: [HealthController, AuthController],
   providers: [
     AuthService,
-    PasswordService,
     TotpService,
-    // Orden: primero el limite de peticiones, luego los permisos por rol.
+    OneTimeCodeService,
+    EmailVerificationService,
+    PasswordRecoveryService,
+    // Orden: primero el limite de peticiones, luego los permisos por rol y, al final, los pasos
+    // pendientes del primer ingreso (RF-71, RN-18).
     { provide: APP_GUARD, useClass: ThrottlerGuard },
     { provide: APP_GUARD, useClass: RolesGuard },
+    { provide: APP_GUARD, useClass: PendingSetupGuard },
     { provide: APP_FILTER, useClass: ApiExceptionFilter },
   ],
 })

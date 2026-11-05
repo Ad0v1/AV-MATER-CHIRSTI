@@ -9,6 +9,7 @@ export const ROUTES = {
   adminAlmacenamiento: '/admin/almacenamiento',
   misNotas: '/mis-notas',
   apoderado: '/apoderado',
+  miPerfil: '/mi-perfil',
 } as const;
 
 export const COURSE_ROUTES = {

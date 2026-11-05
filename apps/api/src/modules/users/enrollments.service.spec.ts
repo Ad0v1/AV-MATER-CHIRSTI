@@ -5,6 +5,7 @@ import { EnrollmentsService } from './enrollments.service.js';
 import {
   actor,
   enrollmentRow,
+  makeIssuer,
   makePrisma,
   prismaError,
   section,
@@ -22,6 +23,8 @@ describe('EnrollmentsService', () => {
   let order: string[];
   let published: AcademicEvent[];
   let service: EnrollmentsService;
+  let issuer: ReturnType<typeof makeIssuer>['issuer'];
+  let asIssuer: ReturnType<typeof makeIssuer>['asIssuer'];
 
   beforeEach(() => {
     vi.useFakeTimers({ toFake: ['Date'] });
@@ -40,10 +43,12 @@ describe('EnrollmentsService', () => {
       published.push(e);
       order.push(`event:${e.type}`);
     });
+    ({ issuer, asIssuer } = makeIssuer());
     service = new EnrollmentsService(
       db.asService,
       audit as unknown as AuditService,
       events,
+      asIssuer,
       'colegio.example',
     );
     db.raw.years.set(YEAR_2026, { id: YEAR_2026, active: 1, open: 1 });
@@ -52,27 +57,44 @@ describe('EnrollmentsService', () => {
   });
   afterEach(() => vi.useRealTimers());
 
-  describe('createStudent (RF-18)', () => {
+  describe('createStudent (RF-18, RF-86)', () => {
     const dto = {
-      institutionalEmail: 'qa-f3-1@colegio.example',
       fullName: 'Estudiante QA',
       sectionId: 's3a',
+      dni: '45678901',
+      dniConfirm: '45678901',
+      guardians: [{ dni: '11111111', dniConfirm: '11111111', fullName: 'Madre QA' }],
     };
+    const link = (id: string, guardianId: string, isPrimary: boolean | null) => ({
+      id,
+      guardianId,
+      studentId: 'nuevo',
+      isActive: true,
+      isPrimary,
+      createdAt: NOW,
+      revokedAt: null,
+      guardian: { id: guardianId, fullName: 'Apoderado', status: 'ACTIVE' as const },
+      student: { id: 'nuevo', fullName: 'Estudiante', status: 'ACTIVE' as const },
+    });
 
     beforeEach(() => {
       db.prisma.user.findUnique.mockResolvedValue(null);
       db.prisma.section.findUnique.mockResolvedValue(section('s3a', 3));
-      db.prisma.user.create.mockResolvedValue(userRow('nuevo', 'STUDENT'));
       db.prisma.enrollment.create.mockResolvedValue({
         ...enrollmentRow('enr-n', 's3a'),
         studentId: 'nuevo',
       });
+      db.prisma.guardianStudent.create.mockImplementation(
+        ({ data }: { data: { guardianId: string; isPrimary: boolean | null } }) =>
+          Promise.resolve(link('l-n', data.guardianId, data.isPrimary)),
+      );
     });
 
-    it('crea usuario y matrícula en una transacción, con sección y año de la fila de Section', async () => {
+    it('crea alumno, matrícula y apoderado en una transacción, con las credenciales una vez', async () => {
       const result = await service.createStudent(dto, actor);
       expect(db.rawCalls).toHaveLength(1);
       expect(db.rawCalls[0].sql).toContain('FOR SHARE');
+      expect(issuer.createUser).toHaveBeenCalledTimes(2);
       expect(db.prisma.enrollment.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: {
@@ -84,16 +106,86 @@ describe('EnrollmentsService', () => {
         }),
       );
       expect(result.enrollment.isCurrent).toBe(true);
-      expect(order).toEqual(['audit:users.user.create', 'audit:users.enrollment.create']);
-      expect(JSON.stringify(audit.record.mock.calls)).not.toContain('@colegio');
+      expect(result.credentials).toEqual({
+        code: '2600000000',
+        initialPassword: 'Clave-Inicial-9',
+      });
+      expect(result.guardians).toHaveLength(1);
+      expect(result.guardians[0]).toMatchObject({ created: true });
+      expect(result.guardians[0]!.credentials).toBeDefined();
+      expect(order).toEqual([
+        'audit:users.user.create',
+        'audit:users.enrollment.create',
+        'audit:users.user.create',
+        'audit:users.guardian_link.create',
+      ]);
     });
 
-    it('422 dominio y 409 correo repetido', async () => {
+    it('la bitácora no lleva DNI, códigos ni contraseñas', async () => {
+      await service.createStudent(dto, actor);
+      const text = JSON.stringify(audit.record.mock.calls);
+      for (const secret of ['45678901', '11111111', '2600000000', 'Clave-Inicial-9']) {
+        expect(text).not.toContain(secret);
+      }
+    });
+
+    it('el primer apoderado es el principal y el segundo no', async () => {
+      const two = {
+        ...dto,
+        guardians: [
+          { dni: '11111111', dniConfirm: '11111111', fullName: 'Madre QA' },
+          { dni: '22222222', dniConfirm: '22222222', fullName: 'Padre QA' },
+        ],
+      };
+      await service.createStudent(two, actor);
+      const data = db.prisma.guardianStudent.create.mock.calls.map(
+        (c) => (c[0] as { data: { isPrimary: boolean | null } }).data.isPrimary,
+      );
+      expect(data).toEqual([true, null]);
+    });
+
+    it('reutiliza al apoderado que ya existe con ese DNI (un hermano) y no lo crea', async () => {
+      issuer.findByDni.mockResolvedValueOnce(userRow('apo-existente', 'GUARDIAN'));
+      db.raw.users.set('apo-existente', {
+        id: 'apo-existente',
+        role: 'GUARDIAN',
+        status: 'ACTIVE',
+      });
+      const result = await service.createStudent(dto, actor);
+      expect(issuer.createUser).toHaveBeenCalledTimes(1); // solo el alumno
+      expect(result.guardians[0]).toMatchObject({ created: false });
+      expect(result.guardians[0]!.credentials).toBeUndefined();
+      expect(order).not.toContain('audit:users.user.create:guardian');
+    });
+
+    it('422 si el DNI del apoderado es de alguien que no es apoderado, o está retirado', async () => {
+      issuer.findByDni.mockResolvedValueOnce(userRow('doc1', 'TEACHER'));
+      await expect(service.createStudent(dto, actor)).rejects.toBeInstanceOf(
+        UnprocessableEntityException,
+      );
+      issuer.findByDni.mockResolvedValueOnce(userRow('apo9', 'GUARDIAN', 'WITHDRAWN'));
+      await expect(service.createStudent(dto, actor)).rejects.toBeInstanceOf(
+        UnprocessableEntityException,
+      );
+    });
+
+    it('422 si el apoderado es nuevo y falta su nombre', async () => {
+      await expect(
+        service.createStudent(
+          { ...dto, guardians: [{ dni: '11111111', dniConfirm: '11111111' }] },
+          actor,
+        ),
+      ).rejects.toBeInstanceOf(UnprocessableEntityException);
+    });
+
+    it('422 dominio y 409 correo repetido cuando se envía el correo del colegio', async () => {
       await expect(
         service.createStudent({ ...dto, institutionalEmail: 'x@otro.example' }, actor),
       ).rejects.toBeInstanceOf(UnprocessableEntityException);
       db.prisma.user.findUnique.mockResolvedValue({ id: 'otro' });
-      await expect(service.createStudent(dto, actor)).rejects.toBeInstanceOf(ConflictException);
+      await expect(
+        service.createStudent({ ...dto, institutionalEmail: 'qa-f3-1@colegio.example' }, actor),
+      ).rejects.toBeInstanceOf(ConflictException);
     });
 
     it('404 sección inexistente', async () => {
@@ -117,7 +209,7 @@ describe('EnrollmentsService', () => {
       );
       db.prisma.academicYear.findFirst.mockResolvedValueOnce(null);
       await expect(service.createStudent(dto, actor)).rejects.toBeInstanceOf(ConflictException);
-      expect(db.prisma.user.create).not.toHaveBeenCalled();
+      expect(issuer.createUser).not.toHaveBeenCalled();
     });
 
     it('409 sección inactiva', async () => {
@@ -125,8 +217,8 @@ describe('EnrollmentsService', () => {
       await expect(service.createStudent(dto, actor)).rejects.toBeInstanceOf(ConflictException);
     });
 
-    it('P2002 en la carrera del correo → 409', async () => {
-      db.prisma.user.create.mockRejectedValue(prismaError('P2002'));
+    it('P2002 en la carrera (DNI, correo o código) → 409', async () => {
+      issuer.createUser.mockRejectedValueOnce(prismaError('P2002'));
       await expect(service.createStudent(dto, actor)).rejects.toBeInstanceOf(ConflictException);
     });
   });

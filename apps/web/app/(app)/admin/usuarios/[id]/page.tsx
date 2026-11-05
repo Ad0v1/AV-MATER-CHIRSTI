@@ -28,12 +28,16 @@ import { formatInstant, sectionLabel } from '../../_shared/lib/format';
 import { isUuid } from '../../_shared/lib/validation';
 import { CreatedNotice } from '../_components/created-notice';
 import {
+  CorrectDniForm,
   EditUserForm,
   EnrollForm,
   LinkStudentForm,
+  MakePrimaryForm,
+  ResetPasswordForm,
   RevokeLinkAction,
   StatusAction,
   TransferAction,
+  VerifyDniForm,
 } from '../_components/user-panels';
 import {
   getActiveYearSections,
@@ -51,6 +55,8 @@ import type {
 } from '../_lib/types';
 import {
   CREATED_FLAG,
+  CREDENTIAL_LABELS,
+  CREDENTIAL_TONES,
   END_REASON_LABELS,
   ROLE_LABELS,
   STATUS_LABELS,
@@ -133,18 +139,63 @@ async function UserPage({
 
       <Section id={userFocusIds.data} title="Datos" focusable>
         <dl className="grid gap-3 text-sm sm:grid-cols-2">
-          <Item label="Correo institucional">
-            <span className="break-all">{user.institutionalEmail}</span>
+          <Item label="Código de usuario">
+            <span className="tabular-nums">{user.code ?? 'Aún no tiene'}</span>
           </Item>
           <Item label="Rol">{ROLE_LABELS[user.role]}</Item>
+          <Item label="Correo de contacto">
+            {user.contactEmail ? (
+              <span className="break-all">
+                {user.contactEmail}{' '}
+                <span className="font-normal text-muted-foreground">
+                  ({user.emailVerified ? 'verificado' : 'sin verificar'})
+                </span>
+              </span>
+            ) : (
+              <span className="font-normal text-muted-foreground">
+                Aún no lo registra (lo hace en su primer ingreso)
+              </span>
+            )}
+          </Item>
+          {user.institutionalEmail ? (
+            <Item label="Correo del colegio">
+              <span className="break-all">{user.institutionalEmail}</span>
+            </Item>
+          ) : null}
+          <Item label="Teléfono">{user.phone ?? '—'}</Item>
+          <Item label="Dirección">{user.address ?? '—'}</Item>
           <Item label="Creado">{formatInstant(user.createdAt)}</Item>
           <Item label="Última modificación">{formatInstant(user.updatedAt)}</Item>
         </dl>
-        <EditUserForm
-          userId={user.id}
-          fullName={user.fullName}
-          institutionalEmail={user.institutionalEmail}
-        />
+        <EditUserForm userId={user.id} fullName={user.fullName} />
+      </Section>
+
+      <Section
+        id={userFocusIds.access}
+        title="Acceso"
+        description="El usuario entra con su código y su contraseña. Las contraseñas no se pueden ver: solo se restablecen."
+        focusable
+      >
+        <dl className="grid gap-3 text-sm sm:grid-cols-2">
+          <Item label="Contraseña">
+            <span className="flex flex-wrap items-center gap-2">
+              <StatusBadge tone={CREDENTIAL_TONES[user.credentialStatus]}>
+                {CREDENTIAL_LABELS[user.credentialStatus]}
+              </StatusBadge>
+              {user.locked ? (
+                <StatusBadge tone="closed">Bloqueada por intentos fallidos</StatusBadge>
+              ) : null}
+            </span>
+          </Item>
+          <Item label="DNI">
+            {user.dniVerified
+              ? 'Verificado contra el documento'
+              : 'Sin verificar contra el documento'}
+          </Item>
+        </dl>
+        {!user.dniVerified ? <VerifyDniForm userId={user.id} /> : null}
+        <ResetPasswordForm userId={user.id} />
+        <CorrectDniForm userId={user.id} />
       </Section>
 
       <Section
@@ -239,7 +290,7 @@ async function StudentSections({ user }: { user: UserDetail }) {
       <Section
         id={userFocusIds.guardians}
         title="Apoderados"
-        description="Incluye los vínculos revocados. Para vincular un apoderado nuevo, créalo desde “Nuevo apoderado” o ábrelo y vincula al estudiante."
+        description="Cada estudiante tiene de 1 a 2 apoderados vigentes; el principal recibe los avisos. Incluye los vínculos revocados. Para vincular otro apoderado, ábrelo y vincula al estudiante."
         focusable
       >
         <LinkList links={guardians.items} side="guardian" />
@@ -383,6 +434,9 @@ function LinkList({ links, side }: { links: GuardianLinkView[]; side: 'guardian'
                 <StatusBadge tone={l.isActive ? 'active' : 'closed'}>
                   {l.isActive ? 'Vínculo vigente' : 'Vínculo revocado'}
                 </StatusBadge>
+                {l.isActive && l.isPrimary ? (
+                  <StatusBadge tone="future">Apoderado principal</StatusBadge>
+                ) : null}
                 {other.status !== 'ACTIVE' ? (
                   <StatusBadge tone={STATUS_TONES[other.status]}>
                     {side === 'guardian' ? 'Apoderado' : 'Estudiante'}{' '}
@@ -395,6 +449,9 @@ function LinkList({ links, side }: { links: GuardianLinkView[]; side: 'guardian'
               Vinculado el {formatInstant(l.createdAt)}
               {l.revokedAt ? `. Revocado el ${formatInstant(l.revokedAt)}.` : '.'}
             </p>
+            {l.isActive && side === 'guardian' && !l.isPrimary ? (
+              <MakePrimaryForm linkId={l.id} name={other.fullName} />
+            ) : null}
             {l.isActive ? (
               <div>
                 <RevokeLinkAction

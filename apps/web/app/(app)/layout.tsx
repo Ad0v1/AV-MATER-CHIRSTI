@@ -15,7 +15,11 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 // La sesion es un dato de la peticion: se lee aqui, dentro de Suspense, y se valida contra la API.
 async function AuthenticatedShell({ children }: { children: React.ReactNode }) {
   const user = await requireUser();
+  // Primero la contraseña inicial, después la política: la API rechaza todo lo demás hasta cambiarla.
+  if (user.mustChangePassword) redirect('/cambiar-clave');
   if (user.mustAcceptPolicy) redirect('/politica');
+  if (user.mustVerifyEmail) redirect('/verificar-correo');
+  if (user.mustCompleteContact) redirect('/mi-perfil');
 
   return (
     <SidebarProvider>

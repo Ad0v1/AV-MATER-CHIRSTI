@@ -1,6 +1,7 @@
 // Prisma simulado para los .spec.ts del módulo users. El nombre termina en "-spec.ts": el build lo
 // excluye (**/*spec.ts) y vitest no lo ejecuta como suite (solo **/*.spec.ts).
 import type { PrismaService } from '../../common/prisma/prisma.service.js';
+import type { CredentialIssuerService } from '../auth/credential-issuer.service.js';
 import type { LockedUser } from './users-locks.js';
 
 export type YearRow = { id: string; active: number; open: number };
@@ -67,6 +68,8 @@ export function makePrisma() {
       findUnique: vi.fn(),
       findUniqueOrThrow: vi.fn(),
       create: vi.fn(),
+      count: vi.fn().mockResolvedValue(0),
+      update: vi.fn(),
       updateMany: vi.fn(),
     },
   };
@@ -74,6 +77,32 @@ export function makePrisma() {
   prisma.$transaction.mockImplementation((cb: (tx: typeof prisma) => unknown) => cb(prisma));
 
   return { prisma, raw, rawCalls, asService: prisma as unknown as PrismaService };
+}
+
+/**
+ * Emisor de credenciales simulado: crea usuarios ficticios sin tocar la base. Un alumno nuevo es
+ * `nuevo` y un apoderado nuevo es `gnuevo`.
+ */
+export function makeIssuer() {
+  const issuer = {
+    createUser: vi.fn(
+      (_tx: unknown, input: { role: 'STUDENT' | 'TEACHER' | 'GUARDIAN' | 'ADMIN' }) =>
+        Promise.resolve({
+          user: userRow(input.role === 'GUARDIAN' ? 'gnuevo' : 'nuevo', input.role),
+          credentials: { code: '2600000000', initialPassword: 'Clave-Inicial-9' },
+        }),
+    ),
+    findByDni: vi.fn().mockResolvedValue(null),
+    assertDniFree: vi.fn().mockResolvedValue(undefined),
+    hashDni: vi.fn((dni: string) => `hash-${dni}`),
+    dniData: vi.fn((dni: string) => ({ dniEncrypted: `enc-${dni}`, dniHash: `hash-${dni}` })),
+    reissue: vi.fn().mockResolvedValue({
+      code: '2600000000',
+      initialPassword: 'Clave-Temporal-7',
+      previousCode: null,
+    }),
+  };
+  return { issuer, asIssuer: issuer as unknown as CredentialIssuerService };
 }
 
 export const prismaError = (code: string): Error =>
@@ -126,7 +155,13 @@ export const userRow = (
   status: 'ACTIVE' | 'INACTIVE' | 'WITHDRAWN' = 'ACTIVE',
 ) => ({
   id,
+  code: null,
   institutionalEmail: `${id}@colegio.example`,
+  contactEmail: null,
+  emailVerifiedAt: null,
+  phone: null,
+  address: null,
+  dniVerifiedAt: null,
   fullName: `Usuario Ficticio ${id}`,
   role,
   status,

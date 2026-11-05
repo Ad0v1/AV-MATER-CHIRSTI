@@ -1,42 +1,65 @@
 'use client';
 
 import { useState, type FormEvent } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { CircleAlert, Eye, EyeOff, Loader2 } from 'lucide-react';
+import { CircleAlert, Loader2 } from 'lucide-react';
+import { PasswordField } from '@/components/auth/password-field';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { HOME_BY_ROLE, isRole } from '@/lib/roles';
+import { isValidUserCode, USER_CODE_LENGTH } from '@/lib/user-code';
 
 type ApiError = { error?: { code?: string; message?: string } };
 
 export function LoginForm() {
   const router = useRouter();
-  const [email, setEmail] = useState('');
+  const [code, setCode] = useState('');
   const [password, setPassword] = useState('');
   const [totp, setTotp] = useState('');
   const [needsTotp, setNeedsTotp] = useState(false);
-  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError(null);
+    // Un error de digitación se avisa aquí, sin ir al servidor ni contar como intento fallido.
+    if (!isValidUserCode(code)) {
+      setError(
+        `El código de usuario debe tener ${USER_CODE_LENGTH} dígitos. Revisa que esté bien escrito.`,
+      );
+      return;
+    }
     setPending(true);
     try {
       const res = await fetch('/api/v1/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password, ...(needsTotp ? { totp } : {}) }),
+        body: JSON.stringify({ code, password, ...(needsTotp ? { totp } : {}) }),
       });
 
       if (res.ok) {
-        const data = (await res.json()) as { role?: unknown; mustAcceptPolicy?: boolean };
-        const target = data.mustAcceptPolicy
-          ? '/politica'
-          : isRole(data.role)
-            ? HOME_BY_ROLE[data.role]
-            : '/';
+        const data = (await res.json()) as {
+          role?: unknown;
+          mustAcceptPolicy?: boolean;
+          mustChangePassword?: boolean;
+          mustVerifyEmail?: boolean;
+          mustCompleteContact?: boolean;
+        };
+        // Pasos del primer ingreso, en orden: contraseña, política y correo (RF-71). La API
+        // bloquea todo lo demás hasta cumplirlos.
+        const target = data.mustChangePassword
+          ? '/cambiar-clave'
+          : data.mustAcceptPolicy
+            ? '/politica'
+            : data.mustVerifyEmail
+              ? '/verificar-correo'
+              : data.mustCompleteContact
+                ? '/mi-perfil'
+                : isRole(data.role)
+                  ? HOME_BY_ROLE[data.role]
+                  : '/';
         router.replace(target);
         router.refresh();
         return;
@@ -50,6 +73,8 @@ export function LoginForm() {
       }
       if (res.status === 429) {
         setError('Demasiados intentos. Espera un minuto e inténtalo de nuevo.');
+      } else if (res.status === 401 && !body.error?.code?.startsWith('TOTP')) {
+        setError('Código o contraseña incorrectos.');
       } else {
         setError(body.error?.message ?? 'No se pudo iniciar sesión. Inténtalo de nuevo.');
       }
@@ -63,52 +88,35 @@ export function LoginForm() {
   return (
     <form onSubmit={onSubmit} className="grid gap-5" noValidate>
       <div className="grid gap-1.5">
-        <label htmlFor="email" className="text-sm font-medium text-ink">
-          Correo institucional
+        <label htmlFor="code" className="text-sm font-medium text-ink">
+          Código de usuario
         </label>
         <Input
-          id="email"
-          type="email"
+          id="code"
+          inputMode="numeric"
           autoComplete="username"
+          maxLength={USER_CODE_LENGTH}
           required
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
+          autoFocus
+          value={code}
+          onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
           disabled={pending || needsTotp}
-          className="h-11 bg-surface"
+          aria-describedby="code-help"
+          className="h-11 bg-surface tracking-widest tabular-nums"
         />
+        <p id="code-help" className="text-xs text-ink-3">
+          Son {USER_CODE_LENGTH} dígitos y te lo entregó el colegio.
+        </p>
       </div>
 
-      <div className="grid gap-1.5">
-        <label htmlFor="password" className="text-sm font-medium text-ink">
-          Contraseña
-        </label>
-        <div className="relative">
-          <Input
-            id="password"
-            type={showPassword ? 'text' : 'password'}
-            autoComplete="current-password"
-            required
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            disabled={pending || needsTotp}
-            className="h-11 bg-surface pr-11"
-          />
-          <button
-            type="button"
-            onClick={() => setShowPassword((v) => !v)}
-            disabled={pending || needsTotp}
-            aria-label={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
-            aria-pressed={showPassword}
-            className="absolute inset-y-0 right-0 grid w-11 place-items-center rounded-r-lg text-ink-3 outline-none hover:text-brand focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:text-ink-disabled"
-          >
-            {showPassword ? (
-              <EyeOff className="size-4" aria-hidden="true" />
-            ) : (
-              <Eye className="size-4" aria-hidden="true" />
-            )}
-          </button>
-        </div>
-      </div>
+      <PasswordField
+        id="password"
+        label="Contraseña"
+        value={password}
+        onChange={setPassword}
+        autoComplete="current-password"
+        disabled={pending || needsTotp}
+      />
 
       {needsTotp && (
         <div className="grid gap-1.5">
@@ -152,6 +160,16 @@ export function LoginForm() {
         )}
         {pending ? 'Ingresando…' : needsTotp ? 'Verificar e ingresar' : 'Ingresar'}
       </Button>
+
+      <p className="text-xs text-ink-3">
+        Después de 5 intentos fallidos seguidos, el ingreso se bloquea 15 minutos.
+      </p>
+      <Link
+        href="/recuperar"
+        className="min-h-11 text-sm text-brand underline-offset-2 hover:underline"
+      >
+        ¿Olvidaste tu contraseña?
+      </Link>
     </form>
   );
 }

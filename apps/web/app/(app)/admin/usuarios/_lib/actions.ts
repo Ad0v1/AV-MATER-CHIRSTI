@@ -8,14 +8,19 @@
 // POST de la Server Action y solo viaja del servidor web a la API. No va en la URL del navegador
 // (ni en su historial ni en los registros de acceso de un proxy) y aquí no se registra.
 import { refresh } from 'next/cache';
-import { redirect } from 'next/navigation';
 import { detailMessages, toUserMessage } from '@/lib/api/errors';
 import { apiServer } from '@/lib/api/server';
 import type { ActionState } from '../../_shared/lib/action-state';
 import { isUuid, validateReason } from '../../_shared/lib/validation';
+import type { IssuedAccount } from '../../_shared/lib/action-state';
 import type {
+  CreatedGuardian,
+  CreatedStudent,
+  CreatedTeacher,
   EnrollmentView,
   GuardianLinkView,
+  IssuedCredentials,
+  ReissuedCredentials,
   SearchState,
   StudentSearchState,
   UserListPage,
@@ -26,8 +31,8 @@ import {
   USERS_PATH,
   USER_REASON_LIMITS,
   buildUserListQuery,
+  dniPair,
   isStatus,
-  normalizeEmail,
   normalizeFullName,
   normalizeSearch,
   parseStudentIds,
@@ -81,15 +86,34 @@ async function run<T>(
   return { status: 'ok', message: okMessage(result) };
 }
 
-/** Nombre y correo validados, o los errores por campo. */
-function personFields(values: { fullName: string; institutionalEmail: string }) {
+/** Nombre validado, o el error por campo. El correo del colegio ya no se pide (D-058). */
+function personFields(values: { fullName: string }) {
   const errors: Record<string, string> = {};
   const name = normalizeFullName(values.fullName);
-  const email = normalizeEmail(values.institutionalEmail);
   if (!name.ok) errors.fullName = name.error;
-  if (!email.ok) errors.institutionalEmail = email.error;
-  if (!name.ok || !email.ok) return { errors };
-  return { errors, fullName: name.value, institutionalEmail: email.value };
+  return { errors, fullName: name.ok ? name.value : '' };
+}
+
+/** DNI y confirmación de un formulario, con el prefijo de sus campos ('' o 'guardian1'). */
+function dniFromForm(fd: FormData, prefix: string, errors: Record<string, string>) {
+  const key = (name: string) =>
+    prefix ? `${prefix}${name[0]!.toUpperCase()}${name.slice(1)}` : name;
+  const pair = dniPair(text(fd, key('dni')), text(fd, key('dniConfirm')));
+  if (!pair.ok) {
+    if (pair.errors.dni) errors[key('dni')] = pair.errors.dni;
+    if (pair.errors.dniConfirm) errors[key('dniConfirm')] = pair.errors.dniConfirm;
+    return null;
+  }
+  return pair.value;
+}
+
+const checked = (fd: FormData, name: string): boolean => text(fd, name) === 'on';
+
+/** Valores del formulario que se devuelven si algo falla (para no perder lo escrito). */
+function formValues(fd: FormData): Record<string, string> {
+  const values: Record<string, string> = {};
+  for (const [name, value] of fd.entries()) if (typeof value === 'string') values[name] = value;
+  return values;
 }
 
 const detailHref = (userId: string) => `${USERS_PATH}/${enc(userId)}?alta=1`;
@@ -105,6 +129,8 @@ export async function searchUsersAction(_prev: SearchState, fd: FormData): Promi
   const filters = parseUserFilters({
     role: text(fd, 'role'),
     status: text(fd, 'status'),
+    credentials: text(fd, 'credentials'),
+    emailVerified: text(fd, 'emailVerified'),
     gradeLevel: text(fd, 'gradeLevel'),
     sectionId: text(fd, 'sectionId'),
     page: text(fd, 'page'),
@@ -130,7 +156,7 @@ export async function searchStudentsAction(
   if (!search.ok) {
     return {
       status: 'error',
-      fieldError: search.error ?? 'Escribe el nombre o el correo del estudiante.',
+      fieldError: search.error ?? 'Escribe el nombre o el código del estudiante.',
     };
   }
   try {
@@ -146,73 +172,141 @@ export async function searchStudentsAction(
   }
 }
 
-// --- Altas (RF-18, RF-19, RF-25) ----------------------------------------------
+// --- Altas (RF-18, RF-19, RF-20, RF-86) ----------------------------------------
+//
+// El alta devuelve el código y la contraseña inicial una sola vez (RF-70). No se redirige con ellos
+// en la URL: viajan en el estado de la acción y solo viven en la memoria de esta pantalla.
+
+const issuedOf = (label: string, c: IssuedCredentials): IssuedAccount => ({
+  label,
+  code: c.code,
+  password: c.initialPassword,
+});
+
+/** Un apoderado del formulario del alumno (DNI dos veces y nombre si es nuevo). */
+function guardianFromForm(fd: FormData, n: 1 | 2, errors: Record<string, string>) {
+  const prefix = `guardian${n}`;
+  const dni = dniFromForm(fd, prefix, errors);
+  const fullName = text(fd, `${prefix}Name`).trim();
+  if (dni === null) return null;
+  if (fullName) {
+    const name = normalizeFullName(fullName);
+    if (!name.ok) {
+      errors[`${prefix}Name`] = name.error;
+      return null;
+    }
+    return {
+      dni,
+      dniConfirm: dni,
+      fullName: name.value,
+      dniVerified: checked(fd, `${prefix}Verified`),
+    };
+  }
+  return { dni, dniConfirm: dni, dniVerified: checked(fd, `${prefix}Verified`) };
+}
 
 export async function createStudentAction(_prev: ActionState, fd: FormData): Promise<ActionState> {
-  const values = {
-    fullName: text(fd, 'fullName'),
-    institutionalEmail: text(fd, 'institutionalEmail'),
-    sectionId: text(fd, 'sectionId'),
-  };
-  const person = personFields(values);
-  if (!isUuid(values.sectionId)) person.errors.sectionId = 'Elige una sección.';
-  if (Object.keys(person.errors).length > 0) return fieldError(person.errors, values);
+  const values = formValues(fd);
+  const person = personFields({ fullName: text(fd, 'fullName') });
+  const errors = person.errors;
+  if (!isUuid(text(fd, 'sectionId'))) errors.sectionId = 'Elige una sección.';
+  const dni = dniFromForm(fd, '', errors);
+  const guardians: Array<Record<string, unknown>> = [];
+  const first = guardianFromForm(fd, 1, errors);
+  if (first) guardians.push(first);
+  // El segundo apoderado es opcional: solo cuenta si se escribió algo.
+  const secondTouched =
+    text(fd, 'guardian2Dni').trim() !== '' || text(fd, 'guardian2Name').trim() !== '';
+  if (secondTouched) {
+    const second = guardianFromForm(fd, 2, errors);
+    if (second) guardians.push(second);
+  }
+  if (Object.keys(errors).length > 0 || dni === null) return fieldError(errors, values);
 
-  let created: { user: UserView; enrollment: EnrollmentView };
+  let created: CreatedStudent;
   try {
-    created = await apiServer.post<{ user: UserView; enrollment: EnrollmentView }>('/students', {
-      institutionalEmail: person.institutionalEmail,
+    created = await apiServer.post<CreatedStudent>('/students', {
       fullName: person.fullName,
-      sectionId: values.sectionId,
+      sectionId: text(fd, 'sectionId'),
+      dni,
+      dniConfirm: dni,
+      dniVerified: checked(fd, 'dniVerified'),
+      guardians,
     });
   } catch (error) {
     return apiError(error, values);
   }
-  // redirect lanza: va fuera del try.
-  redirect(detailHref(created.user.id));
+  const issued = [
+    issuedOf(`Estudiante: ${created.user.fullName}`, created.credentials),
+    ...created.guardians.flatMap((g) =>
+      g.credentials ? [issuedOf(`Apoderado: ${g.user.fullName}`, g.credentials)] : [],
+    ),
+  ];
+  const reused = created.guardians.filter((g) => !g.created).length;
+  return {
+    status: 'ok',
+    message:
+      `Estudiante creado y matriculado.${reused > 0 ? ' Se vinculó a un apoderado que ya existía.' : ''}` +
+      ' Entrega las credenciales ahora: no se pueden volver a ver.',
+    issued,
+    nextHref: detailHref(created.user.id),
+  };
 }
 
 export async function createTeacherAction(_prev: ActionState, fd: FormData): Promise<ActionState> {
-  const values = {
-    fullName: text(fd, 'fullName'),
-    institutionalEmail: text(fd, 'institutionalEmail'),
-  };
-  const person = personFields(values);
-  if (Object.keys(person.errors).length > 0) return fieldError(person.errors, values);
+  const values = formValues(fd);
+  const person = personFields({ fullName: text(fd, 'fullName') });
+  const dni = dniFromForm(fd, '', person.errors);
+  if (Object.keys(person.errors).length > 0 || dni === null)
+    return fieldError(person.errors, values);
 
-  let created: UserView;
+  let created: CreatedTeacher;
   try {
-    created = await apiServer.post<UserView>('/teachers', {
-      institutionalEmail: person.institutionalEmail,
+    created = await apiServer.post<CreatedTeacher>('/teachers', {
       fullName: person.fullName,
+      dni,
+      dniConfirm: dni,
+      dniVerified: checked(fd, 'dniVerified'),
     });
   } catch (error) {
     return apiError(error, values);
   }
-  redirect(detailHref(created.id));
+  return {
+    status: 'ok',
+    message: 'Docente creado. Entrega las credenciales ahora: no se pueden volver a ver.',
+    issued: [issuedOf(`Docente: ${created.user.fullName}`, created.credentials)],
+    nextHref: detailHref(created.user.id),
+  };
 }
 
 export async function createGuardianAction(_prev: ActionState, fd: FormData): Promise<ActionState> {
-  const values = {
-    fullName: text(fd, 'fullName'),
-    institutionalEmail: text(fd, 'institutionalEmail'),
-  };
-  const person = personFields(values);
+  const values = formValues(fd);
+  const person = personFields({ fullName: text(fd, 'fullName') });
+  const dni = dniFromForm(fd, '', person.errors);
   const ids = parseStudentIds(fd.getAll('studentIds'));
   if (!ids.ok) person.errors.studentIds = ids.error;
-  if (Object.keys(person.errors).length > 0 || !ids.ok) return fieldError(person.errors, values);
+  if (Object.keys(person.errors).length > 0 || !ids.ok || dni === null) {
+    return fieldError(person.errors, values);
+  }
 
-  let created: { user: UserView; links: GuardianLinkView[] };
+  let created: CreatedGuardian;
   try {
-    created = await apiServer.post<{ user: UserView; links: GuardianLinkView[] }>('/guardians', {
-      institutionalEmail: person.institutionalEmail,
+    created = await apiServer.post<CreatedGuardian>('/guardians', {
       fullName: person.fullName,
+      dni,
+      dniConfirm: dni,
+      dniVerified: checked(fd, 'dniVerified'),
       studentIds: ids.ids,
     });
   } catch (error) {
     return apiError(error, values);
   }
-  redirect(detailHref(created.user.id));
+  return {
+    status: 'ok',
+    message: 'Apoderado creado. Entrega las credenciales ahora: no se pueden volver a ver.',
+    issued: [issuedOf(`Apoderado: ${created.user.fullName}`, created.credentials)],
+    nextHref: detailHref(created.user.id),
+  };
 }
 
 // --- Edición y estado (RF-22, RF-23) ------------------------------------------
@@ -223,21 +317,98 @@ export async function updateUserAction(
   fd: FormData,
 ): Promise<ActionState> {
   if (!isUuid(userId)) return invalid(BAD_ID);
-  const values = {
-    fullName: text(fd, 'fullName'),
-    institutionalEmail: text(fd, 'institutionalEmail'),
-  };
+  const values = { fullName: text(fd, 'fullName') };
   const person = personFields(values);
   if (Object.keys(person.errors).length > 0) return fieldError(person.errors, values);
-  // El rol no se edita (D-012): la API rechaza campos desconocidos y aquí no se envía.
+  // El rol no se edita (D-012) y el correo ya no es la identidad (D-058): solo el nombre.
   return run(
-    () =>
-      apiServer.patch<UserView>(`/users/${enc(userId)}`, {
-        fullName: person.fullName,
-        institutionalEmail: person.institutionalEmail,
-      }),
+    () => apiServer.patch<UserView>(`/users/${enc(userId)}`, { fullName: person.fullName }),
     () => 'Datos guardados.',
     values,
+  );
+}
+
+// --- Credenciales (RF-69, RF-74, RF-84) y apoderado principal (RF-86) -----------
+
+export async function resetPasswordAction(
+  userId: string,
+  _prev: ActionState,
+  _fd: FormData,
+): Promise<ActionState> {
+  void _prev; // useActionState exige la firma (estado, formulario) aunque no se usen
+  void _fd;
+  if (!isUuid(userId)) return invalid(BAD_ID);
+  let result: ReissuedCredentials;
+  try {
+    result = await apiServer.post<ReissuedCredentials>(`/users/${enc(userId)}/reset-password`, {});
+  } catch (error) {
+    return apiError(error);
+  }
+  refresh();
+  return {
+    status: 'ok',
+    message: 'Contraseña restablecida. Entrégala ahora: no se puede volver a ver.',
+    issued: [issuedOf(`Contraseña temporal: ${result.user.fullName}`, result.credentials)],
+  };
+}
+
+export async function correctDniAction(
+  userId: string,
+  _prev: ActionState,
+  fd: FormData,
+): Promise<ActionState> {
+  if (!isUuid(userId)) return invalid(BAD_ID);
+  const values = formValues(fd);
+  const errors: Record<string, string> = {};
+  const dni = dniFromForm(fd, '', errors);
+  const reasonError = validateReason(text(fd, 'reason'), USER_REASON_LIMITS.revoke);
+  if (reasonError) errors.reason = reasonError;
+  if (Object.keys(errors).length > 0 || dni === null) return fieldError(errors, values);
+
+  let result: ReissuedCredentials;
+  try {
+    result = await apiServer.post<ReissuedCredentials>(`/users/${enc(userId)}/correct-dni`, {
+      dni,
+      dniConfirm: dni,
+      reason: text(fd, 'reason').trim(),
+    });
+  } catch (error) {
+    return apiError(error, values);
+  }
+  refresh();
+  return {
+    status: 'ok',
+    message:
+      'DNI corregido. Tiene un código y una contraseña nuevos; el código anterior ya no sirve. Entrégalos ahora.',
+    issued: [issuedOf(`Credenciales nuevas: ${result.user.fullName}`, result.credentials)],
+  };
+}
+
+export async function verifyDniAction(
+  userId: string,
+  _prev: ActionState,
+  _fd: FormData,
+): Promise<ActionState> {
+  void _prev; // useActionState exige la firma (estado, formulario) aunque no se usen
+  void _fd;
+  if (!isUuid(userId)) return invalid(BAD_ID);
+  return run(
+    () => apiServer.post<UserView>(`/users/${enc(userId)}/verify-dni`, {}),
+    () => 'DNI marcado como verificado contra el documento.',
+  );
+}
+
+export async function makePrimaryAction(
+  linkId: string,
+  _prev: ActionState,
+  _fd: FormData,
+): Promise<ActionState> {
+  void _prev; // useActionState exige la firma (estado, formulario) aunque no se usen
+  void _fd;
+  if (!isUuid(linkId)) return invalid(BAD_ID);
+  return run(
+    () => apiServer.post<GuardianLinkView>(`/guardian-links/${enc(linkId)}/make-primary`, {}),
+    () => 'Apoderado principal cambiado.',
   );
 }
 

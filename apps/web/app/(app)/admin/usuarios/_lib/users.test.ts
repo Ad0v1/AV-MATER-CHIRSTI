@@ -11,12 +11,19 @@ import {
   withoutCreatedFlag,
   MAX_GUARDIAN_STUDENTS,
   USER_REASON_LIMITS,
+  CREDENTIAL_LABELS,
+  CREDENTIAL_SHORT,
+  CREDENTIAL_STATUSES,
   addToSelection,
   buildUserListQuery,
+  dniPair,
   enrollTargets,
+  isCredentialStatus,
   listHref,
+  normalizeDni,
   normalizeEmail,
   normalizeFullName,
+  normalizePhone,
   normalizeSearch,
   pageCount,
   parsePage,
@@ -58,7 +65,7 @@ const enrollment = (s: SectionOption): EnrollmentView => ({
 const choice = (n: number, status: StudentChoice['status'] = 'ACTIVE'): StudentChoice => ({
   id: uuid(n),
   fullName: `Estudiante ${n}`,
-  institutionalEmail: `e${n}@colegio.example`,
+  code: `26000000${n}`,
   status,
   sectionLabel: null,
 });
@@ -438,16 +445,22 @@ describe('toStudentChoice', () => {
   it('solo lo que muestra el buscador', () => {
     const item: UserListItem = {
       id: uuid(1),
-      institutionalEmail: 'e1@colegio.example',
+      code: '2600000001',
+      institutionalEmail: null,
+      contactEmail: null,
+      emailVerified: false,
+      dniVerified: false,
       fullName: 'Estudiante 1',
       role: 'STUDENT',
       status: 'ACTIVE',
       currentSection: { id: uuid(2), gradeLevel: 3, code: 'A' },
+      credentialStatus: 'PENDING',
+      locked: false,
     };
     expect(toStudentChoice(item)).toEqual({
       id: uuid(1),
       fullName: 'Estudiante 1',
-      institutionalEmail: 'e1@colegio.example',
+      code: '2600000001',
       status: 'ACTIVE',
       sectionLabel: '3.º A',
     });
@@ -843,5 +856,55 @@ describe('vuelta 1/2 de 5b: búsqueda, reinicio y nota de alta', () => {
     // el hash no forma parte de location.search: el pathname lo conserva tal cual
     expect(withoutCreatedFlag(`${p}#datos-usuario`, '?alta=1')).toBe(`${p}#datos-usuario`);
     expect(withoutCreatedFlag(p, '?x=a%20b&alta=1')).toBe(`${p}?x=a+b`);
+  });
+});
+
+describe('DNI y credenciales (RF-69, RF-83, RF-87)', () => {
+  it('normalizeDni exige 8 dígitos', () => {
+    expect(normalizeDni(' 45678901 ')).toEqual({ ok: true, value: '45678901' });
+    for (const bad of ['1234567', '123456789', '1234567a', '', 12345678, null]) {
+      expect(normalizeDni(bad).ok).toBe(false);
+    }
+  });
+
+  it('dniPair pide escribir el DNI dos veces', () => {
+    expect(dniPair('45678901', '45678901')).toEqual({ ok: true, value: '45678901' });
+    expect(dniPair('45678901', '45678902')).toEqual({
+      ok: false,
+      errors: { dniConfirm: 'Los dos DNI no coinciden.' },
+    });
+    expect(dniPair('4567', '4567')).toMatchObject({
+      ok: false,
+      errors: { dni: expect.any(String) },
+    });
+  });
+
+  it('normalizePhone exige 9 dígitos y quita espacios', () => {
+    expect(normalizePhone('987 654 321')).toEqual({ ok: true, value: '987654321' });
+    expect(normalizePhone('98765432').ok).toBe(false);
+    expect(normalizePhone('98765432a').ok).toBe(false);
+  });
+
+  it('los filtros de credenciales y correo se leen y se mandan a la API', () => {
+    const filters = parseUserFilters({ credentials: 'PENDING', emailVerified: 'false', page: '2' });
+    expect(filters).toEqual({ credentials: 'PENDING', emailVerified: 'false', page: 2 });
+    const params = new URLSearchParams(buildUserListQuery(filters));
+    expect(params.get('credentials')).toBe('PENDING');
+    expect(params.get('emailVerified')).toBe('false');
+  });
+
+  it('un valor desconocido de esos filtros se descarta', () => {
+    expect(parseUserFilters({ credentials: 'OTRO', emailVerified: 'quizas' })).toEqual({ page: 1 });
+    const params = new URLSearchParams(buildUserListQuery({ credentials: 'OTRO' as never }));
+    expect(params.has('credentials')).toBe(false);
+  });
+
+  it('las etiquetas cubren los tres estados de credenciales', () => {
+    for (const status of CREDENTIAL_STATUSES) {
+      expect(CREDENTIAL_LABELS[status]).toBeTruthy();
+      expect(CREDENTIAL_SHORT[status]).toBeTruthy();
+    }
+    expect(isCredentialStatus('PENDING')).toBe(true);
+    expect(isCredentialStatus('x')).toBe(false);
   });
 });

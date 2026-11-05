@@ -1,7 +1,10 @@
 import {
   changeStatusSchema,
+  correctDniSchema,
   createGuardianSchema,
   createStudentSchema,
+  createTeacherSchema,
+  dniSchema,
   emailSchema,
   fullNameSchema,
   listLinksQuerySchema,
@@ -47,18 +50,100 @@ describe('users.dto (Decisión 4)', () => {
     });
   });
 
+  const dni = { dni: '45678901', dniConfirm: '45678901' };
+  const guardian = { dni: '11111111', dniConfirm: '11111111', fullName: 'Madre Ficticia' };
+  const student = { fullName: 'Ana Pérez', sectionId: ID, ...dni, guardians: [guardian] };
+
   it('cuerpos estrictos: un campo desconocido es 400', () => {
     expect(updateUserSchema.safeParse({ fullName: 'Ana Pérez', role: 'ADMIN' }).success).toBe(
       false,
     );
-    expect(
-      createStudentSchema.safeParse({
-        institutionalEmail: 'a@colegio.example',
-        fullName: 'Ana Pérez',
-        sectionId: ID,
-        effectiveFrom: '2026-01-01',
-      }).success,
-    ).toBe(false);
+    expect(createStudentSchema.safeParse(student).success).toBe(true);
+    expect(createStudentSchema.safeParse({ ...student, effectiveFrom: '2026-01-01' }).success).toBe(
+      false,
+    );
+  });
+
+  describe('DNI (RF-69)', () => {
+    it('exige 8 dígitos', () => {
+      expect(dniSchema.parse(' 45678901 ')).toBe('45678901');
+      for (const bad of ['1234567', '123456789', '1234567a', '', '12 345678']) {
+        expect(dniSchema.safeParse(bad).success).toBe(false);
+      }
+    });
+
+    it('se escribe dos veces y los dos deben coincidir (alumno, docente y apoderado)', () => {
+      const wrong = { dni: '45678901', dniConfirm: '45678902' };
+      expect(createStudentSchema.safeParse({ ...student, ...wrong }).success).toBe(false);
+      expect(createTeacherSchema.safeParse({ fullName: 'Docente Uno', ...wrong }).success).toBe(
+        false,
+      );
+      expect(createTeacherSchema.safeParse({ fullName: 'Docente Uno', ...dni }).success).toBe(true);
+      expect(
+        createGuardianSchema.safeParse({ fullName: 'Padre Uno', ...wrong, studentIds: [ID] })
+          .success,
+      ).toBe(false);
+    });
+
+    it('el correo del colegio ya no es obligatorio', () => {
+      expect(createTeacherSchema.safeParse({ fullName: 'Docente Uno', ...dni }).success).toBe(true);
+      expect(
+        createTeacherSchema.safeParse({
+          fullName: 'Docente Uno',
+          institutionalEmail: 'doc@colegio.example',
+          ...dni,
+        }).success,
+      ).toBe(true);
+    });
+
+    it('corregir el DNI exige confirmación y un motivo de 10 a 500 caracteres', () => {
+      const ok = { ...dni, reason: 'Error de digitación al registrar' };
+      expect(correctDniSchema.safeParse(ok).success).toBe(true);
+      expect(correctDniSchema.safeParse({ ...ok, reason: 'corto' }).success).toBe(false);
+      expect(correctDniSchema.safeParse({ ...ok, dniConfirm: '00000000' }).success).toBe(false);
+    });
+  });
+
+  describe('alumno y apoderados (RF-18, RF-86)', () => {
+    it('exige de 1 a 2 apoderados', () => {
+      expect(createStudentSchema.safeParse({ ...student, guardians: [] }).success).toBe(false);
+      const second = { dni: '22222222', dniConfirm: '22222222' };
+      expect(
+        createStudentSchema.safeParse({ ...student, guardians: [guardian, second] }).success,
+      ).toBe(true);
+      const third = { dni: '33333333', dniConfirm: '33333333' };
+      expect(
+        createStudentSchema.safeParse({ ...student, guardians: [guardian, second, third] }).success,
+      ).toBe(false);
+    });
+
+    it('el DNI de cada apoderado también se escribe dos veces', () => {
+      expect(
+        createStudentSchema.safeParse({
+          ...student,
+          guardians: [{ ...guardian, dniConfirm: '99999999' }],
+        }).success,
+      ).toBe(false);
+    });
+
+    it('el alumno y sus apoderados deben tener DNI distintos', () => {
+      expect(
+        createStudentSchema.safeParse({ ...student, guardians: [{ ...guardian, ...dni }] }).success,
+      ).toBe(false);
+      const same = { dni: '11111111', dniConfirm: '11111111' };
+      expect(
+        createStudentSchema.safeParse({ ...student, guardians: [guardian, same] }).success,
+      ).toBe(false);
+    });
+
+    it('el nombre del apoderado es opcional (si ya existe, se reutiliza)', () => {
+      expect(
+        createStudentSchema.safeParse({
+          ...student,
+          guardians: [{ dni: '11111111', dniConfirm: '11111111' }],
+        }).success,
+      ).toBe(true);
+    });
   });
 
   it('PATCH exige al menos un campo', () => {
@@ -75,7 +160,7 @@ describe('users.dto (Decisión 4)', () => {
   });
 
   it('apoderado: 1..10 estudiantes sin repetir', () => {
-    const base = { institutionalEmail: 'p@correo.example', fullName: 'Padre Ficticio' };
+    const base = { institutionalEmail: 'p@correo.example', fullName: 'Padre Ficticio', ...dni };
     expect(createGuardianSchema.safeParse({ ...base, studentIds: [] }).success).toBe(false);
     expect(createGuardianSchema.safeParse({ ...base, studentIds: [ID, ID] }).success).toBe(false);
     expect(createGuardianSchema.safeParse({ ...base, studentIds: [ID, ID2] }).success).toBe(true);

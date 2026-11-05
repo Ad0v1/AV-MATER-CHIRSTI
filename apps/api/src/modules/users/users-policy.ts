@@ -54,6 +54,9 @@ export function assertStatusChangeAllowed(input: StatusChangeInput): void {
 export type UserSearchFilters = {
   role?: UserRole;
   status?: UserStatus;
+  /** RF-87: NONE sin contraseña, PENDING no cambió la inicial, READY ya la cambió. */
+  credentials?: 'NONE' | 'PENDING' | 'READY';
+  emailVerified?: 'true' | 'false';
   gradeLevel?: number;
   sectionId?: string;
 };
@@ -71,6 +74,13 @@ export function buildUserSearchWhere(
   const where: Prisma.UserWhereInput = {};
   if (filters.role) where.role = filters.role;
   if (filters.status) where.status = filters.status;
+  if (filters.credentials === 'NONE') where.localCredential = { is: null };
+  if (filters.credentials === 'PENDING')
+    where.localCredential = { is: { mustChangePassword: true } };
+  if (filters.credentials === 'READY')
+    where.localCredential = { is: { mustChangePassword: false } };
+  if (filters.emailVerified === 'true') where.emailVerifiedAt = { not: null };
+  if (filters.emailVerified === 'false') where.emailVerifiedAt = null;
   if (matchingIds !== undefined) where.id = { in: matchingIds };
   if (filters.gradeLevel === undefined && filters.sectionId === undefined) return where;
   if (academicYearId === null) {
