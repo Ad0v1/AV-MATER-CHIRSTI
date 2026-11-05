@@ -26,7 +26,7 @@ La correspondencia de RF y dev reproduce el **Plan de Trabajo**. Los detalles de
 | RNF-28..30 | Dev 1 / todos | 01, 06, 07 |
 | RNF-31..32 | Dev 4 / QA de todos | 06, 09 |
 
-**Nota de avance (RN-01..07):** motor de notas implementado como funciones puras en `packages/shared/src/grading/` (`grade-value.ts`, `average.ts`, `literal-scale.ts`, `errors.ts`), con 82 casos de prueba en `grade-value.spec.ts`, `average.spec.ts` y `literal-scale.spec.ts` (`pnpm --filter @aula/shared test`). Cubre RN-01 a RN-07 a nivel de motor; QA-008 (RN-06) y QA-020 (RN-03/04) tienen casos. Pendiente: esquema `Grade`, API y pantallas (RF-41..52), y el acuerdo de D-025 y D-026. Sin PR aún.
+**Nota de avance (RN-01..07):** motor de notas implementado como funciones puras en `packages/shared/src/grading/` (`grade-value.ts`, `average.ts`, `literal-scale.ts`, `errors.ts`), con 82 casos de prueba en `grade-value.spec.ts`, `average.spec.ts` y `literal-scale.spec.ts` (`pnpm --filter @aula/shared test`). Cubre RN-01 a RN-07 a nivel de motor; QA-008 (RN-06) y QA-020 (RN-03/04) tienen casos. Esquema `Grade`, API y pantallas: ver la nota de RF-41..52 más abajo. Pendiente: el acuerdo de D-025 y D-026. Sin PR aún.
 
 **Nota de avance (RF-09, 10, 12, 13, 14, 18, 20 y 24; PROPUESTA del 26/10/2026):** solo modelo de datos y seed. Esquema en `prisma/schema/academic.prisma` (años, períodos, secciones, cursos, `CourseSection` con docente opcional, matrículas y vínculos apoderado–estudiante). Migración `prisma/migrations/20261026174231_academic_estructura`, con 7 CHECK. Seed ficticio en `prisma/seed/` (`pnpm db:seed`, D-028). Test: `apps/api/test/academic-schema.e2e-spec.ts` (18 casos; corre con `pnpm --filter api test:e2e` contra la base local y se omite sin `DATABASE_URL`). Pendiente: API de matrículas y vínculos (F3), importación (F4) y pantallas (F5); el resto de RF-09..25 sigue sin avance. La API de años, períodos, secciones, cursos y contexto está en la nota siguiente. Sin commit ni PR; depende de D-021 y de D-027 a D-029.
 
@@ -64,6 +64,63 @@ La correspondencia de RF y dev reproduce el **Plan de Trabajo**. Los detalles de
 - **Pruebas unitarias:** `academic-clone-policy.spec.ts`, `academic-clone-locks.spec.ts`, `promotion-policy.spec.ts` y `api-exception-413.spec.ts` (`pnpm --filter api test`); `clone.test.ts`, `promotion-machine.test.ts`, `promotion-a11y.test.ts` y `apps/web/lib/api/timeout.test.ts` (`pnpm --filter web test`).
 - **Pruebas de integración:** `apps/api/test/academic-clone.e2e-spec.ts` (clonación, docentes, segundo clon 409, origen posterior 422, bitácora sin nombres) y `apps/api/test/users-promotion.e2e-spec.ts` (18 casos: propuesta, todo o nada, huella 409, tandas con `EXCLUDE`, `YEAR_END`, origen cerrado, paralelo, límite de 2000 decisiones, bitácora solo con ids).
 - **Pendiente:** texto literal de RF-15 y RF-16 en la ERS sin confirmar; ¿los egresados pasan a `INACTIVE`? (por ahora no); revisión de Dev 1 del límite de cuerpo (512 KB) y del 413 en `app.setup.ts` y `api-exception.filter.ts`; JSON mal formado sigue en 500 (Dev 1); prueba manual en navegador. Las pruebas necesitan MySQL local con el seed: verificar en local con Docker. Sin commit ni PR; no va al repo del equipo sin acuerdo (D-038).
+
+**Nota de avance (RF-26..31, RF-33..40, RNF-03 y RNF-18; API, pantallas y pruebas; PROPUESTA del 29/10/2026, Dev 3):** archivos con antivirus y almacenamiento privado, tareas, materiales, entregas y constancia. Contrato en `03_CONTRATOS.md`, sección "API de contenidos, archivos y entregas"; decisiones D-039 a D-047 en `08_DECISIONES.md`.
+
+- Archivos y almacenamiento: `apps/api/src/modules/files/` (intent, complete y descarga; inspección del PDF y ClamAV detrás de `FileScanner`) y `apps/api/src/modules/storage/` (servicio de luchito, integrado sin duplicar).
+- Tareas: `apps/api/src/modules/contents/assignments.*`. Materiales: `contents/materials.*` y `contents-guards.ts` (período y permisos).
+- Entregas: `apps/api/src/modules/submissions/` (entrega, reentrega, historial, constancia y `SubmissionsReadService` para Dev 4).
+- Pantallas: `apps/web/app/(app)/curso/[id]/clases/`, `lecturas/` y `tareas/` (con `_materials/`).
+- Pruebas unitarias: `files.service.spec.ts`, `clamav.scanner.spec.ts`, `pdf-inspector.spec.ts`, `files-hardening.spec.ts`, `storage.service.spec.ts`, `storage.config.spec.ts`, `assignments.policy.spec.ts`, `materials.policy.spec.ts`, `contents-events.spec.ts`, `submissions.policy.spec.ts` (`pnpm --filter api test`) y `assignment-format.test.ts` (`pnpm --filter web test`).
+- Pruebas de integración (`pnpm --filter api test:e2e`, con MySQL, MinIO y ClamAV locales): `apps/api/test/files.e2e-spec.ts`, `contents-assignments.e2e-spec.ts`, `contents-materials.e2e-spec.ts`, `submissions.e2e-spec.ts` y `db-test-guard.e2e-spec.ts`.
+
+| RF | Estado | Dónde | Pruebas |
+| --- | --- | --- | --- |
+| RF-26 | Implementado (API y pantalla) | `contents/materials.*`, `_materials/` | `contents-materials.e2e-spec.ts` |
+| RF-27 | Implementado; texto legal del aviso pendiente | `materials.policy.ts`, `isReusable` (solo API) | `contents-materials.e2e-spec.ts` |
+| RF-28 | Implementado (API y pantalla de creación) | `contents/assignments.*`, `tareas/create-assignment-form.tsx` | `contents-assignments.e2e-spec.ts` |
+| RF-29 | Implementado en API; edición en pantalla pendiente | `assignments.service.ts` (RN-10) | `contents-assignments.e2e-spec.ts` |
+| RF-30 | Implementado en API (papelera de 30 días); sin pantalla | `materials.service.ts` (`restore`) | `contents-materials.e2e-spec.ts` |
+| RF-31 | Implementado en API; descarga del PDF en pantalla pendiente | `files.service.ts` (`assertCanDownload`) | `files.e2e-spec.ts` |
+| RF-33 | Implementado (API y pantalla del estudiante) | `submissions/`, `tareas/submit-form.tsx` | `submissions.e2e-spec.ts` |
+| RF-34 | Implementado (cabecera, fin de archivo, cifrado y ClamAV) | `files/pdf-inspector.ts`, `clamav.scanner.ts` | `pdf-inspector.spec.ts`, `files.e2e-spec.ts` |
+| RF-35 | Implementado (413 y borrado del objeto) | `files.service.ts` (`TOO_LARGE`) | `files-hardening.spec.ts`, `files.e2e-spec.ts` |
+| RF-36 | Implementado (versiones inmutables, RN-09) | `submissions.service.ts`, triggers de `SubmissionVersion` | `submissions.e2e-spec.ts` |
+| RF-37 | Implementado (tardía sin descuento, RN-06) | `submissions.policy.ts`, `display-status.ts` | `submissions.policy.spec.ts`, `submissions.e2e-spec.ts` |
+| RF-38 | Parcial: `PENDING`, `SUBMITTED` y `SUBMITTED_LATE`; `GRADED`, `NOT_SUBMITTED` y `EXEMPT` dependen de Dev 4 | `display-status.ts` | `submissions.policy.spec.ts` |
+| RF-39 | Implementado (constancia con referencia, fecha, archivo y estado) | `submissions.types.ts`, `tareas/receipt-view.tsx` | `submissions.e2e-spec.ts` |
+| RF-40 | Implementado (ClamAV; un archivo infectado nunca se descarga) | `clamav.scanner.ts`, `files.service.ts` | `clamav.scanner.spec.ts`, `files.e2e-spec.ts` |
+| RNF-03 | Implementado (bucket privado, claves UUID, cuarentena) | `storage/`, `files/` | `storage.service.spec.ts`, `files.e2e-spec.ts` |
+| RNF-18 | Implementado (URL firmada de 60 s tras los permisos) | `storage.config.ts`, `files.service.ts` | `storage.config.spec.ts`, `files.e2e-spec.ts` |
+
+- Pendiente: texto legal del aviso de copyright (RF-27); pantalla de descarga del PDF, edición y borrado de tareas, papelera y marca de reutilizable de materiales; estados GRADED, NOT_SUBMITTED y EXEMPT con Dev 4 (RF-38); prueba en navegador real y con lector de pantalla; ciclo de vida de `incoming/` y CORS de R2 (Dev 1); barrido de intents vencidos (Dev 5); bitácora dentro de la transacción (D-047, Dev 1). Verificar en local con Docker las pruebas e2e completas.
+
+**Nota de avance (RF-41..52, RN-01..07 y RNF-31; API, pantallas y pruebas; PROPUESTA del 30/10/2026, Dev 4):** calificación con nota, NE manual y automática, exoneración con motivo, registro auxiliar con promedios y dashboard, Mis notas y vista de solo lectura del apoderado. Contrato en `03_CONTRATOS.md`, sección "API de calificaciones"; modelo en `02_MODELO_ENTIDADES.md`; decisiones D-048 a D-057 en `08_DECISIONES.md`. Sin PR aún.
+
+- Motor: `packages/shared/src/grading/` (`grade-value`, `average`, `literal-scale`, `effective-entry`, `gradebook`, `grade-input`, `errors`). Cobertura 100 % (INFORME 3 del expediente `20261030-dev4-calificaciones`).
+- API: `apps/api/src/modules/grading/` (6 endpoints, `GradesService`, `GradebookReadService`, `NeMaterializer`, `GradingEventPublisher`). Pruebas unitarias: `grading.policy.spec.ts`, `grades.service.spec.ts`, `grading.edge.spec.ts`. Pruebas de integración: `apps/api/test/grading.e2e-spec.ts` (21 casos con MySQL y el seed).
+- Pantallas: `apps/web/app/(app)/curso/[id]/registro/` (registro auxiliar, calificar tarea con visor PDF), `mis-notas/` y `apoderado/`. Prueba: `_lib/grading-format.test.ts` (`pnpm --filter web test`).
+
+| RF | Estado | Dónde | Pruebas |
+| --- | --- | --- | --- |
+| RF-41 | Implementado (API y pantalla) | `shared/grading/grade-input.ts`, `grading/grades.service.ts`, `registro/tarea/[assignmentId]/grade-form.tsx` | `grade-input.spec.ts`, `grading.edge.spec.ts`, `grading.e2e-spec.ts` |
+| RF-42 | Implementado (comentario de hasta 2000 caracteres) | `grade-input.ts`, `grade-form.tsx` | `grade-input.spec.ts`, `grading.edge.spec.ts` |
+| RF-43 | Parcial: visor por iframe con URL firmada inline; prueba en navegador real pendiente | `registro/tarea/[assignmentId]/pdf-viewer.tsx`, `POST /files/:id/download-url` (Dev 3) | Humo en local (INFORME 10): PDF `application/pdf` inline |
+| RF-44 | Implementado (NE automática como fila `AUTO`, y NE virtual al leer) | `grading/ne-materializer.service.ts`, `shared/grading/effective-entry.ts` | `grading.e2e-spec.ts` (`period.closed.v1`, NE AUTO con traslado), `effective-entry.spec.ts` |
+| RF-45 | Implementado (NE editable con período abierto; reemplazo por entrega tardía con `needsRegrade`) | `grading/grades.service.ts`, `grading.policy.ts` | `grading.e2e-spec.ts` (NE AUTO editada pasa a MANUAL), `effective-entry.spec.ts` |
+| RF-46 | Implementado (motivo de 10 a 500 caracteres; solo docente y ADMIN) | `grade-input.ts`, `grading.policy.ts`, `grade-form.tsx` | `grade-input.spec.ts`, `grading.e2e-spec.ts` (motivo 9/10/500/501 y privacidad) |
+| RF-47 | Implementado (matriz estudiantes × tareas con caption y región enfocable) | `grading/gradebook-read.service.ts`, `registro/page.tsx` | `gradebook.spec.ts`; humo en local (INFORME 10) |
+| RF-48 | Implementado (promedio simple con literal y "Sin notas"; promedio anual pendiente, D-014) | `shared/grading/gradebook.ts`, `average.ts`, `grading-format.ts` | `gradebook.spec.ts`, `average.spec.ts`, `grading-format.test.ts` |
+| RF-49 | Implementado (distribución por literal, sin notas, conteos y riesgo) | `shared/grading/gradebook.ts`, `registro/page.tsx` | `gradebook.spec.ts`; humo en local (INFORME 10) |
+| RF-50 | Implementado (409 con período o año cerrado; el ADMIN tampoco) | `contents-guards.ts` (`lockOpenPeriod`), `grades.service.ts` | `grading.e2e-spec.ts` (409 con período cerrado) |
+| RF-51 | Implementado (API y pantalla; sin motivo de exoneración) | `gradebook-read.service.ts` (`myGrades`), `mis-notas/` | `grading.e2e-spec.ts` (privacidad); humo de Mis notas pendiente |
+| RF-52 | Implementado (API y pantalla de solo lectura) | `gradebook-read.service.ts` (`guardianStudents`, `guardianStudentGrades`), `apoderado/page.tsx` | `grading.e2e-spec.ts` (vínculo revocado, 403); humo del apoderado pendiente |
+| RNF-31 | Motor al 100 %; API (unit + e2e, medida por revisor-pr el 30/10/2026): sentencias 92 %, líneas 95 %, funciones 96 %, ramas 81 % (por debajo de 90 % solo en ramas) | `packages/shared/src/grading/`, `apps/api/src/modules/grading/` | Cobertura unitaria de `grades.service.ts` 96 %, `grading.policy.ts` 100 % (INFORME 7) |
+
+- Pendiente de Dev 5: notificación RF-53 con `grade.updated.v1`; job de NE en el worker; tabla literal configurable (RF-61); reportes y anuncios del apoderado.
+- Pendiente de Dev 3: integrar `gradeState` en `computeDisplayStatus` de sus listados (hoy pasa `null`).
+- Pendiente: promedio anual (D-014, institución); prueba en navegador real de las pantallas de Dev 4 (visor PDF y humo de Mis notas, apoderado y docente con las cuentas del usuario); medir la cobertura combinada de la API (RNF-31).
+- Verificar en local con Docker las pruebas e2e de calificaciones.
 
 ## Fuente original por tema
 

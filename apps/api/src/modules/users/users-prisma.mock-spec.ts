@@ -1,5 +1,6 @@
 // Prisma simulado para los .spec.ts del módulo users. El nombre termina en "-spec.ts": el build lo
 // excluye (**/*spec.ts) y vitest no lo ejecuta como suite (solo **/*.spec.ts).
+import type { Mock } from 'vitest';
 import type { PrismaService } from '../../common/prisma/prisma.service.js';
 import type { CredentialIssuerService } from '../auth/credential-issuer.service.js';
 import type { LockedUser } from './users-locks.js';
@@ -14,6 +15,9 @@ export type RawState = {
   searchIds: string[];
 };
 
+// Anotado como Mock: el tipo inferido de vi.fn no es portable con declaration: true (TS2883).
+const fn = (): Mock => vi.fn();
+
 export function makePrisma() {
   const raw: RawState = {
     users: new Map(),
@@ -24,7 +28,7 @@ export function makePrisma() {
   // Registro del orden de los bloqueos y de los parámetros de cada $queryRaw.
   const rawCalls: { sql: string; values: unknown[] }[] = [];
 
-  const queryRaw = vi.fn((strings: TemplateStringsArray, ...values: unknown[]) => {
+  const queryRaw: Mock = vi.fn((strings: TemplateStringsArray, ...values: unknown[]) => {
     const sql = strings.join('?');
     rawCalls.push({ sql, values });
     if (sql.includes('LOCATE')) return Promise.resolve(raw.searchIds.map((id) => ({ id })));
@@ -44,24 +48,24 @@ export function makePrisma() {
 
   const prisma = {
     $queryRaw: queryRaw,
-    $transaction: vi.fn(),
+    $transaction: fn(),
     user: {
-      findUnique: vi.fn(),
-      findUniqueOrThrow: vi.fn(),
-      findMany: vi.fn(),
-      count: vi.fn(),
-      create: vi.fn(),
-      update: vi.fn(),
+      findUnique: fn(),
+      findUniqueOrThrow: fn(),
+      findMany: fn(),
+      count: fn(),
+      create: fn(),
+      update: fn(),
     },
     enrollment: {
-      findFirst: vi.fn(),
-      findMany: vi.fn(),
-      findUniqueOrThrow: vi.fn(),
-      updateMany: vi.fn(),
-      create: vi.fn(),
+      findFirst: fn(),
+      findMany: fn(),
+      findUniqueOrThrow: fn(),
+      updateMany: fn(),
+      create: fn(),
     },
-    section: { findUnique: vi.fn() },
-    academicYear: { findFirst: vi.fn() },
+    section: { findUnique: fn() },
+    academicYear: { findFirst: fn() },
     guardianStudent: {
       findFirst: vi.fn(),
       findMany: vi.fn(),

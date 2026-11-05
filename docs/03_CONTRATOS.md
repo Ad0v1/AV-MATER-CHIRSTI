@@ -60,7 +60,7 @@ El máximo por defecto es 20 MB y el tope configurable por tarea es 50 MB (RF-28
 | `assignment.created.v1` | Dev 3 | Dev 5 | assignmentId, courseSectionId, dueAt |
 | `submission.accepted.v1` | Dev 3 | Dev 4/5 | assignmentId, enrollmentId, submissionId, versionId, receivedAt, isLate |
 | `submission.rejected.v1` | Dev 3 | Dev 5 | uploadId, reason, studentId |
-| `grade.updated.v1` | Dev 4 | Dev 5 | assignmentId, enrollmentId, gradeStatus |
+| `grade.updated.v1` | Dev 4 | Dev 5 | gradeId, assignmentId, enrollmentId, courseSectionId, gradeStatus, source, updatedAt (ver "API de calificaciones") |
 | `period.closed.v1` | Dev 2 | Dev 3/4/5 | periodId, academicYearId, closedAt |
 | `period.reopened.v1` | Dev 2 (en proceso, D-031) | Dev 3/4/5 | periodId, academicYearId, reopenedAt |
 | `academic-year.closed.v1` | Dev 2 (en proceso, D-031) | Dev 3/4/5 | academicYearId, year, closedAt |
@@ -111,7 +111,7 @@ Pendiente (D-022, D-023, D-024): validar largo y formato de `entityType`/`entity
 
 Funciones puras: sin NestJS, Prisma, I/O ni fecha del sistema. No guardan nada: la API pasa las notas y persiste el resultado.
 
-Errores: `GradingError` con `code` (`INVALID_GRADE`, `INVALID_STATE` o `INVALID_SCALE`) e `issues` (solo con `INVALID_SCALE`).
+Errores: `GradingError` con `code` (`INVALID_GRADE`, `INVALID_STATE`, `INVALID_SCALE` o `INVALID_INPUT`) e `issues` (solo con `INVALID_SCALE`).
 
 **Tipos**
 
@@ -121,7 +121,7 @@ Errores: `GradingError` con `code` (`INVALID_GRADE`, `INVALID_STATE` o `INVALID_
 - `GradeEntry`: `{ state: 'GRADED' | 'NE', value }` o `{ state: 'EXEMPT' }` (sin valor).
 - `AverageResult`: `{ status: 'OK', rounded, sumCents, counted, exempt }` o `{ status: 'NO_GRADES', counted: 0, exempt }`.
 - `LiteralBand` (`{ literal, min, max }`), `LiteralScale` (lista de tramos), `LiteralScaleIssue` (`{ code, index?, message }`) y `LiteralScaleIssueCode`.
-- `GradingErrorCode`: `'INVALID_GRADE' | 'INVALID_STATE' | 'INVALID_SCALE'`.
+- `GradingErrorCode`: `'INVALID_GRADE' | 'INVALID_STATE' | 'INVALID_SCALE' | 'INVALID_INPUT'`.
 
 **Constantes**
 
@@ -158,7 +158,17 @@ Errores: `GradingError` con `code` (`INVALID_GRADE`, `INVALID_STATE` o `INVALID_
 - Los reportes (Dev 5) **no recalculan** promedios ni literales: leen `AverageResult` y usan `toLiteral` del motor.
 - Un promedio sin notas que cuenten es `NO_GRADES`, nunca `0` (D-026). La interfaz muestra "sin nota".
 - `toLiteral` recibe el `rounded` de `calculateAverage`, nunca un promedio sin redondear.
-- `apps/api` todavía no declara `@aula/shared` como dependencia: se añade con la tarea de la API de grading.
+- `apps/api` declara `@aula/shared` (`workspace:*`) desde la API de calificaciones. La API lee el paquete compilado (`main`: `dist/index.js`): tras cambiar el motor, ejecuta `pnpm --filter shared build`.
+
+**Funciones añadidas en la fase 4a (Dev 4, PROPUESTA del 30/10/2026)**
+
+Están en `packages/shared/src/grading/` y las exporta `index.ts`. Son puras: no leen el reloj ni la BD; la API pasa `now`.
+
+- `resolveEffectiveEntry(input): EffectiveEntry`. Entrada: `{ grade?, hasSubmission, dueAt, now, noSubmissionGrade?, neEligible? }`. Salida: `{ state, value, virtual, needsRegrade }`. Una fila `Grade` guardada manda. Sin fila, una tarea vencida sin entrega y con matrícula elegible da NE virtual con la nota NE de la tarea (A2). En otro caso, `state: null`. Lanza `INVALID_STATE` o `INVALID_INPUT`.
+- `isNeEligible(enrollment, dueAt): boolean`. Entrada: `{ effectiveFrom, effectiveTo? }`. La matrícula estaba vigente al vencer la tarea, con intervalo `[effectiveFrom, effectiveTo)`: en un traslado, una tarea que vence justo en el instante del traslado es de la matrícula nueva. Lanza `INVALID_INPUT` si una fecha no es válida.
+- `buildGradebook({ assignments, students, cells, now, scale? }): Gradebook`. Registro auxiliar completo: `rows` (promedio por estudiante y `atRisk`), `columns` (promedio y conteos por tarea) y `dashboard` (`distribution` por literal, `noGrades`, `counts`, `riskLiteral` y `atRisk`). Lanza `INVALID_INPUT` ante ids repetidos o celdas de tareas o matrículas que no están en la entrada.
+- `normalizeGradeInput(body: unknown): { ok: true, data } | { ok: false, issues }`. Valida y normaliza el cuerpo del PUT (ver "API de calificaciones") sin lanzar. `issues` lleva `path` y `message`. Solo acepta punto decimal, como RN-01 (`"13,5"` no es válida). La API lo envuelve en un esquema Zod (`gradeInputSchema`), porque `shared` no depende de Zod (Decisión del orquestador 2 del expediente `20261030-dev4-calificaciones`).
+- Exportados además: `summarizeAverage(entries, scale?)` (promedio con literal sobre entradas efectivas) y `riskLiteralOf(scale?)` (literal del tramo que contiene 0).
 
 ## API académica (Dev 2, RF-09..14 y RF-17)
 

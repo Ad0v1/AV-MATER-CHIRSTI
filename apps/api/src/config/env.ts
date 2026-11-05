@@ -53,6 +53,22 @@ const envSchema = z
     POLICY_VERSION: z.string().default('2026-1'),
     // Limite global de peticiones por IP en una ventana de 60 s (RNF-08).
     RATE_LIMIT_PER_MINUTE: z.coerce.number().int().min(1).default(100),
+    // Trabajos en segundo plano (Dev 5, RNF-19), autorizado por el usuario el 30/10/2026.
+    // Correo saliente: en local va a Mailpit (docker-compose). Solo avisos minimos (U3).
+    SMTP_HOST: z.string().min(1).default('127.0.0.1'),
+    SMTP_PORT: z.coerce.number().int().min(1).max(65535).default(1025),
+    SMTP_FROM: z
+      .string()
+      .min(3)
+      .max(191)
+      .refine((v) => !/[\r\n]/.test(v), 'no puede tener saltos de linea')
+      .default('Aula Virtual <no-responder@aula.local>'),
+    // Conversion HTML a PDF de los reportes (U4, fase 5f).
+    GOTENBERG_URL: z.url().default('http://127.0.0.1:3001'),
+    // Dias que se conserva el resultado de una exportacion antes de vencer (U6).
+    EXPORT_TTL_DAYS: z.coerce.number().int().min(1).max(30).default(7),
+    // Trabajos en paralelo por cola en el worker.
+    WORKER_CONCURRENCY: z.coerce.number().int().min(1).max(16).default(2),
   })
   .superRefine((env, ctx) => {
     if (env.NODE_ENV === 'production' && !env.TOTP_ENCRYPTION_KEY) {

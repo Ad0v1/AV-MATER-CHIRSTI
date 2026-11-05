@@ -15,6 +15,14 @@ import { UsersModule } from './modules/users/users.module.js';
 // Módulos de Dev 3, registrados con autorización del usuario (29/10/2026); pendiente de revisión por Dev 1.
 import { ContentsModule } from './modules/contents/contents.module.js';
 import { FilesModule } from './modules/files/files.module.js';
+import { GradingModule } from './modules/grading/grading.module.js';
+// Colas y trabajos de Dev 5 (RNF-19), registrados con autorización del usuario (30/10/2026).
+import { JobsModule } from './modules/jobs/jobs.module.js';
+import { QueueModule } from './modules/queue/queue.module.js';
+// Configuración institucional (RF-61) y calendario (RF-54) de Dev 5, autorizados el 30/10/2026.
+import { CalendarModule } from './modules/notifications/calendar.module.js';
+import { LiteralScaleModule } from './modules/settings/literal-scale.provider.js';
+import { SettingsModule } from './modules/settings/settings.module.js';
 import { SubmissionsModule } from './modules/submissions/submissions.module.js';
 import { AuthService } from './modules/auth/auth.service.js';
 import { CredentialsModule } from './modules/auth/credentials.module.js';
@@ -42,6 +50,12 @@ import { PasswordRecoveryService } from './modules/auth/password-recovery.servic
     FilesModule,
     ContentsModule,
     SubmissionsModule,
+    GradingModule,
+    QueueModule,
+    JobsModule,
+    LiteralScaleModule,
+    SettingsModule,
+    CalendarModule,
   ],
   controllers: [HealthController, AuthController],
   providers: [

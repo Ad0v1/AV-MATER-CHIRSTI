@@ -9,11 +9,11 @@
 | D-003 | Cuatro perfiles | CONFIRMADO EN ERS | Estudiante, Docente, Admin, Apoderado (§1.4) | Dev 1/2 |
 | D-004 | IDs entidades | PROPUESTA | UUID y nombres del diccionario; sin tablas redundantes | Dev 1/2/3/4/5 |
 | D-005 | Rutas API | PROPUESTA | `/api/v1`, tipos DTO y errores de `03_CONTRATOS.md` | Dev 1 y dueños |
-| D-006 | Timestamp de entrega | **PENDIENTE** | Usar hora de upload completado, no hora de scan, tras confirmar integridad | Dev 1/3/4 |
-| D-007 | Unidades MB | **PENDIENTE** | Elegir MB (10^6) o MiB (2^20); ERS no especifica | Dev 3/institución |
+| D-006 | Timestamp de entrega | **RESUELTA por D-039** | Usar hora de upload completado, no hora de scan, tras confirmar integridad | Dev 1/3/4 |
+| D-007 | Unidades MB | **RESUELTA por D-041** | Elegir MB (10^6) o MiB (2^20); ERS no especifica | Dev 3/institución |
 | D-008 | Modelo seis estados | PROPUESTA | Estado visible derivado de archivo aprobado + atraso + Grade | Dev 3/4 |
 | D-009 | Cola antivirus | **PENDIENTE** | Dev 3 es dueño de validación; Dev 5 de worker infra compartido | Dev 1/3/5 |
-| D-010 | Período de material | **PENDIENTE** | `Material.periodId` opcional hasta aclaración ERS | Dev 2/3 |
+| D-010 | Período de material | **RESUELTA por D-042** | `Material.periodId` opcional hasta aclaración ERS | Dev 2/3 |
 | D-011 | Traslado y matrícula histórica | PROPUESTA | Propuesta del 26/10/2026 (esquema académico, rama de Dev 2 en el repo privado). `Enrollment` con vigencias (`effectiveFrom`/`effectiveTo`, `endReason`) e `isCurrent` TRUE/NULL: un traslado cierra la matrícula con `TRANSFER` y abre otra en la sección nueva (RF-24); las matrículas cerradas se conservan (RN-13/14). Imposición en BD según D-027. Depende de D-021. | Dev 2 (revisión pendiente), Dev 3/4 |
 | D-012 | Rol múltiple | **PENDIENTE** | Empezar con rol simple solo si institución lo avala | Dev 1/2 |
 | D-013 | Identidad apoderado | RESUELTA por D-063 (antes: PENDIENTE INSTITUCIÓN) | Google institucional vs cuenta local (ERS §8) | Institución/Dev 1 |

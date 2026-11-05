@@ -24,6 +24,7 @@
     "backup": "nest build && node dist/scripts/backup.js"
   },
   "dependencies": {
+    "@aula/shared": "workspace:*",
     "@aws-sdk/client-s3": "^3.1159.0",
     "@aws-sdk/lib-storage": "^3.1159.0",
     "@aws-sdk/s3-request-presigner": "^3.1159.0",
@@ -33,7 +34,9 @@
     "@nestjs/throttler": "^6.7.1",
     "@prisma/adapter-mariadb": "7.10.1",
     "@prisma/client": "7.10.1",
+    "archiver": "^8.0.0",
     "argon2": "^0.45.1",
+    "bullmq": "^6.5.1",
     "cookie-parser": "^1.4.7",
     "dotenv": "^18.0.9",
     "exceljs": "4.4.0",
@@ -50,6 +53,7 @@
     "@nestjs/mau": "^0.2.6",
     "@nestjs/schematics": "^12.0.0",
     "@nestjs/testing": "^12.0.1",
+    "@types/archiver": "^8.0.0",
     "@types/cookie-parser": "^1.4.10",
     "@types/express": "^5.0.0",
     "@types/node": "^24.0.0",

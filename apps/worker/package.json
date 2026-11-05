@@ -4,9 +4,10 @@
   "private": true,
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "dev": "tsc -p tsconfig.json --watch",
+    "dev": "pnpm --filter api build && tsc -p tsconfig.json && node dist/index.js",
+    "start": "node dist/index.js",
     "lint": "tsc -p tsconfig.json --noEmit",
-    "test": "echo \"sin tests aun\""
+    "test": "echo \"sin tests: los procesadores y sus tests estan en apps/api/src/modules/jobs\""
   },
   "devDependencies": {
     "typescript": "^5.9.0"
