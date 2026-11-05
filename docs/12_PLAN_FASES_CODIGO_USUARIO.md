@@ -24,6 +24,8 @@
 
 ## Fase B — Primer ingreso y correo (Dev 1)
 
+> **Estado (05/11/2026): implementada** salvo el paso 4 del asistente (datos de contacto), que pertenece a la Fase C. El correo verificado se guarda en `User.contactEmail` (no único, para que dos hermanos compartan el del apoderado) con `emailVerifiedAt`; `institutionalEmail` se retira en la Fase F. Contrato en `docs/03_CONTRATOS.md`, sección "API de autenticación".
+
 **RF:** 07 (casillas), 71, 80, 81, 82, 88.
 
 - SMTP con Nodemailer (Mailpit en local; las variables de producción son el pendiente de Dev 1 y bloquean el despliegue).

@@ -10,6 +10,7 @@ export type SessionUser = {
   role: Role;
   mustAcceptPolicy: boolean;
   mustChangePassword: boolean;
+  mustVerifyEmail: boolean;
 };
 
 const API_URL = process.env.API_URL ?? 'http://localhost:4000';
@@ -40,6 +41,7 @@ export async function getSession(): Promise<SessionUser | null> {
       role: data.role,
       mustAcceptPolicy: data.mustAcceptPolicy === true,
       mustChangePassword: data.mustChangePassword === true,
+      mustVerifyEmail: data.mustVerifyEmail === true,
     };
   } catch {
     // API caida: se trata como sin sesion en vez de romper la pagina.

@@ -26,6 +26,12 @@ model User {
   // DNI cifrado (AES-256-GCM) y su hash con clave solo para impedir repetidos (RF-69, D-059).
   dniEncrypted       String?    @db.VarChar(255)
   dniHash            String?    @unique @db.Char(64)
+  // Correo de contacto verificado con un codigo (RF-80, D-062). No es unico: dos hermanos pueden
+  // compartir el correo de su apoderado. Es el que usa la recuperacion de contrasena (RF-82).
+  contactEmail            String?   @db.VarChar(191)
+  // Verdadero si el correo es el del apoderado porque el alumno no tiene uno propio (RF-81).
+  contactEmailIsGuardian  Boolean   @default(false)
+  emailVerifiedAt         DateTime?
   fullName           String
   role               UserRole
   status             UserStatus @default(ACTIVE)
@@ -73,6 +79,8 @@ model PolicyAcceptance {
   acceptedAt    DateTime @default(now())
   ip            String?  @db.VarChar(45)
   userAgent     String?  @db.VarChar(255)
+  // El apoderado marca ademas que acepta en nombre de los alumnos vinculados a el (RF-07).
+  onBehalfOfWards Boolean @default(false)
   user          User     @relation(fields: [userId], references: [id], onDelete: Restrict, onUpdate: Restrict)
 
   @@unique([userId, policyVersion])

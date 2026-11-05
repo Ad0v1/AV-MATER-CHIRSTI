@@ -18,6 +18,17 @@ export async function seedAdminCredential(prisma: PrismaClient): Promise<void> {
   });
   if (!admin?.code) throw new Error('El administrador del seed no tiene codigo de usuario.');
 
+  // Solo en local: el administrador del seed ya tiene su correo verificado, para poder entrar sin
+  // depender del servidor de correo. Los demas usuarios del seed lo verifican en su primer ingreso.
+  await prisma.user.update({
+    where: { id: admin.id },
+    data: {
+      contactEmail: ADMIN.institutionalEmail,
+      contactEmailIsGuardian: false,
+      emailVerifiedAt: new Date(),
+    },
+  });
+
   const chosen = process.env.SEED_ADMIN_PASSWORD;
   if (admin.localCredential && !chosen) {
     console.log(`Administrador del seed: codigo ${admin.code} (la contrasena no se cambio).`);

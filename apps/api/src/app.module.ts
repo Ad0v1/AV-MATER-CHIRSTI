@@ -22,7 +22,11 @@ import { LoginAttemptsService } from './modules/auth/login-attempts.service.js';
 import { PasswordService } from './modules/auth/password.service.js';
 import { TotpService } from './modules/auth/totp.service.js';
 import { UserCodeService } from './modules/auth/user-code.service.js';
-import { PasswordChangeGuard } from './common/auth/password-change.guard.js';
+import { PendingSetupGuard } from './common/auth/pending-setup.guard.js';
+import { MailModule } from './common/mail/mail.module.js';
+import { EmailVerificationService } from './modules/auth/email-verification.service.js';
+import { OneTimeCodeService } from './modules/auth/one-time-code.service.js';
+import { PasswordRecoveryService } from './modules/auth/password-recovery.service.js';
 
 @Module({
   imports: [
@@ -34,6 +38,7 @@ import { PasswordChangeGuard } from './common/auth/password-change.guard.js';
     PrismaModule,
     AuditModule,
     SessionModule,
+    MailModule,
     AcademicModule,
     UsersModule,
     FilesModule,
@@ -48,11 +53,14 @@ import { PasswordChangeGuard } from './common/auth/password-change.guard.js';
     LoginAttemptsService,
     DniService,
     UserCodeService,
-    // Orden: primero el limite de peticiones, luego los permisos por rol y, al final, el cambio
-    // de contrasena pendiente (RF-71).
+    OneTimeCodeService,
+    EmailVerificationService,
+    PasswordRecoveryService,
+    // Orden: primero el limite de peticiones, luego los permisos por rol y, al final, los pasos
+    // pendientes del primer ingreso (RF-71, RN-18).
     { provide: APP_GUARD, useClass: ThrottlerGuard },
     { provide: APP_GUARD, useClass: RolesGuard },
-    { provide: APP_GUARD, useClass: PasswordChangeGuard },
+    { provide: APP_GUARD, useClass: PendingSetupGuard },
     { provide: APP_FILTER, useClass: ApiExceptionFilter },
   ],
 })

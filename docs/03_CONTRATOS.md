@@ -746,3 +746,36 @@ Efecto, todo o nada (si cualquier error, no se escribe nada):
 
 - El texto literal de RF-15 y RF-16 en la ERS no está confirmado. Las reglas salen del expediente, de RN-15 (`docs/04_REGLAS_ESTADOS.md`) y de D-029 y D-030.
 - ¿Los egresados (grado 5, `GRADUATE`) pasan a `INACTIVE`? Por ahora no: conservan `ACTIVE`.
+
+## API de autenticación (Dev 1, RF-68 a RF-88; fases A y B)
+
+> **Estado: PROPUESTA** (05/11/2026). Código en `apps/api/src/modules/auth/` y `apps/api/src/common/`. Decisiones D-058 a D-063; requerimientos en `docs/11_ANEXO_ERS_CODIGO_USUARIO.md`. Prefijo `/api/v1`.
+
+### Sesión y pasos del primer ingreso
+
+- La sesión viaja en la cookie `aula_sid`. `POST /auth/login`, `GET /auth/me` y los cambios de estado devuelven `{ id, role, mustAcceptPolicy, mustChangePassword, mustVerifyEmail }`.
+- Mientras `mustChangePassword` sea verdadero, la API responde **403 `PASSWORD_CHANGE_REQUIRED`** a todo salvo `me`, `logout` y `password`. Con `mustVerifyEmail`, responde **403 `EMAIL_VERIFICATION_REQUIRED`** a todo salvo esas rutas, `policy/accept` y `email/*` (RN-18). Orden: contraseña, política, correo.
+- Cambiar la contraseña, verificar el correo o recuperar la contraseña cierran todas las sesiones anteriores del usuario (RF-78) y, cuando corresponde, abren una nueva.
+
+### Endpoints
+
+| Método y ruta | Rol | Cuerpo | Respuesta | Límite |
+| --- | --- | --- | --- | --- |
+| `POST /auth/login` | público | `{ code, password, totp? }` (`code`: 10 dígitos) | 200 con la sesión; 401 genérico (código mal escrito, inexistente, bloqueado o clave errada); 403 cuenta inactiva | 5/min por IP; 5 fallos seguidos por cuenta bloquean 15 min |
+| `GET /auth/me` | sesión | — | 200 con la sesión | — |
+| `POST /auth/password` | sesión | `{ currentPassword, newPassword }` | 204 y cookie nueva; 400 `INVALID_CURRENT_PASSWORD` o lista de problemas de la política | 5/min |
+| `POST /auth/policy/accept` | sesión | `{ privacy: true, terms: true, onBehalfOfWards? }` (el apoderado debe enviar `onBehalfOfWards: true`) | 204; 400 | — |
+| `POST /auth/email/start` | sesión | `{ email, guardian? }` | 204; 429 `RESEND_TOO_SOON` o `RESEND_LIMIT`; 503 `MAIL_UNAVAILABLE` | 5/min; 1 código por minuto y 3 por hora |
+| `POST /auth/email/verify` | sesión | `{ code }` (6 dígitos) | 204 y cookie nueva; 400 `CODE_INVALID` o `CODE_EXPIRED` | 10/min; 5 intentos por código |
+| `POST /auth/recover/request` | público | `{ code }` (código de usuario) | 204 siempre, exista o no el usuario | 3/min |
+| `POST /auth/recover/confirm` | público | `{ code, emailCode, newPassword }` | 204; 400 `INVALID_RECOVERY` (mismo error para todo fallo del código) o lista de problemas de la política | 5/min |
+| `POST /auth/users/:id/email/manual-verification` | ADMIN | `{ email, reason }` (motivo de 10 a 500 caracteres) | 204; 404 | — |
+| `POST /auth/2fa/setup`, `POST /auth/2fa/enable`, `POST /auth/logout` | ver docs/11 | sin cambios | — | — |
+
+### Reglas
+
+- **Código de usuario:** 10 dígitos; `AA` (año de alta, hora de Lima) + 7 aleatorios + dígito de control Luhn. Un código con el dígito de control mal responde igual que uno inexistente y no cuenta como intento.
+- **Códigos de un solo uso (correo y recuperación):** 6 dígitos, vigentes 5 minutos, 5 intentos (al quinto fallo el código se invalida), guardados con hash en Redis.
+- **Política de contraseñas:** 8 a 128 caracteres; no puede ser común, repetir un carácter ni contener el código de usuario o el DNI; el cambio debe ser distinto de la actual.
+- **Bitácora:** `auth.login`, `auth.login_failed`, `auth.account_locked`, `auth.login_blocked`, `auth.password_changed`, `auth.password_change_failed`, `auth.password_recovered`, `auth.recovery_requested`, `auth.email_code_sent`, `auth.email_verified`, `auth.email_verified_manually` y `auth.policy_accepted`. Nunca llevan contraseñas, códigos, correos ni DNI; el motivo de la verificación manual es texto libre y no debe contener datos personales.
+- **Variables de entorno nuevas:** `PII_ENCRYPTION_KEY`, `LOGIN_MAX_FAILED_ATTEMPTS`, `LOGIN_LOCK_SECONDS`, `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS` y `SMTP_FROM`. En producción son obligatorias la clave y las credenciales SMTP.

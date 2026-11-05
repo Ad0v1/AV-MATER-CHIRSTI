@@ -21,6 +21,7 @@ async function addUser(
     status?: 'ACTIVE' | 'INACTIVE';
     totp?: string;
     mustChangePassword?: boolean;
+    emailVerified?: boolean;
   } = {},
 ) {
   const hash = await t.app.get(PasswordService).hash(PASSWORD);
@@ -30,6 +31,9 @@ async function addUser(
     institutionalEmail: 'admin@colegio.edu.pe',
     code: CODE,
     dniEncrypted: t.app.get(DniService).encrypt(DNI),
+    contactEmail: 'usuario@correo.pe',
+    contactEmailIsGuardian: false,
+    emailVerifiedAt: overrides.emailVerified === false ? null : new Date(),
     fullName: 'Usuario de prueba',
     role: overrides.role ?? 'ADMIN',
     status: overrides.status ?? 'ACTIVE',
@@ -66,6 +70,7 @@ describe('Login por codigo de usuario (e2e)', () => {
       role: 'ADMIN',
       mustAcceptPolicy: true,
       mustChangePassword: false,
+      mustVerifyEmail: false,
     });
     const cookie = String(res.headers['set-cookie']);
     expect(cookie).toContain('aula_sid=');
@@ -86,7 +91,13 @@ describe('Login por codigo de usuario (e2e)', () => {
       .get('/api/v1/auth/me')
       .set('Cookie', res.headers['set-cookie'] ?? [])
       .expect(200)
-      .expect({ id: 'user-1', role: 'ADMIN', mustAcceptPolicy: true, mustChangePassword: false });
+      .expect({
+        id: 'user-1',
+        role: 'ADMIN',
+        mustAcceptPolicy: true,
+        mustChangePassword: false,
+        mustVerifyEmail: false,
+      });
   });
 
   it('rechaza clave incorrecta con el mismo mensaje que un codigo inexistente', async () => {
@@ -182,6 +193,7 @@ describe('Login por codigo de usuario (e2e)', () => {
     await request(t.app.getHttpServer())
       .post('/api/v1/auth/policy/accept')
       .set('Cookie', cookie)
+      .send({ privacy: true, terms: true })
       .expect(204);
     await request(t.app.getHttpServer())
       .get('/api/v1/auth/me')
@@ -235,6 +247,7 @@ describe('Login por codigo de usuario (e2e)', () => {
       const blocked = await request(server())
         .post('/api/v1/auth/policy/accept')
         .set('Cookie', cookie)
+        .send({ privacy: true, terms: true })
         .expect(403);
       expect(blocked.body.error.code).toBe('PASSWORD_CHANGE_REQUIRED');
     });

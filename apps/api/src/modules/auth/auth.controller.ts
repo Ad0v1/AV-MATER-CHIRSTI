@@ -4,6 +4,7 @@ import {
   Get,
   HttpCode,
   Inject,
+  Param,
   Post,
   Req,
   Res,
@@ -12,14 +13,31 @@ import {
 import { Throttle } from '@nestjs/throttler';
 import type { Request, Response } from 'express';
 import { AuditService } from '../../common/audit/audit.service.js';
-import { AllowPendingPasswordChange } from '../../common/auth/password-change.guard.js';
+import {
+  AllowPendingEmailVerification,
+  AllowPendingPasswordChange,
+} from '../../common/auth/pending-setup.guard.js';
 import { Roles } from '../../common/auth/roles.decorator.js';
 import type { AuthenticatedUser, UserRole } from '../../common/auth/roles.js';
 import { SESSION_COOKIE, sessionCookieOptions } from '../../common/session/session-cookie.js';
 import { SessionService } from '../../common/session/session.service.js';
 import { ENV, type Env } from '../../config/config.module.js';
-import { changePasswordSchema, loginSchema, parseBody, totpCodeSchema } from './auth.dto.js';
+import {
+  acceptPolicySchema,
+  changePasswordSchema,
+  loginSchema,
+  manualEmailSchema,
+  parseBody,
+  recoverConfirmSchema,
+  recoverRequestSchema,
+  startEmailSchema,
+  totpCodeSchema,
+  userIdSchema,
+  verifyEmailSchema,
+} from './auth.dto.js';
 import { AuthService } from './auth.service.js';
+import { EmailVerificationService } from './email-verification.service.js';
+import { PasswordRecoveryService } from './password-recovery.service.js';
 
 type RequestWithUser = Request & { user?: AuthenticatedUser };
 
@@ -28,12 +46,15 @@ type SessionInfo = {
   role: UserRole;
   mustAcceptPolicy: boolean;
   mustChangePassword: boolean;
+  mustVerifyEmail: boolean;
 };
 
 @Controller('auth')
 export class AuthController {
   constructor(
     private readonly auth: AuthService,
+    private readonly emails: EmailVerificationService,
+    private readonly recovery: PasswordRecoveryService,
     private readonly sessions: SessionService,
     private readonly audit: AuditService,
     @Inject(ENV) private readonly env: Env,
@@ -48,17 +69,16 @@ export class AuthController {
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ): Promise<SessionInfo> {
-    const { user, mustAcceptPolicy, mustChangePassword } = await this.auth.login(
+    const { user, mustAcceptPolicy, mustChangePassword, mustVerifyEmail } = await this.auth.login(
       parseBody(loginSchema, body),
       req.ip,
     );
     const token = await this.sessions.create(user);
     res.cookie(SESSION_COOKIE, token, this.cookieOptions());
-    return { id: user.id, role: user.role, mustAcceptPolicy, mustChangePassword };
+    return { id: user.id, role: user.role, mustAcceptPolicy, mustChangePassword, mustVerifyEmail };
   }
 
-  // Contrato docs/03: usuario autenticado y rol, mas si debe aceptar la politica vigente y si
-  // debe cambiar su contrasena.
+  // Contrato docs/03: usuario autenticado y rol, mas los pasos del primer ingreso que le faltan.
   @Get('me')
   @AllowPendingPasswordChange()
   async me(@Req() req: RequestWithUser): Promise<SessionInfo> {
@@ -68,6 +88,7 @@ export class AuthController {
       role: user.role,
       mustAcceptPolicy: await this.auth.mustAcceptPolicy(user.id),
       mustChangePassword: user.mustChangePassword === true,
+      mustVerifyEmail: user.mustVerifyEmail === true,
     };
   }
 
@@ -85,14 +106,91 @@ export class AuthController {
     const user = this.requireUser(req);
     await this.auth.changePassword(user.id, parseBody(changePasswordSchema, body), req.ip);
     await this.sessions.revokeAll(user.id);
+    // El cambio de contrasena no cumple el paso del correo: si aun falta, la sesion nueva lo conserva.
+    const token = await this.sessions.create({
+      id: user.id,
+      role: user.role,
+      ...(user.mustVerifyEmail ? { mustVerifyEmail: true as const } : {}),
+    });
+    res.cookie(SESSION_COOKIE, token, this.cookieOptions());
+  }
+
+  // RF-07: las dos casillas son obligatorias. Es parte del primer ingreso: se puede hacer antes
+  // de verificar el correo.
+  @Post('policy/accept')
+  @AllowPendingEmailVerification()
+  @HttpCode(204)
+  async acceptPolicy(@Body() body: unknown, @Req() req: RequestWithUser): Promise<void> {
+    const user = this.requireUser(req);
+    await this.auth.acceptPolicy(user.id, user.role, parseBody(acceptPolicySchema, body), req.ip);
+  }
+
+  // RF-80: envia un codigo al correo indicado. RF-81: `guardian` marca que es el de su apoderado.
+  @Post('email/start')
+  @AllowPendingEmailVerification()
+  @HttpCode(204)
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  async startEmail(@Body() body: unknown, @Req() req: RequestWithUser): Promise<void> {
+    const user = this.requireUser(req);
+    const dto = parseBody(startEmailSchema, body);
+    await this.emails.start(user.id, dto.email, dto.guardian === true, req.ip);
+  }
+
+  // Confirma el codigo, guarda el correo y abre una sesion nueva sin el paso pendiente.
+  @Post('email/verify')
+  @AllowPendingEmailVerification()
+  @HttpCode(204)
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  async verifyEmail(
+    @Body() body: unknown,
+    @Req() req: RequestWithUser,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<void> {
+    const user = this.requireUser(req);
+    await this.emails.verify(user.id, parseBody(verifyEmailSchema, body).code, req.ip);
+    await this.sessions.revokeAll(user.id);
     const token = await this.sessions.create({ id: user.id, role: user.role });
     res.cookie(SESSION_COOKIE, token, this.cookieOptions());
   }
 
-  @Post('policy/accept')
+  // RF-82: pide un codigo de recuperacion. Siempre responde 204, exista o no el usuario.
+  @Post('recover/request')
   @HttpCode(204)
-  async acceptPolicy(@Req() req: RequestWithUser): Promise<void> {
-    await this.auth.acceptPolicy(this.requireUser(req).id, req.ip);
+  @Throttle({ default: { limit: 3, ttl: 60_000 } })
+  async requestRecovery(@Body() body: unknown, @Req() req: Request): Promise<void> {
+    await this.recovery.request(parseBody(recoverRequestSchema, body).code, req.ip);
+  }
+
+  @Post('recover/confirm')
+  @HttpCode(204)
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  async confirmRecovery(@Body() body: unknown, @Req() req: Request): Promise<void> {
+    const dto = parseBody(recoverConfirmSchema, body);
+    const { userId } = await this.recovery.confirm(
+      dto.code,
+      dto.emailCode,
+      dto.newPassword,
+      req.ip,
+    );
+    // Una contrasena nueva cierra todas las sesiones abiertas (RF-78).
+    await this.sessions.revokeAll(userId);
+  }
+
+  // RF-88: el administrador marca un correo como verificado si el envio falla.
+  @Post('users/:id/email/manual-verification')
+  @Roles('ADMIN')
+  @HttpCode(204)
+  async verifyEmailManually(
+    @Param() params: unknown,
+    @Body() body: unknown,
+    @Req() req: RequestWithUser,
+  ): Promise<void> {
+    const admin = this.requireUser(req);
+    const { id } = parseBody(userIdSchema, params);
+    const dto = parseBody(manualEmailSchema, body);
+    await this.emails.verifyManually(admin.id, id, dto.email, dto.reason, req.ip);
+    // Sus sesiones abiertas aun tienen el paso pendiente: se cierran para que entre de nuevo.
+    await this.sessions.revokeAll(id);
   }
 
   @Post('2fa/setup')

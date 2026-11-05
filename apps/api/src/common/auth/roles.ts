@@ -6,6 +6,7 @@ export type UserRole = (typeof USER_ROLES)[number];
 export type AuthenticatedUser = {
   id: string;
   role: UserRole;
-  // Solo viene en true: la sesion pertenece a alguien que debe cambiar su contrasena (RF-71, RF-74).
+  // Solo vienen en true: pasos del primer ingreso que la sesion aun no cumplio (RF-71, RN-18).
   mustChangePassword?: true;
+  mustVerifyEmail?: true;
 };

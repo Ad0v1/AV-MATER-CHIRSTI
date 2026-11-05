@@ -39,6 +39,7 @@ export class SessionService {
           id: parsed.id,
           role: parsed.role as AuthenticatedUser['role'],
           ...(parsed.mustChangePassword === true ? { mustChangePassword: true as const } : {}),
+          ...(parsed.mustVerifyEmail === true ? { mustVerifyEmail: true as const } : {}),
         };
       }
     } catch {

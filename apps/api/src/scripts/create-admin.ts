@@ -8,7 +8,7 @@ import { checkPasswordPolicy, generateInitialPassword } from '../modules/auth/pa
 import { generateUserCode } from '../modules/auth/user-code.js';
 
 // Crea o actualiza la cuenta del administrador (RF-04, RF-68..70).
-// Uso: ADMIN_DNI='12345678' [ADMIN_PASSWORD='...'] pnpm --filter api admin:create -- correo@colegio.edu.pe "Nombre Completo"
+// Uso: ADMIN_DNI='12345678' [ADMIN_PASSWORD='...'] [ADMIN_EMAIL_VERIFIED=1] pnpm --filter api admin:create -- correo@colegio.edu.pe "Nombre Completo"
 // El DNI y la contrasena van por variable de entorno para que no queden en el historial del terminal.
 // Sin ADMIN_PASSWORD se genera una contrasena aleatoria que se muestra una sola vez. En ambos
 // casos el administrador debe cambiarla en su primer ingreso.
@@ -58,7 +58,14 @@ async function main(): Promise<void> {
     }
     if (!code) throw new Error('No se pudo generar un codigo de usuario libre');
 
-    const dniData = { dniEncrypted: dniService.encrypt(dni), dniHash };
+    // Con ADMIN_EMAIL_VERIFIED=1 el correo queda verificado sin enviar codigo: sirve para el
+    // primer administrador, que no puede usar la verificacion manual de otro administrador (RF-88).
+    const dniData = {
+      dniEncrypted: dniService.encrypt(dni),
+      dniHash,
+      contactEmail: email,
+      ...(process.env.ADMIN_EMAIL_VERIFIED === '1' ? { emailVerifiedAt: new Date() } : {}),
+    };
     const user = await prisma.user.upsert({
       where: { institutionalEmail: email },
       create: {

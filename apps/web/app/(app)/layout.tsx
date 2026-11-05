@@ -18,6 +18,7 @@ async function AuthenticatedShell({ children }: { children: React.ReactNode }) {
   // Primero la contraseña inicial, después la política: la API rechaza todo lo demás hasta cambiarla.
   if (user.mustChangePassword) redirect('/cambiar-clave');
   if (user.mustAcceptPolicy) redirect('/politica');
+  if (user.mustVerifyEmail) redirect('/verificar-correo');
 
   return (
     <SidebarProvider>

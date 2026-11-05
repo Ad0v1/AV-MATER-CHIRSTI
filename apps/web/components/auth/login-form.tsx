@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, type FormEvent } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { CircleAlert, Loader2 } from 'lucide-react';
 import { PasswordField } from '@/components/auth/password-field';
@@ -43,15 +44,19 @@ export function LoginForm() {
           role?: unknown;
           mustAcceptPolicy?: boolean;
           mustChangePassword?: boolean;
+          mustVerifyEmail?: boolean;
         };
-        // Primero la contraseña inicial, después la política (la API bloquea lo demás hasta cambiarla).
+        // Pasos del primer ingreso, en orden: contraseña, política y correo (RF-71). La API
+        // bloquea todo lo demás hasta cumplirlos.
         const target = data.mustChangePassword
           ? '/cambiar-clave'
           : data.mustAcceptPolicy
             ? '/politica'
-            : isRole(data.role)
-              ? HOME_BY_ROLE[data.role]
-              : '/';
+            : data.mustVerifyEmail
+              ? '/verificar-correo'
+              : isRole(data.role)
+                ? HOME_BY_ROLE[data.role]
+                : '/';
         router.replace(target);
         router.refresh();
         return;
@@ -156,6 +161,12 @@ export function LoginForm() {
       <p className="text-xs text-ink-3">
         Después de 5 intentos fallidos seguidos, el ingreso se bloquea 15 minutos.
       </p>
+      <Link
+        href="/recuperar"
+        className="min-h-11 text-sm text-brand underline-offset-2 hover:underline"
+      >
+        ¿Olvidaste tu contraseña?
+      </Link>
     </form>
   );
 }

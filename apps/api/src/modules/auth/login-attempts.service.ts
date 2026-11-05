@@ -28,6 +28,12 @@ export class LoginAttemptsService {
     return this.store.del(this.failKey(code));
   }
 
+  // Levanta el bloqueo y reinicia el contador (recuperacion de contrasena por correo, RF-82).
+  async unlock(code: string): Promise<void> {
+    await this.store.del(this.failKey(code));
+    await this.store.del(this.lockKey(code));
+  }
+
   private failKey(code: string): string {
     return `login-fail:${code}`;
   }

@@ -6,11 +6,11 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { AuditService } from '../../common/audit/audit.service.js';
-import type { AuthenticatedUser } from '../../common/auth/roles.js';
+import type { AuthenticatedUser, UserRole } from '../../common/auth/roles.js';
 import { PrismaService } from '../../common/prisma/prisma.service.js';
 import { SessionStore } from '../../common/session/session.store.js';
 import { ENV, type Env } from '../../config/config.module.js';
-import type { ChangePasswordDto, LoginDto } from './auth.dto.js';
+import type { AcceptPolicyDto, ChangePasswordDto, LoginDto } from './auth.dto.js';
 import { DniService } from './dni.service.js';
 import { LoginAttemptsService } from './login-attempts.service.js';
 import { checkPasswordPolicy } from './password-policy.js';
@@ -25,6 +25,7 @@ export type LoginResult = {
   user: AuthenticatedUser;
   mustAcceptPolicy: boolean;
   mustChangePassword: boolean;
+  mustVerifyEmail: boolean;
 };
 
 @Injectable()
@@ -99,14 +100,17 @@ export class AuthService {
     await this.attempts.clear(code);
     await this.audit.record({ actorId: found.id, action: 'auth.login', module: 'auth', ip });
     const mustChangePassword = credential.mustChangePassword;
+    const mustVerifyEmail = !found.emailVerifiedAt;
     return {
       user: {
         id: found.id,
         role: found.role,
         ...(mustChangePassword ? { mustChangePassword: true as const } : {}),
+        ...(mustVerifyEmail ? { mustVerifyEmail: true as const } : {}),
       },
       mustAcceptPolicy: await this.mustAcceptPolicy(found.id),
       mustChangePassword,
+      mustVerifyEmail,
     };
   }
 
@@ -165,11 +169,23 @@ export class AuthService {
     return !accepted;
   }
 
-  // RF-07: queda registrada la version aceptada y la fecha.
-  async acceptPolicy(userId: string, ip?: string): Promise<void> {
+  // RF-07: queda registrada la version aceptada y la fecha. Las dos casillas son obligatorias;
+  // el apoderado marca ademas que acepta en nombre de los alumnos vinculados a el.
+  async acceptPolicy(
+    userId: string,
+    role: UserRole,
+    dto: AcceptPolicyDto,
+    ip?: string,
+  ): Promise<void> {
+    const onBehalfOfWards = role === 'GUARDIAN';
+    if (onBehalfOfWards && dto.onBehalfOfWards !== true) {
+      throw new BadRequestException({
+        message: ['onBehalfOfWards: debes aceptar en nombre de los alumnos vinculados a ti'],
+      });
+    }
     await this.prisma.policyAcceptance.upsert({
       where: { userId_policyVersion: { userId, policyVersion: this.env.POLICY_VERSION } },
-      create: { userId, policyVersion: this.env.POLICY_VERSION },
+      create: { userId, policyVersion: this.env.POLICY_VERSION, onBehalfOfWards },
       update: {},
     });
     await this.audit.record({
@@ -177,7 +193,7 @@ export class AuthService {
       action: 'auth.policy_accepted',
       module: 'auth',
       ip,
-      afterState: { policyVersion: this.env.POLICY_VERSION },
+      afterState: { policyVersion: this.env.POLICY_VERSION, onBehalfOfWards },
     });
   }
 
