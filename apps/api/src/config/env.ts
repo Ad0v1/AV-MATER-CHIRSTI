@@ -25,6 +25,30 @@ const envSchema = z
       .refine((v) => Buffer.from(v, 'base64').length === 32, 'debe ser 32 bytes en base64')
       .optional(),
     TOTP_ISSUER: z.string().default('Aula Virtual'),
+    // Clave maestra (32 bytes en base64) para cifrar el DNI y calcular su hash (D-059). De ella
+    // salen dos claves distintas. Obligatoria en produccion; misma forma de generarla que la anterior.
+    PII_ENCRYPTION_KEY: z
+      .string()
+      .refine((v) => Buffer.from(v, 'base64').length === 32, 'debe ser 32 bytes en base64')
+      .optional(),
+    // Correo saliente (RF-80, RF-82). En local sale a Mailpit (puerto 1025); en produccion las
+    // credenciales son obligatorias y la conexion exige TLS.
+    SMTP_HOST: z.string().optional(),
+    SMTP_PORT: z.coerce.number().int().min(1).max(65535).default(1025),
+    SMTP_SECURE: z
+      .enum(['true', 'false'])
+      .default('false')
+      .transform((v) => v === 'true'),
+    SMTP_USER: z.string().optional(),
+    SMTP_PASS: z.string().optional(),
+    SMTP_FROM: z.string().optional(),
+    // Bloqueo temporal por cuenta tras fallos de inicio de sesion seguidos (RF-75, D-061).
+    LOGIN_MAX_FAILED_ATTEMPTS: z.coerce.number().int().min(1).default(5),
+    LOGIN_LOCK_SECONDS: z.coerce
+      .number()
+      .int()
+      .min(1)
+      .default(15 * 60),
     // Version vigente de la politica y terminos que debe aceptar cada usuario (RF-07).
     POLICY_VERSION: z.string().default('2026-1'),
     // Limite global de peticiones por IP en una ventana de 60 s (RNF-08).
@@ -53,6 +77,20 @@ const envSchema = z
         path: ['TOTP_ENCRYPTION_KEY'],
         message: 'es obligatoria en produccion',
       });
+    }
+    if (env.NODE_ENV === 'production' && !env.PII_ENCRYPTION_KEY) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['PII_ENCRYPTION_KEY'],
+        message: 'es obligatoria en produccion',
+      });
+    }
+    if (env.NODE_ENV === 'production') {
+      for (const name of ['SMTP_HOST', 'SMTP_USER', 'SMTP_PASS', 'SMTP_FROM'] as const) {
+        if (!env[name]) {
+          ctx.addIssue({ code: 'custom', path: [name], message: 'es obligatoria en produccion' });
+        }
+      }
     }
   });
 

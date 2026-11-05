@@ -17,7 +17,15 @@ import { StatusBadge } from '../../_shared/components/page-bits';
 import { TOUCH } from '../../_shared/components/styles';
 import { sectionLabel } from '../../_shared/lib/format';
 import type { UserListItem } from '../_lib/types';
-import { ROLE_LABELS, STATUS_LABELS, STATUS_TONES, USERS_PATH, pageCount } from '../_lib/users';
+import {
+  CREDENTIAL_SHORT,
+  CREDENTIAL_TONES,
+  ROLE_LABELS,
+  STATUS_LABELS,
+  STATUS_TONES,
+  USERS_PATH,
+  pageCount,
+} from '../_lib/users';
 
 const detailHref = (id: string) => `${USERS_PATH}/${encodeURIComponent(id)}`;
 
@@ -42,10 +50,21 @@ export function UserResults({ items, caption }: { items: UserListItem[]; caption
               <span className="font-semibold break-words">{u.fullName}</span>
               <StatusBadge tone={STATUS_TONES[u.status]}>{STATUS_LABELS[u.status]}</StatusBadge>
             </div>
-            <p className="text-sm break-all text-muted-foreground">{u.institutionalEmail}</p>
+            <p className="text-sm tabular-nums text-muted-foreground">
+              Código: {u.code ?? 'sin código'}
+            </p>
             <p className="text-sm">
               {ROLE_LABELS[u.role]}
               {u.role === 'STUDENT' ? ` · ${sectionText(u)}` : ''}
+            </p>
+            <p className="flex flex-wrap items-center gap-2 text-sm">
+              <StatusBadge tone={CREDENTIAL_TONES[u.credentialStatus]}>
+                {CREDENTIAL_SHORT[u.credentialStatus]}
+              </StatusBadge>
+              {u.locked ? <StatusBadge tone="closed">Bloqueada</StatusBadge> : null}
+              <span className="text-muted-foreground">
+                Correo {u.emailVerified ? 'verificado' : 'sin verificar'}
+              </span>
             </p>
             <Link
               href={detailHref(u.id)}
@@ -67,9 +86,11 @@ export function UserResults({ items, caption }: { items: UserListItem[]; caption
           <TableHeader>
             <TableRow>
               <TableHead scope="col">Nombre</TableHead>
-              <TableHead scope="col">Correo</TableHead>
+              <TableHead scope="col">Código</TableHead>
               <TableHead scope="col">Rol</TableHead>
               <TableHead scope="col">Estado</TableHead>
+              <TableHead scope="col">Contraseña</TableHead>
+              <TableHead scope="col">Correo</TableHead>
               <TableHead scope="col">Sección</TableHead>
             </TableRow>
           </TableHeader>
@@ -84,13 +105,22 @@ export function UserResults({ items, caption }: { items: UserListItem[]; caption
                     {u.fullName}
                   </Link>
                 </TableCell>
-                <TableCell className="break-all whitespace-normal text-muted-foreground">
-                  {u.institutionalEmail}
+                <TableCell className="tabular-nums text-muted-foreground">
+                  {u.code ?? '—'}
                 </TableCell>
                 <TableCell>{ROLE_LABELS[u.role]}</TableCell>
                 <TableCell>
                   <StatusBadge tone={STATUS_TONES[u.status]}>{STATUS_LABELS[u.status]}</StatusBadge>
                 </TableCell>
+                <TableCell className="whitespace-normal">
+                  <span className="flex flex-wrap items-center gap-1">
+                    <StatusBadge tone={CREDENTIAL_TONES[u.credentialStatus]}>
+                      {CREDENTIAL_SHORT[u.credentialStatus]}
+                    </StatusBadge>
+                    {u.locked ? <StatusBadge tone="closed">Bloqueada</StatusBadge> : null}
+                  </span>
+                </TableCell>
+                <TableCell>{u.emailVerified ? 'Verificado' : 'Sin verificar'}</TableCell>
                 <TableCell className="whitespace-normal">{sectionText(u)}</TableCell>
               </TableRow>
             ))}

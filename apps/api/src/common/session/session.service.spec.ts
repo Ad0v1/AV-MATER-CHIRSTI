@@ -34,6 +34,32 @@ describe('SessionService', () => {
     await expect(store.get(`session:${token}`)).resolves.toBeNull();
   });
 
+  it('conserva la marca de cambio de contrasena pendiente', async () => {
+    const service = new SessionService(new MemorySessionStore(), env);
+    const token = await service.create({ id: 'u1', role: 'STUDENT', mustChangePassword: true });
+
+    await expect(service.resolve(token)).resolves.toEqual({
+      id: 'u1',
+      role: 'STUDENT',
+      mustChangePassword: true,
+    });
+  });
+
+  it('revokeAll cierra las sesiones anteriores del usuario y no las de otros', async () => {
+    const service = new SessionService(new MemorySessionStore(), env);
+    const old = await service.create({ id: 'u1', role: 'STUDENT' });
+    const otherUser = await service.create({ id: 'u2', role: 'STUDENT' });
+
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    await service.revokeAll('u1');
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    const fresh = await service.create({ id: 'u1', role: 'STUDENT' });
+
+    await expect(service.resolve(old)).resolves.toBeNull();
+    await expect(service.resolve(fresh)).resolves.not.toBeNull();
+    await expect(service.resolve(otherUser)).resolves.not.toBeNull();
+  });
+
   it('ignora una sesion con rol invalido', async () => {
     const store = new MemorySessionStore();
     const service = new SessionService(store, env);

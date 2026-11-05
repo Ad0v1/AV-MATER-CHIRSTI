@@ -17,6 +17,9 @@ import {
   AcademicEventPublisher,
   type AcademicEvent,
 } from './../src/modules/academic/academic-events.js';
+import { loadEnv } from './../src/config/env.js';
+import { DniService } from './../src/modules/auth/dni.service.js';
+import { LoginAttemptsService } from './../src/modules/auth/login-attempts.service.js';
 import { INSTITUTION_EMAIL_DOMAIN } from './../src/modules/users/institution-domain.js';
 import { MemoryAuditSink } from './helpers.js';
 
@@ -31,6 +34,23 @@ const DOMAIN = 'colegio.example';
 // Usuarios QA creados por Prisma en beforeAll (sinmat y admin2), contados en las listas.
 const QA_FIXTURE_USERS = 2;
 const qa = (key: string) => `${QA_PREFIX}${key}@${DOMAIN}`;
+
+// DNI ficticios de las pruebas: 90000001..90000900. El limpiador los reconoce por su hash, porque
+// los usuarios nuevos ya no llevan correo (D-058).
+const QA_DNI_BASE = 90_000_000;
+const QA_DNI_COUNT = 900;
+let dniSeq = 0;
+const dniPair = () => {
+  const dni = String(QA_DNI_BASE + ++dniSeq);
+  return { dni, dniConfirm: dni };
+};
+const guardianRef = () => ({ ...dniPair(), fullName: 'QA F3 Apoderado Inicial' });
+// Lo que exige el alta de un alumno (RF-18, RF-86): su DNI y al menos un apoderado.
+const studentExtras = () => ({ ...dniPair(), guardians: [guardianRef()] });
+const qaDniHashes = () => {
+  const dni = new DniService(loadEnv());
+  return Array.from({ length: QA_DNI_COUNT }, (_, i) => dni.hash(String(QA_DNI_BASE + i + 1)));
+};
 
 type Role = 'ADMIN' | 'TEACHER' | 'STUDENT' | 'GUARDIAN';
 type Json = Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
@@ -93,7 +113,9 @@ describe.skipIf(!process.env.DATABASE_URL)('API usuarios y matriculas F3 (e2e, M
   /** Borra solo lo creado por este archivo (usuarios qa-f3-*, curso QA, seccion 3Q, año 2092). */
   const cleanQaData = async () => {
     const users = await prisma.user.findMany({
-      where: { institutionalEmail: { startsWith: QA_PREFIX } },
+      where: {
+        OR: [{ institutionalEmail: { startsWith: QA_PREFIX } }, { dniHash: { in: qaDniHashes() } }],
+      },
       select: { id: true },
     });
     const userIds = users.map((u) => u.id);
@@ -135,6 +157,8 @@ describe.skipIf(!process.env.DATABASE_URL)('API usuarios y matriculas F3 (e2e, M
   let cs3BMath: string;
 
   // Datos propios
+  const dniPair1 = dniPair(); // DNI del alumno 1
+  const s1Guardian = guardianRef(); // su apoderado inicial (el principal)
   let s1: Json; // { user, enrollment }
   let g1: Json; // { user, links }
   let s2: Json;
@@ -286,7 +310,20 @@ describe.skipIf(!process.env.DATABASE_URL)('API usuarios y matriculas F3 (e2e, M
       expect(res.body.items).toHaveLength(20);
       const item = res.body.items[0];
       expect(Object.keys(item).sort()).toEqual(
-        ['currentSection', 'fullName', 'id', 'institutionalEmail', 'role', 'status'].sort(),
+        [
+          'code',
+          'contactEmail',
+          'credentialStatus',
+          'currentSection',
+          'dniVerified',
+          'emailVerified',
+          'fullName',
+          'id',
+          'institutionalEmail',
+          'locked',
+          'role',
+          'status',
+        ].sort(),
       );
     });
 
@@ -472,6 +509,8 @@ describe.skipIf(!process.env.DATABASE_URL)('API usuarios y matriculas F3 (e2e, M
         institutionalEmail: `  ${qa('Alumno1').toUpperCase().replace('@COLEGIO', '@Colegio')} `,
         fullName: '  QA   F3 Alumno   Uno ',
         sectionId: sec3A,
+        ...dniPair1,
+        guardians: [s1Guardian],
       }).expect(201);
       s1 = res.body;
       await createSession('s1', s1.user.id, 'STUDENT');
@@ -509,11 +548,13 @@ describe.skipIf(!process.env.DATABASE_URL)('API usuarios y matriculas F3 (e2e, M
         institutionalEmail: qa('alumno1').toUpperCase().replace('@COLEGIO', '@colegio'),
         fullName: 'QA F3 Repetido',
         sectionId: sec3A,
+        ...studentExtras(),
       }).expect(409);
       await post('admin', '/students', {
         institutionalEmail: `estudiante01@${DOMAIN}`,
         fullName: 'QA F3 Repetido',
         sectionId: sec3A,
+        ...studentExtras(),
       }).expect(409);
     });
 
@@ -522,6 +563,7 @@ describe.skipIf(!process.env.DATABASE_URL)('API usuarios y matriculas F3 (e2e, M
         institutionalEmail: qa(key),
         fullName: 'QA F3 Rechazado',
         sectionId,
+        ...studentExtras(),
       });
       await post('admin', '/students', body('rech1', sec2A2025)).expect(409);
       await post('admin', '/students', body('rech2', secOtherYear)).expect(422);
@@ -539,11 +581,13 @@ describe.skipIf(!process.env.DATABASE_URL)('API usuarios y matriculas F3 (e2e, M
         institutionalEmail: 'qa-f3-ajeno@otro.example',
         fullName: 'QA F3 Ajeno',
         sectionId: sec3A,
+        ...studentExtras(),
       }).expect(422);
       const ok = {
         institutionalEmail: qa('val'),
         fullName: 'QA F3 Valida',
         sectionId: sec3A,
+        ...studentExtras(),
       };
       await post('admin', '/students', { ...ok, role: 'ADMIN' }).expect(400);
       await post('admin', '/students', { ...ok, effectiveFrom: '2020-01-01T00:00:00Z' }).expect(
@@ -554,6 +598,8 @@ describe.skipIf(!process.env.DATABASE_URL)('API usuarios y matriculas F3 (e2e, M
       await post('admin', '/students', { ...ok, institutionalEmail: 'no-es-correo' }).expect(400);
       await post('admin', '/students', { ...ok, sectionId: 'no-uuid' }).expect(400);
       await post('admin', '/students', { institutionalEmail: ok.institutionalEmail }).expect(400);
+      await post('admin', '/students', { ...ok, guardians: [] }).expect(400);
+      await post('admin', '/students', { ...ok, dniConfirm: '99999999' }).expect(400);
       expect(await prisma.user.count({ where: { institutionalEmail: qa('val') } })).toBe(0);
     });
   });
@@ -564,6 +610,7 @@ describe.skipIf(!process.env.DATABASE_URL)('API usuarios y matriculas F3 (e2e, M
       const res = await post('admin', '/guardians', {
         institutionalEmail: qa('apo1'),
         fullName: 'QA F3 Apoderado Uno',
+        ...dniPair(),
         studentIds: [s1.user.id],
       }).expect(201);
       g1 = res.body;
@@ -582,7 +629,7 @@ describe.skipIf(!process.env.DATABASE_URL)('API usuarios y matriculas F3 (e2e, M
     });
 
     it('RF-20: validaciones del alta (correo repetido 409, listas invalidas 400, roles y retirados 422) sin dejar usuarios', async () => {
-      const base = { fullName: 'QA F3 Apoderado Malo' };
+      const base = { fullName: 'QA F3 Apoderado Malo', ...dniPair() };
       await post('admin', '/guardians', {
         ...base,
         institutionalEmail: qa('apo1'),
@@ -622,10 +669,12 @@ describe.skipIf(!process.env.DATABASE_URL)('API usuarios y matriculas F3 (e2e, M
     });
 
     it('RF-20/D-013: el apoderado esta exento del dominio institucional (201)', async () => {
+      // sinMat no tiene apoderados: s1 ya tiene 2 y no admite otro (RN-17).
       const res = await post('admin', '/guardians', {
         institutionalEmail: 'qa-f3-apo-ext@otro.example',
         fullName: 'QA F3 Apoderado Externo',
-        studentIds: [s1.user.id],
+        ...dniPair(),
+        studentIds: [sinMat],
       }).expect(201);
       expect(res.body.user.role).toBe('GUARDIAN');
     });
@@ -728,7 +777,7 @@ describe.skipIf(!process.env.DATABASE_URL)('API usuarios y matriculas F3 (e2e, M
         'admin',
         `/students/${s1.user.id}/guardians?includeRevoked=true`,
       ).expect(200);
-      expect(byStudent.body.total).toBe(3); // g1 revocado, g1 vigente y el apoderado externo
+      expect(byStudent.body.total).toBe(3); // el apoderado inicial, g1 revocado y g1 vigente
     });
   });
 
@@ -832,6 +881,7 @@ describe.skipIf(!process.env.DATABASE_URL)('API usuarios y matriculas F3 (e2e, M
         institutionalEmail: qa('alumno2'),
         fullName: 'QA F3 Alumno Dos',
         sectionId: sec3A,
+        ...studentExtras(),
       }).expect(201);
       s2 = created.body;
       const results = await Promise.all([
@@ -857,6 +907,7 @@ describe.skipIf(!process.env.DATABASE_URL)('API usuarios y matriculas F3 (e2e, M
         institutionalEmail: qa('carrera'),
         fullName: 'QA F3 Carrera',
         sectionId: sec3A,
+        ...studentExtras(),
       };
       const results = await Promise.all([
         post('admin', '/students', body),
@@ -936,6 +987,7 @@ describe.skipIf(!process.env.DATABASE_URL)('API usuarios y matriculas F3 (e2e, M
         institutionalEmail: qa('alumno3'),
         fullName: 'QA F3 Alumno Tres',
         sectionId: sec3A,
+        ...studentExtras(),
       }).expect(201);
       s3 = created.body;
       const res = await put('admin', `/users/${s3.user.id}/status`, {
@@ -998,10 +1050,13 @@ describe.skipIf(!process.env.DATABASE_URL)('API usuarios y matriculas F3 (e2e, M
       expect(history.body.total).toBe(2);
     });
 
-    it('RF-23: INACTIVE no toca la matricula y permite trasladar', async () => {
+    it('RF-23: INACTIVE no toca la matricula, permite trasladar y cierra sus sesiones (RF-78)', async () => {
+      await createSession('s2', s2.user.id, 'STUDENT');
+      await get('s2', `/course-sections/${cs3BMath}/context`).expect(200);
       const res = await put('admin', `/users/${s2.user.id}/status`, {
         status: 'INACTIVE',
       }).expect(200);
+      await get('s2', `/course-sections/${cs3BMath}/context`).expect(401);
       expect(res.body.closedEnrollments).toEqual([]);
       const detail = await get('admin', `/users/${s2.user.id}`).expect(200);
       expect(detail.body.status).toBe('INACTIVE');
@@ -1037,17 +1092,17 @@ describe.skipIf(!process.env.DATABASE_URL)('API usuarios y matriculas F3 (e2e, M
       expect(admin.status).toBe('ACTIVE');
     });
 
-    it('RF-08: un ADMIN pasado a INACTIVE pierde el acceso al modulo aunque conserve la sesion (403)', async () => {
+    it('RF-08/RF-78: un ADMIN pasado a INACTIVE pierde el acceso al modulo: su sesion se cierra (401)', async () => {
       await get('admin2', '/users?pageSize=1').expect(200);
       const res = await put('admin', `/users/${ids.get('admin2')}/status`, {
         status: 'INACTIVE',
       }).expect(200);
       expect(res.body.user.status).toBe('INACTIVE');
-      await get('admin2', '/users?pageSize=1').expect(403);
+      await get('admin2', '/users?pageSize=1').expect(401);
       await post('admin2', '/teachers', {
         institutionalEmail: qa('docx'),
         fullName: 'QA F3 No Debe Crearse',
-      }).expect(403);
+      }).expect(401);
       expect(await prisma.user.count({ where: { institutionalEmail: qa('docx') } })).toBe(0);
     });
   });
@@ -1058,26 +1113,32 @@ describe.skipIf(!process.env.DATABASE_URL)('API usuarios y matriculas F3 (e2e, M
       const res = await post('admin', '/teachers', {
         institutionalEmail: qa('profe1'),
         fullName: 'QA F3 Profe Uno',
+        ...dniPair(),
       }).expect(201);
-      expect(res.body).toMatchObject({ role: 'TEACHER', status: 'ACTIVE' });
-      ids.set('profe1', res.body.id);
-      expect(auditOf('users.user.create', res.body.id)).toHaveLength(1);
+      expect(res.body.user).toMatchObject({ role: 'TEACHER', status: 'ACTIVE' });
+      expect(res.body.credentials.code).toMatch(/^\d{10}$/);
+      ids.set('profe1', res.body.user.id);
+      expect(auditOf('users.user.create', res.body.user.id)).toHaveLength(1);
 
       await post('admin', '/teachers', {
         institutionalEmail: qa('profe1'),
         fullName: 'QA F3 Profe Uno',
+        ...dniPair(),
       }).expect(409);
       await post('admin', '/teachers', {
         institutionalEmail: `docente01@${DOMAIN}`,
         fullName: 'QA F3 Profe Dos',
+        ...dniPair(),
       }).expect(409);
       await post('admin', '/teachers', {
         institutionalEmail: 'qa-f3-profe9@otro.example',
         fullName: 'QA F3 Profe Nueve',
+        ...dniPair(),
       }).expect(422);
       await post('admin', '/teachers', {
         institutionalEmail: qa('profe8'),
         fullName: 'QA F3 Profe Ocho',
+        ...dniPair(),
         role: 'ADMIN',
       }).expect(400);
       await post('admin', '/teachers', { institutionalEmail: qa('profe8') }).expect(400);
@@ -1166,6 +1227,306 @@ describe.skipIf(!process.env.DATABASE_URL)('API usuarios y matriculas F3 (e2e, M
   });
 
   // ---------------------------------------------------------------------------
+  describe('Credenciales, apoderados y estado (RF-68..RF-87)', () => {
+    const login = (code: string, password: string) =>
+      http().post(`${API}/auth/login`).send({ code, password });
+
+    it('RF-68/RF-70: el alta entrega el código y la contraseña inicial una sola vez', async () => {
+      expect(s1.credentials.code).toMatch(/^\d{10}$/);
+      expect(s1.credentials.code.startsWith(String(new Date().getFullYear()).slice(-2))).toBe(true);
+      expect(s1.credentials.initialPassword).toHaveLength(12);
+      const row = await prisma.user.findUniqueOrThrow({
+        where: { id: s1.user.id },
+        include: { localCredential: true },
+      });
+      expect(row.code).toBe(s1.credentials.code);
+      expect(row.localCredential).toMatchObject({ mustChangePassword: true });
+      expect(row.localCredential!.passwordHash).not.toContain(s1.credentials.initialPassword);
+      // El detalle no vuelve a mostrar la contraseña.
+      const detail = await get('admin', `/users/${s1.user.id}`).expect(200);
+      expect(JSON.stringify(detail.body)).not.toContain(s1.credentials.initialPassword);
+      expect(detail.body.code).toBe(s1.credentials.code);
+    });
+
+    it('RF-69: el DNI se guarda cifrado y nunca vuelve en la API ni en la bitácora', async () => {
+      const row = await prisma.user.findUniqueOrThrow({ where: { id: s1.user.id } });
+      expect(row.dniEncrypted).toBeTruthy();
+      expect(row.dniEncrypted).not.toContain(dniPair1.dni);
+      expect(row.dniHash).toMatch(/^[0-9a-f]{64}$/);
+      const detail = await get('admin', `/users/${s1.user.id}`).expect(200);
+      expect(JSON.stringify(detail.body)).not.toContain(dniPair1.dni);
+      expect(JSON.stringify(sink.records)).not.toContain(dniPair1.dni);
+    });
+
+    it('RF-69: un DNI repetido es 409 y no deja usuarios (alumno, apoderado inicial y docente)', async () => {
+      const before = await prisma.user.count();
+      await post('admin', '/students', {
+        fullName: 'QA F3 Mismo Dni',
+        sectionId: sec3A,
+        ...dniPair1,
+        guardians: [guardianRef()],
+      }).expect(409);
+      await post('admin', '/teachers', { fullName: 'QA F3 Mismo Dni', ...dniPair1 }).expect(409);
+      expect(await prisma.user.count()).toBe(before);
+    });
+
+    it('RF-86: el apoderado inicial es el principal y g1, el segundo, no', async () => {
+      const links = await get('admin', `/students/${s1.user.id}/guardians`).expect(200);
+      const first = s1.guardians[0];
+      expect(first).toMatchObject({ created: true });
+      expect(first.credentials.code).toMatch(/^\d{10}$/);
+      expect(first.link.isPrimary).toBe(true);
+      const byId = new Map(links.body.items.map((l: Json) => [l.guardian.id, l]));
+      expect((byId.get(first.user.id) as Json).isPrimary).toBe(true);
+      expect((byId.get(g1.user.id) as Json).isPrimary).toBe(false);
+    });
+
+    it('RN-17: un alumno no admite un tercer apoderado (409), crearlo ni vincularlo', async () => {
+      await post('admin', '/guardians', {
+        fullName: 'QA F3 Tercero',
+        ...dniPair(),
+        studentIds: [s1.user.id],
+      }).expect(409);
+      await post('admin', `/guardians/${ids.get('apoderado02')}/students`, {
+        studentId: s1.user.id,
+      }).expect(409);
+      expect(
+        await prisma.guardianStudent.count({ where: { studentId: s1.user.id, isActive: true } }),
+      ).toBe(2);
+    });
+
+    it('RF-86: un apoderado existente se reutiliza por DNI (un hermano), sin crear otra cuenta', async () => {
+      const before = await prisma.user.count();
+      const res = await post('admin', '/students', {
+        institutionalEmail: qa('hermano'),
+        fullName: 'QA F3 Hermano',
+        sectionId: sec3A,
+        ...dniPair(),
+        // Solo el DNI: el apoderado ya existe, no hace falta su nombre.
+        guardians: [{ dni: s1Guardian.dni, dniConfirm: s1Guardian.dni }],
+      }).expect(201);
+      expect(res.body.guardians).toHaveLength(1);
+      expect(res.body.guardians[0]).toMatchObject({ created: false });
+      expect(res.body.guardians[0].credentials).toBeUndefined();
+      expect(res.body.guardians[0].user.id).toBe(s1.guardians[0].user.id);
+      expect(res.body.guardians[0].link.isPrimary).toBe(true); // es el primero de este alumno
+      expect(await prisma.user.count()).toBe(before + 1); // solo el alumno
+      // Un apoderado con 2 hijos en el mismo colegio ve a los dos.
+      const students = await get('admin', `/guardians/${s1.guardians[0].user.id}/students`).expect(
+        200,
+      );
+      expect(students.body.total).toBe(2);
+    });
+
+    it('RF-86: el DNI de un apoderado que es de otro rol, o un apoderado nuevo sin nombre, es 422', async () => {
+      // El DNI de un docente existente como apoderado se cubre en las pruebas unitarias: aquí no
+      // se conoce el DNI en claro de los usuarios del seed.
+      await post('admin', '/students', {
+        fullName: 'QA F3 Sin Nombre Apoderado',
+        sectionId: sec3A,
+        ...dniPair(),
+        guardians: [dniPair()],
+      }).expect(422);
+    });
+
+    it('RF-86/RN-17: el último apoderado de un alumno no se puede revocar', async () => {
+      const created = await post('admin', '/students', {
+        fullName: 'QA F3 Alumno Cuatro',
+        sectionId: sec3A,
+        ...studentExtras(),
+      }).expect(201);
+      const only = created.body.guardians[0].link.id;
+      const res = await post('admin', `/guardian-links/${only}/revoke`, {
+        reason: 'Intento de dejar sin apoderado',
+      }).expect(409);
+      expect(res.body.error.message).toMatch(/al menos un apoderado/i);
+      const row = await prisma.guardianStudent.findUniqueOrThrow({ where: { id: only } });
+      expect(row).toMatchObject({ isActive: true, isPrimary: true });
+    });
+
+    it('RF-86: cambiar el principal y revocar al principal pasa la marca al otro apoderado', async () => {
+      const created = await post('admin', '/students', {
+        fullName: 'QA F3 Alumno Cinco',
+        sectionId: sec3A,
+        ...dniPair(),
+        guardians: [guardianRef(), guardianRef()],
+      }).expect(201);
+      const [a, b] = created.body.guardians as Json[];
+      expect(a!.link.isPrimary).toBe(true);
+      expect(b!.link.isPrimary).toBe(false);
+
+      const swapped = await post('admin', `/guardian-links/${b!.link.id}/make-primary`).expect(200);
+      expect(swapped.body.isPrimary).toBe(true);
+      const aRow = await prisma.guardianStudent.findUniqueOrThrow({ where: { id: a!.link.id } });
+      expect(aRow.isPrimary).toBeNull();
+      expect(
+        await prisma.guardianStudent.count({
+          where: { studentId: created.body.user.id, isPrimary: true },
+        }),
+      ).toBe(1);
+
+      // Revocar al principal (b): a pasa a serlo.
+      await post('admin', `/guardian-links/${b!.link.id}/revoke`, {
+        reason: 'Vinculo registrado por error',
+      }).expect(200);
+      const bRow = await prisma.guardianStudent.findUniqueOrThrow({ where: { id: b!.link.id } });
+      expect(bRow).toMatchObject({ isActive: null, isPrimary: null });
+      const aAfter = await prisma.guardianStudent.findUniqueOrThrow({ where: { id: a!.link.id } });
+      expect(aAfter).toMatchObject({ isActive: true, isPrimary: true });
+
+      await post('admin', `/guardian-links/${b!.link.id}/make-primary`).expect(409); // revocado
+      await post('admin', `/guardian-links/${randomUUID()}/make-primary`).expect(404);
+    });
+
+    it('RF-74: restablecer la contraseña cierra sesiones, exige cambiarla y levanta el bloqueo', async () => {
+      await createSession('s1', s1.user.id, 'STUDENT');
+      await get('s1', `/course-sections/${cs3BMath}/context`).expect(200);
+
+      const res = await post('admin', `/users/${s1.user.id}/reset-password`).expect(200);
+      expect(res.body.credentials.code).toBe(s1.credentials.code); // el código no cambia (RN-16)
+      expect(res.body.credentials.initialPassword).toHaveLength(12);
+      expect(res.body.credentials.initialPassword).not.toBe(s1.credentials.initialPassword);
+      await get('s1', `/course-sections/${cs3BMath}/context`).expect(401);
+
+      const entered = await login(
+        res.body.credentials.code,
+        res.body.credentials.initialPassword,
+      ).expect(200);
+      expect(entered.body.mustChangePassword).toBe(true);
+
+      const logs = auditOf('users.user.reset_password', s1.user.id);
+      expect(logs).toHaveLength(1);
+      expect(JSON.stringify(logs[0])).not.toContain(res.body.credentials.initialPassword);
+      await post('docente01', `/users/${s1.user.id}/reset-password`).expect(403);
+      await post('admin', `/users/${randomUUID()}/reset-password`).expect(404);
+      await post('admin', '/users/no-uuid/reset-password').expect(400);
+    });
+
+    it('RF-74: un usuario anterior al login por código recibe código y credencial al restablecer', async () => {
+      const legacy = await prisma.user.create({
+        data: { institutionalEmail: qa('legado'), fullName: 'QA F3 Legado', role: 'TEACHER' },
+      });
+      expect(legacy.code).toBeNull();
+      const res = await post('admin', `/users/${legacy.id}/reset-password`).expect(200);
+      expect(res.body.credentials.code).toMatch(/^\d{10}$/);
+      const row = await prisma.user.findUniqueOrThrow({
+        where: { id: legacy.id },
+        include: { localCredential: true },
+      });
+      expect(row.code).toBe(res.body.credentials.code);
+      expect(row.localCredential?.mustChangePassword).toBe(true);
+    });
+
+    it('RF-84: corregir el DNI genera un código nuevo, conserva el anterior en la bitácora y cierra sesiones', async () => {
+      const created = await post('admin', '/students', {
+        fullName: 'QA F3 Alumno Seis',
+        sectionId: sec3A,
+        ...studentExtras(),
+      }).expect(201);
+      const id = created.body.user.id;
+      const oldCode = created.body.credentials.code;
+      await createSession('s6', id, 'STUDENT');
+      const fix = dniPair();
+
+      const res = await post('admin', `/users/${id}/correct-dni`, {
+        ...fix,
+        reason: 'Error de digitacion al registrar',
+      }).expect(200);
+      expect(res.body.credentials.code).not.toBe(oldCode);
+      expect(res.body.credentials.code).toMatch(/^\d{10}$/);
+      await get('s6', `/course-sections/${cs3AMath}/context`).expect(401);
+      await login(oldCode, created.body.credentials.initialPassword).expect(401);
+      const entered = await login(
+        res.body.credentials.code,
+        res.body.credentials.initialPassword,
+      ).expect(200);
+      expect(entered.body.mustChangePassword).toBe(true);
+
+      const logs = auditOf('users.user.correct_dni', id);
+      expect(logs).toHaveLength(1);
+      expect(logs[0]).toMatchObject({
+        beforeState: { code: oldCode },
+        afterState: { code: res.body.credentials.code, reason: 'Error de digitacion al registrar' },
+      });
+      expect(JSON.stringify(logs[0])).not.toContain(fix.dni);
+
+      // El mismo DNI, el de otra persona, un motivo corto o un DNI sin confirmar se rechazan.
+      await post('admin', `/users/${id}/correct-dni`, {
+        ...fix,
+        reason: 'Error de digitacion otra vez',
+      }).expect(409);
+      await post('admin', `/users/${id}/correct-dni`, {
+        ...dniPair1,
+        reason: 'Es el DNI de otra persona',
+      }).expect(409);
+      await post('admin', `/users/${id}/correct-dni`, { ...dniPair(), reason: 'corto' }).expect(
+        400,
+      );
+      await post('admin', `/users/${id}/correct-dni`, {
+        dni: '90000999',
+        dniConfirm: '90000998',
+        reason: 'No coinciden los dos',
+      }).expect(400);
+      await post('admin', `/users/${randomUUID()}/correct-dni`, {
+        ...dniPair(),
+        reason: 'No existe ese usuario',
+      }).expect(404);
+    });
+
+    it('RF-69: el administrador marca el DNI como verificado contra el documento', async () => {
+      const before = await get('admin', `/users/${s1.user.id}`).expect(200);
+      expect(before.body.dniVerified).toBe(false);
+      const res = await post('admin', `/users/${s1.user.id}/verify-dni`).expect(200);
+      expect(res.body.dniVerified).toBe(true);
+      expect(auditOf('users.user.verify_dni', s1.user.id)).toHaveLength(1);
+      await post('admin', `/users/${s1.user.id}/verify-dni`).expect(200); // repetir no duplica
+      expect(auditOf('users.user.verify_dni', s1.user.id)).toHaveLength(1);
+      // Un usuario sin DNI (anterior al cambio) no se puede verificar.
+      await post('admin', `/users/${sinMat}/verify-dni`).expect(409);
+    });
+
+    it('RF-87: la lista muestra el estado de las credenciales y filtra por él', async () => {
+      const pending = await get('admin', '/users?credentials=PENDING&pageSize=100').expect(200);
+      expect(pending.body.items.map((u: Json) => u.id)).toContain(s1.user.id);
+      expect(pending.body.items.every((u: Json) => u.credentialStatus === 'PENDING')).toBe(true);
+
+      const none = await get('admin', '/users?credentials=NONE&pageSize=100').expect(200);
+      expect(none.body.items.every((u: Json) => u.credentialStatus === 'NONE')).toBe(true);
+      expect(none.body.items.map((u: Json) => u.id)).toContain(sinMat);
+
+      const unverified = await get('admin', '/users?emailVerified=false&pageSize=100').expect(200);
+      expect(unverified.body.items.map((u: Json) => u.id)).toContain(s1.user.id);
+      await get('admin', '/users?credentials=OTRO').expect(400);
+      await get('admin', '/users?emailVerified=quizas').expect(400);
+    });
+
+    it('RF-87/RF-25: se busca por código de usuario', async () => {
+      const res = await get('admin', `/users?q=${s1.credentials.code}`).expect(200);
+      expect(res.body.items.map((u: Json) => u.id)).toEqual([s1.user.id]);
+      expect(res.body.items[0].code).toBe(s1.credentials.code);
+    });
+
+    it('RF-75/RF-87: una cuenta bloqueada por intentos fallidos aparece como bloqueada', async () => {
+      const created = await post('admin', '/students', {
+        fullName: 'QA F3 Alumno Siete',
+        sectionId: sec3A,
+        ...studentExtras(),
+      }).expect(201);
+      const code = created.body.credentials.code;
+      // Se cuentan los fallos directamente: el limite de 5 intentos por minuto por IP del login
+      // impediria repetir 5 peticiones HTTP en esta misma prueba.
+      const attempts = app.get(LoginAttemptsService);
+      for (let i = 0; i < 5; i++) await attempts.registerFailure(code);
+      const list = await get('admin', `/users?q=${code}`).expect(200);
+      expect(list.body.items[0]).toMatchObject({ locked: true });
+      // Restablecer la contraseña levanta el bloqueo.
+      await post('admin', `/users/${created.body.user.id}/reset-password`).expect(200);
+      const after = await get('admin', `/users?q=${code}`).expect(200);
+      expect(after.body.items[0]).toMatchObject({ locked: false });
+    });
+  });
+
+  // ---------------------------------------------------------------------------
   describe('Privacidad de la bitacora y de los eventos (RNF-09, RNF-11, D-024)', () => {
     it('RNF-09: ningun registro del modulo users contiene correos ni nombres', () => {
       const records = sink.records.filter((r) => r.module === 'users');
@@ -1187,11 +1548,14 @@ describe.skipIf(!process.env.DATABASE_URL)('API usuarios y matriculas F3 (e2e, M
     });
 
     it('RNF-09: las respuestas de error no revelan el correo enviado', async () => {
+      const dni = dniPair();
       const res = await post('admin', '/teachers', {
         institutionalEmail: qa('profe1'),
         fullName: 'QA F3 Profe Uno',
+        ...dni,
       }).expect(409);
       expect(JSON.stringify(res.body)).not.toContain('profe1');
+      expect(JSON.stringify(res.body)).not.toContain(dni.dni);
     });
   });
 

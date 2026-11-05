@@ -1,6 +1,4 @@
 import Image from 'next/image';
-import { ChevronDown } from 'lucide-react';
-import { GoogleSignIn } from '@/components/auth/google-sign-in';
 import { LoginForm } from '@/components/auth/login-form';
 
 export const metadata = { title: 'Iniciar sesión' };
@@ -47,22 +45,9 @@ export default function LoginPage() {
           />
           <h1 className="text-center text-2xl font-semibold text-ink">Iniciar sesión</h1>
           <p className="mt-1 mb-6 text-center text-sm text-ink-2">
-            Ingresa con tu cuenta institucional.
+            Ingresa con tu código de usuario y tu contraseña.
           </p>
-          <GoogleSignIn />
-
-          <details className="group mt-6 border-t border-line pt-4">
-            <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between rounded-lg px-1 text-sm font-medium text-brand outline-none focus-visible:ring-3 focus-visible:ring-ring/50 [&::-webkit-details-marker]:hidden">
-              Acceso del administrador
-              <ChevronDown
-                className="size-4 transition-transform group-open:rotate-180 motion-reduce:transition-none"
-                aria-hidden="true"
-              />
-            </summary>
-            <div className="pt-4">
-              <LoginForm />
-            </div>
-          </details>
+          <LoginForm />
           <p className="mt-6 border-t border-line pt-4 text-xs text-ink-3">
             Si no puedes ingresar, comunícate con el administrador del colegio.
           </p>

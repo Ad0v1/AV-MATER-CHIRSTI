@@ -11,6 +11,7 @@ export const ROUTES = {
   // RF-54 (Dev 5): estudiante, docente y apoderado. Autorizado por el usuario (30/10/2026).
   calendario: '/calendario',
   apoderado: '/apoderado',
+  miPerfil: '/mi-perfil',
 } as const;
 
 export const COURSE_ROUTES = {
