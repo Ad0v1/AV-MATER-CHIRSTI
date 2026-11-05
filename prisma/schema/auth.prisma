@@ -19,19 +19,27 @@ enum UserStatus {
 // Dev 1 usa este modelo para autenticar y bloquear inactivos (RF-03, RF-08).
 model User {
   id                 String     @id @default(uuid(7)) @db.Char(36)
-  institutionalEmail String     @unique
+  // Correo asignado por el colegio. Ya no es la identidad (el usuario entra con `code`, D-058): los
+  // usuarios nuevos nacen sin el y registran su `contactEmail` en el primer ingreso. Se retira en la
+  // fase F.
+  institutionalEmail String?    @unique
   // Codigo de usuario de 10 digitos: es el usuario del login (RF-68, D-060). Nulo solo hasta que el
   // alta de usuarios (fase C) lo genere; despues pasa a ser obligatorio.
   code               String?    @unique @db.Char(10)
   // DNI cifrado (AES-256-GCM) y su hash con clave solo para impedir repetidos (RF-69, D-059).
   dniEncrypted       String?    @db.VarChar(255)
   dniHash            String?    @unique @db.Char(64)
+  // Marca que pone el administrador cuando comparo el DNI con el documento fisico (RF-69).
+  dniVerifiedAt      DateTime?
   // Correo de contacto verificado con un codigo (RF-80, D-062). No es unico: dos hermanos pueden
   // compartir el correo de su apoderado. Es el que usa la recuperacion de contrasena (RF-82).
   contactEmail            String?   @db.VarChar(191)
   // Verdadero si el correo es el del apoderado porque el alumno no tiene uno propio (RF-81).
   contactEmailIsGuardian  Boolean   @default(false)
   emailVerifiedAt         DateTime?
+  // Datos de contacto que escribe el propio usuario (RF-83); solo el administrador los ve.
+  phone              String?    @db.VarChar(20)
+  address            String?    @db.VarChar(255)
   fullName           String
   role               UserRole
   status             UserStatus @default(ACTIVE)

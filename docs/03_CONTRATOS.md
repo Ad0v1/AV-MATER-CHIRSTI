@@ -779,3 +779,21 @@ Efecto, todo o nada (si cualquier error, no se escribe nada):
 - **Política de contraseñas:** 8 a 128 caracteres; no puede ser común, repetir un carácter ni contener el código de usuario o el DNI; el cambio debe ser distinto de la actual.
 - **Bitácora:** `auth.login`, `auth.login_failed`, `auth.account_locked`, `auth.login_blocked`, `auth.password_changed`, `auth.password_change_failed`, `auth.password_recovered`, `auth.recovery_requested`, `auth.email_code_sent`, `auth.email_verified`, `auth.email_verified_manually` y `auth.policy_accepted`. Nunca llevan contraseñas, códigos, correos ni DNI; el motivo de la verificación manual es texto libre y no debe contener datos personales.
 - **Variables de entorno nuevas:** `PII_ENCRYPTION_KEY`, `LOGIN_MAX_FAILED_ATTEMPTS`, `LOGIN_LOCK_SECONDS`, `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS` y `SMTP_FROM`. En producción son obligatorias la clave y las credenciales SMTP.
+
+### Cambios de la Fase C en la API de usuarios (RF-18 a RF-20, RF-69, RF-74, RF-83, RF-84, RF-86, RF-87)
+
+> **Estado: PROPUESTA** (05/11/2026). Reemplaza lo anterior de "API de usuarios" donde se contradiga. Decisiones D-058 a D-063.
+
+- **Altas sin correo.** `POST /students`, `/teachers` y `/guardians` ya no piden el correo del colegio (`institutionalEmail` es opcional). Piden `dni` y `dniConfirm` (8 dígitos, escritos dos veces) y aceptan `dniVerified` (marca de "comparado con el documento"). El usuario nuevo recibe su código, su DNI cifrado y una contraseña inicial aleatoria que debe cambiar.
+- **`POST /students`:** además `guardians` (1 a 2): cada uno `{ dni, dniConfirm, fullName?, dniVerified? }`. El primero es el principal. Si ya existe un apoderado con ese DNI (por ejemplo, el de un hermano) se reutiliza y no hace falta su nombre; si es nuevo, `fullName` es obligatorio (422). Responde `{ user, credentials, enrollment, guardians: [{ user, link, created, credentials? }] }`. Los DNI del alumno y de sus apoderados deben ser distintos.
+- **`POST /teachers`:** responde `{ user, credentials }`. **`POST /guardians`:** responde `{ user, credentials, links }`; si el DNI ya existe responde 409 (se vincula con `POST /guardians/:id/students`).
+- **`credentials`** es `{ code, initialPassword }` y viaja solo en esa respuesta: no se guarda, no se registra y `GET /users/:id` no la devuelve.
+- **RN-17:** un alumno admite como máximo 2 apoderados vigentes (409) y no se puede revocar al último de un alumno que sigue en el colegio (409). Al revocar al principal, el otro pasa a serlo.
+- **`POST /guardian-links/:id/make-primary`** (RF-86): cambia el apoderado principal. Solo uno por alumno; los vínculos tienen `isPrimary`.
+- **`POST /users/:id/reset-password`** (RF-74): contraseña temporal nueva; cierra las sesiones, levanta el bloqueo y obliga a cambiarla. Si el usuario es anterior al login por código, le asigna código y credencial. Responde `{ user, credentials }`.
+- **`POST /users/:id/correct-dni`** (RF-84): `{ dni, dniConfirm, reason }` (motivo de 10 a 500 caracteres). Genera un código nuevo y una contraseña temporal, cierra las sesiones y deja el código anterior y el motivo en la bitácora. 409 si el DNI es igual al actual o ya es de otra persona.
+- **`POST /users/:id/verify-dni`** (RF-69): marca el DNI como verificado contra el documento.
+- **Vistas.** `UserView` suma `code`, `contactEmail`, `emailVerified`, `phone`, `address` y `dniVerified` (el DNI nunca se devuelve). `GET /users/:id` suma `credentialStatus` y `locked`. `GET /users` devuelve por usuario `code`, `credentialStatus` (`NONE`, `PENDING` o `READY`), `emailVerified` y `locked`, y acepta los filtros `credentials` y `emailVerified` (RF-87). La búsqueda `q` también encuentra por código y correo de contacto.
+- **Bajas.** Cambiar a INACTIVE o WITHDRAWN cierra las sesiones del usuario (RF-78).
+- **Bitácora nueva:** `users.user.reset_password`, `users.user.correct_dni`, `users.user.verify_dni` y `users.guardian_link.make_primary`. Nunca llevan DNI, contraseñas ni correos.
+- **Autenticación:** `GET` y `PATCH /auth/profile` (teléfono de 9 dígitos y dirección; el teléfono del apoderado es obligatorio y bloquea el uso del sistema hasta registrarlo, 403 `CONTACT_DATA_REQUIRED`).

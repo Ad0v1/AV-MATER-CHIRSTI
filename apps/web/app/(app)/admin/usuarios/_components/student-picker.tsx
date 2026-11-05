@@ -220,7 +220,7 @@ export function StudentPicker({
                   <div className="flex min-w-0 flex-col">
                     <span className="break-words">{c.fullName}</span>
                     <span className="text-sm break-all text-muted-foreground">
-                      {c.institutionalEmail}
+                      {c.code ? `Código ${c.code}` : 'Sin código'}
                       {c.sectionLabel ? ` · ${c.sectionLabel}` : ' · Sin matrícula vigente'}
                     </span>
                   </div>

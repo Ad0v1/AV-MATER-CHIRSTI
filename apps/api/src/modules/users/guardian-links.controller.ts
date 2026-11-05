@@ -14,6 +14,16 @@ import { idSchema, revokeLinkSchema, type RevokeLinkDto } from './users.dto.js';
 export class GuardianLinksController {
   constructor(private readonly links: GuardianLinksService) {}
 
+  // RF-86: cambia cual de los apoderados vigentes es el principal.
+  @Post(':id/make-primary')
+  @HttpCode(200)
+  makePrimary(
+    @Param('id', new ZodValidationPipe(idSchema)) id: string,
+    @Req() req: RequestWithUser,
+  ): Promise<GuardianLinkView> {
+    return this.links.makePrimary(id, actorOf(req));
+  }
+
   @Post(':id/revoke')
   @HttpCode(200)
   revoke(

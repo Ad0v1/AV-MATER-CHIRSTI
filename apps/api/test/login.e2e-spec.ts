@@ -33,6 +33,8 @@ async function addUser(
     dniEncrypted: t.app.get(DniService).encrypt(DNI),
     contactEmail: 'usuario@correo.pe',
     contactEmailIsGuardian: false,
+    phone: '987654321',
+    address: null,
     emailVerifiedAt: overrides.emailVerified === false ? null : new Date(),
     fullName: 'Usuario de prueba',
     role: overrides.role ?? 'ADMIN',
@@ -71,6 +73,7 @@ describe('Login por codigo de usuario (e2e)', () => {
       mustAcceptPolicy: true,
       mustChangePassword: false,
       mustVerifyEmail: false,
+      mustCompleteContact: false,
     });
     const cookie = String(res.headers['set-cookie']);
     expect(cookie).toContain('aula_sid=');
@@ -97,6 +100,7 @@ describe('Login por codigo de usuario (e2e)', () => {
         mustAcceptPolicy: true,
         mustChangePassword: false,
         mustVerifyEmail: false,
+        mustCompleteContact: false,
       });
   });
 

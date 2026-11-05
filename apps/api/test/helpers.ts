@@ -46,6 +46,8 @@ export type FakeUser = {
   contactEmail: string | null;
   contactEmailIsGuardian: boolean;
   emailVerifiedAt: Date | null;
+  phone: string | null;
+  address: string | null;
   fullName: string;
   role: 'STUDENT' | 'TEACHER' | 'ADMIN' | 'GUARDIAN';
   status: 'ACTIVE' | 'INACTIVE' | 'WITHDRAWN';
@@ -84,7 +86,12 @@ export class FakePrisma {
       data,
     }: {
       where: { id: string };
-      data: Partial<Pick<FakeUser, 'contactEmail' | 'contactEmailIsGuardian' | 'emailVerifiedAt'>>;
+      data: Partial<
+        Pick<
+          FakeUser,
+          'contactEmail' | 'contactEmailIsGuardian' | 'emailVerifiedAt' | 'phone' | 'address'
+        >
+      >;
     }) => {
       const user = this.users.find((u) => u.id === where.id)!;
       Object.assign(user, data);

@@ -36,6 +36,8 @@
 
 ## Fase C — Usuarios y apoderados (Dev 2)
 
+> **Estado (05/11/2026): implementada** (API, pantallas y pruebas), con dos ajustes: `institutionalEmail` pasó a opcional en esta fase (la columna se retira en la Fase F) y la marca de DNI verificado y los datos de contacto tienen su propia migración (`users_codigo_apoderados` y `users_dni_verificado`). La importación masiva (Fase D) sigue creando usuarios con correo y sin credenciales hasta que se adapte.
+
 **RF:** 18, 19, 20, 69 (pantalla), 74, 83, 84, 86, 87.
 
 - Altas de alumno, docente, apoderado y administrador con DNI (doble digitación y marca "verificado").

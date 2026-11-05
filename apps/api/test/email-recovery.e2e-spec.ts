@@ -32,6 +32,8 @@ async function addUser(t: TestApp, o: Overrides = {}) {
     dniEncrypted: t.app.get(DniService).encrypt('45678901'),
     contactEmail: email,
     contactEmailIsGuardian: false,
+    phone: '987654321',
+    address: null,
     emailVerifiedAt: verified && email ? new Date() : null,
     fullName: 'Usuario de prueba',
     role: o.role ?? 'STUDENT',

@@ -7,6 +7,7 @@ import {
   HardDrive,
   Notebook,
   School,
+  UserRound,
   ScrollText,
   Settings,
   Users,
@@ -31,7 +32,12 @@ const courseItems = (withRegistro: boolean): NavItem[] => [
 ];
 
 // El menu es solo ayuda de navegacion: el backend valida rol y pertenencia (RNF-02).
-export const NAV_BY_ROLE: Record<Role, NavGroup[]> = {
+const ACCOUNT_GROUP: NavGroup = {
+  label: 'Cuenta',
+  items: [{ label: 'Mi perfil', href: ROUTES.miPerfil, icon: UserRound }],
+};
+
+const BASE_NAV: Record<Role, NavGroup[]> = {
   ADMIN: [
     {
       label: 'Administración',
@@ -59,4 +65,12 @@ export const NAV_BY_ROLE: Record<Role, NavGroup[]> = {
       items: [{ label: 'Panel del apoderado', href: ROUTES.apoderado, icon: Users }],
     },
   ],
+};
+
+// Todos los perfiles tienen "Mi perfil" (RF-83).
+export const NAV_BY_ROLE: Record<Role, NavGroup[]> = {
+  ADMIN: [...BASE_NAV.ADMIN, ACCOUNT_GROUP],
+  TEACHER: [...BASE_NAV.TEACHER, ACCOUNT_GROUP],
+  STUDENT: [...BASE_NAV.STUDENT, ACCOUNT_GROUP],
+  GUARDIAN: [...BASE_NAV.GUARDIAN, ACCOUNT_GROUP],
 };

@@ -21,15 +21,20 @@ import { focusAfterSuccess } from '../../_shared/lib/focus';
 import { sectionLabel } from '../../_shared/lib/format';
 import {
   changeStatusAction,
+  correctDniAction,
   enrollAction,
   linkStudentAction,
+  makePrimaryAction,
+  resetPasswordAction,
   revokeLinkAction,
   transferAction,
   updateUserAction,
+  verifyDniAction,
 } from '../_lib/actions';
+import { CredentialsCard } from './credentials-card';
 import type { SectionOption, StudentChoice, UserRole, UserStatus } from '../_lib/types';
 import {
-  EMAIL_MAX,
+  DNI_LENGTH,
   FULL_NAME_MAX,
   STATUS_LABELS,
   USER_REASON_LIMITS,
@@ -45,21 +50,13 @@ const sectionOptions = (sections: SectionOption[], placeholder: string) => [
 
 // --- Datos (RF-22) ------------------------------------------------------------
 
-export function EditUserForm({
-  userId,
-  fullName,
-  institutionalEmail,
-}: {
-  userId: string;
-  fullName: string;
-  institutionalEmail: string;
-}) {
+export function EditUserForm({ userId, fullName }: { userId: string; fullName: string }) {
   const [state, formAction] = useActionState(updateUserAction.bind(null, userId), IDLE);
   const { formRef, alertRef } = useFormRefs(state);
   return (
     <details className="rounded-xl p-3 ring-1 ring-foreground/10">
       <summary className="min-h-11 cursor-pointer content-center text-sm font-medium">
-        Editar nombre o correo
+        Editar el nombre
       </summary>
       <form ref={formRef} action={formAction} noValidate className="mt-3 flex flex-col gap-3">
         <TextField
@@ -71,19 +68,9 @@ export function EditUserForm({
           defaultValue={state.values?.fullName ?? fullName}
           error={state.fieldErrors?.fullName}
         />
-        <TextField
-          name="institutionalEmail"
-          label="Correo institucional"
-          type="email"
-          inputMode="email"
-          autoComplete="off"
-          spellCheck={false}
-          required
-          maxLength={EMAIL_MAX}
-          defaultValue={state.values?.institutionalEmail ?? institutionalEmail}
-          error={state.fieldErrors?.institutionalEmail}
-          hint="El rol no se puede cambiar."
-        />
+        <p className="text-sm text-muted-foreground">
+          El rol no se puede cambiar. El correo lo registra la propia persona en su primer ingreso.
+        </p>
         <FormMessage state={state} alertRef={alertRef} />
         <div>
           <SubmitButton>Guardar datos</SubmitButton>
@@ -297,4 +284,121 @@ function useSuccess(state: { status: string; message?: string }, focusId: string
     if (state.message) announce(state.message);
     requestAnimationFrame(() => focusAfterSuccess(focusId));
   }, [state, announce, focusId]);
+}
+
+// --- Credenciales (RF-69, RF-74, RF-84) ----------------------------------------
+
+/** Contraseña temporal nueva (RF-74): cierra sus sesiones y se muestra una sola vez. */
+export function ResetPasswordForm({ userId }: { userId: string }) {
+  const [state, formAction] = useActionState(resetPasswordAction.bind(null, userId), IDLE);
+  const { formRef, alertRef } = useFormRefs(state, { announceOk: false });
+  if (state.status === 'ok' && state.issued) {
+    return <CredentialsCard message={state.message} issued={state.issued} />;
+  }
+  return (
+    <details className="rounded-xl p-3 ring-1 ring-foreground/10">
+      <summary className="min-h-11 cursor-pointer content-center text-sm font-medium">
+        Restablecer la contraseña
+      </summary>
+      <form ref={formRef} action={formAction} noValidate className="mt-3 flex flex-col gap-3">
+        <p className="text-sm text-muted-foreground">
+          Se genera una contraseña temporal nueva, se cierran todas sus sesiones, se levanta el
+          bloqueo si lo tenía y deberá cambiarla en su siguiente ingreso. El código de usuario no
+          cambia.
+        </p>
+        <FormMessage state={state} alertRef={alertRef} />
+        <div>
+          <SubmitButton pendingText="Generando…" variant="outline">
+            Generar contraseña temporal
+          </SubmitButton>
+        </div>
+      </form>
+    </details>
+  );
+}
+
+/** Corrige el DNI (RF-84): código y contraseña nuevos, y el código anterior queda en la bitácora. */
+export function CorrectDniForm({ userId }: { userId: string }) {
+  const [state, formAction] = useActionState(correctDniAction.bind(null, userId), IDLE);
+  const { formRef, alertRef } = useFormRefs(state, { announceOk: false });
+  if (state.status === 'ok' && state.issued) {
+    return <CredentialsCard message={state.message} issued={state.issued} />;
+  }
+  return (
+    <details className="rounded-xl p-3 ring-1 ring-foreground/10">
+      <summary className="min-h-11 cursor-pointer content-center text-sm font-medium">
+        Corregir el DNI
+      </summary>
+      <form ref={formRef} action={formAction} noValidate className="mt-3 flex flex-col gap-3">
+        <p className="rounded-md border border-amber-300 bg-amber-50 px-2.5 py-2 text-sm text-amber-950 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-100">
+          Atención: se genera un <strong>código de usuario nuevo</strong> y una contraseña temporal.
+          El código anterior deja de servir y se cierran sus sesiones.
+        </p>
+        <TextField
+          name="dni"
+          label="DNI correcto"
+          inputMode="numeric"
+          autoComplete="off"
+          required
+          maxLength={DNI_LENGTH}
+          defaultValue={state.values?.dni}
+          error={state.fieldErrors?.dni}
+        />
+        <TextField
+          name="dniConfirm"
+          label="Escribe el DNI otra vez"
+          inputMode="numeric"
+          autoComplete="off"
+          required
+          maxLength={DNI_LENGTH}
+          defaultValue={state.values?.dniConfirm}
+          error={state.fieldErrors?.dniConfirm}
+        />
+        <ReasonField
+          label="Motivo de la corrección"
+          limits={USER_REASON_LIMITS.revoke}
+          error={state.fieldErrors?.reason}
+          defaultValue={state.values?.reason}
+        />
+        <FormMessage state={state} alertRef={alertRef} />
+        <div>
+          <SubmitButton pendingText="Corrigiendo…" variant="outline">
+            Corregir el DNI
+          </SubmitButton>
+        </div>
+      </form>
+    </details>
+  );
+}
+
+/** Marca que el DNI se comparó con el documento físico (RF-69). */
+export function VerifyDniForm({ userId }: { userId: string }) {
+  const [state, formAction] = useActionState(verifyDniAction.bind(null, userId), IDLE);
+  const { formRef, alertRef } = useFormRefs(state);
+  return (
+    <form ref={formRef} action={formAction} className="flex flex-col gap-2">
+      <FormMessage state={state} alertRef={alertRef} />
+      <div>
+        <SubmitButton pendingText="Marcando…" variant="outline">
+          Marcar el DNI como verificado
+        </SubmitButton>
+      </div>
+    </form>
+  );
+}
+
+/** Cambia cuál de los apoderados vigentes recibe los avisos (RF-86). */
+export function MakePrimaryForm({ linkId, name }: { linkId: string; name: string }) {
+  const [state, formAction] = useActionState(makePrimaryAction.bind(null, linkId), IDLE);
+  const { formRef, alertRef } = useFormRefs(state);
+  return (
+    <form ref={formRef} action={formAction} className="flex flex-col gap-2">
+      <FormMessage state={state} alertRef={alertRef} />
+      <div>
+        <SubmitButton pendingText="Cambiando…" variant="outline">
+          Hacer principal<span className="sr-only">: {name}</span>
+        </SubmitButton>
+      </div>
+    </form>
+  );
 }

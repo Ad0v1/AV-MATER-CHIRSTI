@@ -7,9 +7,18 @@ export type EnrollmentEndReason = 'TRANSFER' | 'WITHDRAWAL' | 'YEAR_END' | 'CORR
 
 export type SectionRef = { id: string; gradeLevel: number; code: string };
 
+export type CredentialStatus = 'NONE' | 'PENDING' | 'READY';
+
 export type UserView = {
   id: string;
-  institutionalEmail: string;
+  /** Código de usuario de 10 dígitos (RF-68). Nulo en usuarios anteriores al login por código. */
+  code: string | null;
+  institutionalEmail: string | null;
+  contactEmail: string | null;
+  emailVerified: boolean;
+  phone: string | null;
+  address: string | null;
+  dniVerified: boolean;
   fullName: string;
   role: UserRole;
   status: UserStatus;
@@ -17,9 +26,34 @@ export type UserView = {
   updatedAt: string;
 };
 
-export type UserListItem = Omit<UserView, 'createdAt' | 'updatedAt'> & {
+export type UserListItem = Omit<UserView, 'createdAt' | 'updatedAt' | 'phone' | 'address'> & {
   currentSection: SectionRef | null;
+  credentialStatus: CredentialStatus;
+  locked: boolean;
 };
+
+/** Credenciales que entrega la API una sola vez (RF-70). */
+export type IssuedCredentials = { code: string; initialPassword: string };
+
+export type CreatedStudent = {
+  user: UserView;
+  credentials: IssuedCredentials;
+  enrollment: EnrollmentView;
+  guardians: Array<{
+    user: UserView;
+    link: GuardianLinkView;
+    created: boolean;
+    credentials?: IssuedCredentials;
+  }>;
+};
+
+export type CreatedTeacher = { user: UserView; credentials: IssuedCredentials };
+export type CreatedGuardian = {
+  user: UserView;
+  credentials: IssuedCredentials;
+  links: GuardianLinkView[];
+};
+export type ReissuedCredentials = { user: UserView; credentials: IssuedCredentials };
 
 export type UserListPage = {
   items: UserListItem[];
@@ -45,12 +79,16 @@ export type GuardianLinkView = {
   guardian: PersonRef;
   student: PersonRef;
   isActive: boolean;
+  /** Apoderado principal: recibe los avisos (RF-86). */
+  isPrimary: boolean;
   createdAt: string;
   revokedAt: string | null;
 };
 
 /** `GET /users/:id`: la vista más lo propio del rol. */
 export type UserDetail = UserView & {
+  credentialStatus: CredentialStatus;
+  locked: boolean;
   currentEnrollment?: EnrollmentView | null;
   guardians?: GuardianLinkView[];
   students?: GuardianLinkView[];
@@ -73,7 +111,7 @@ export type ActiveYearSections = { yearId: string; year: number; sections: Secti
 export type StudentChoice = {
   id: string;
   fullName: string;
-  institutionalEmail: string;
+  code: string | null;
   status: UserStatus;
   sectionLabel: string | null;
 };

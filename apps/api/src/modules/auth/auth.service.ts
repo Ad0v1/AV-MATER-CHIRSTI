@@ -10,11 +10,12 @@ import type { AuthenticatedUser, UserRole } from '../../common/auth/roles.js';
 import { PrismaService } from '../../common/prisma/prisma.service.js';
 import { SessionStore } from '../../common/session/session.store.js';
 import { ENV, type Env } from '../../config/config.module.js';
-import type { AcceptPolicyDto, ChangePasswordDto, LoginDto } from './auth.dto.js';
+import type { AcceptPolicyDto, ChangePasswordDto, LoginDto, UpdateProfileDto } from './auth.dto.js';
 import { DniService } from './dni.service.js';
 import { LoginAttemptsService } from './login-attempts.service.js';
 import { checkPasswordPolicy } from './password-policy.js';
 import { PasswordService } from './password.service.js';
+import { pendingFlags } from './setup-flags.js';
 import { TotpService } from './totp.service.js';
 import { isValidUserCode } from './user-code.js';
 
@@ -26,6 +27,17 @@ export type LoginResult = {
   mustAcceptPolicy: boolean;
   mustChangePassword: boolean;
   mustVerifyEmail: boolean;
+  mustCompleteContact: boolean;
+};
+
+export type ProfileView = {
+  code: string | null;
+  fullName: string;
+  role: UserRole;
+  contactEmail: string | null;
+  emailVerified: boolean;
+  phone: string | null;
+  address: string | null;
 };
 
 @Injectable()
@@ -100,18 +112,69 @@ export class AuthService {
     await this.attempts.clear(code);
     await this.audit.record({ actorId: found.id, action: 'auth.login', module: 'auth', ip });
     const mustChangePassword = credential.mustChangePassword;
-    const mustVerifyEmail = !found.emailVerifiedAt;
+    const flags = pendingFlags(found);
     return {
       user: {
         id: found.id,
         role: found.role,
         ...(mustChangePassword ? { mustChangePassword: true as const } : {}),
-        ...(mustVerifyEmail ? { mustVerifyEmail: true as const } : {}),
+        ...flags,
       },
       mustAcceptPolicy: await this.mustAcceptPolicy(found.id),
       mustChangePassword,
-      mustVerifyEmail,
+      mustVerifyEmail: flags.mustVerifyEmail === true,
+      mustCompleteContact: flags.mustCompleteContact === true,
     };
+  }
+
+  // Pasos pendientes del usuario segun la base de datos. El controlador los usa al abrir una
+  // sesion nueva despues de cambiar la contrasena, verificar el correo o completar el perfil.
+  async pendingFlagsOf(userId: string): Promise<ReturnType<typeof pendingFlags>> {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new UnauthorizedException('Debes iniciar sesion');
+    return pendingFlags(user);
+  }
+
+  // RF-83: el propio usuario ve y corrige su telefono y direccion. Solo el administrador los ve.
+  async getProfile(userId: string): Promise<ProfileView> {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new UnauthorizedException('Debes iniciar sesion');
+    return {
+      code: user.code,
+      fullName: user.fullName,
+      role: user.role,
+      contactEmail: user.contactEmail,
+      emailVerified: user.emailVerifiedAt !== null,
+      phone: user.phone,
+      address: user.address,
+    };
+  }
+
+  async updateProfile(userId: string, dto: UpdateProfileDto, ip?: string): Promise<void> {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new UnauthorizedException('Debes iniciar sesion');
+    // El telefono del apoderado es obligatorio (RF-83): no se puede borrar.
+    if (user.role === 'GUARDIAN' && dto.phone === null) {
+      throw new BadRequestException({
+        message: ['phone: el telefono del apoderado es obligatorio'],
+      });
+    }
+    const data: { phone?: string | null; address?: string | null } = {};
+    if (dto.phone !== undefined && dto.phone !== user.phone) data.phone = dto.phone;
+    if (dto.address !== undefined && dto.address !== user.address) data.address = dto.address;
+    const changedFields = Object.keys(data);
+    if (changedFields.length === 0) return;
+    await this.prisma.user.update({ where: { id: userId }, data });
+    // Solo los nombres de los campos: nunca el telefono ni la direccion.
+    await this.audit.record({
+      actorId: userId,
+      action: 'auth.profile_updated',
+      module: 'auth',
+      entityType: 'User',
+      entityId: userId,
+      ip,
+      afterState: { changedFields },
+    });
   }
 
   // Cambio de contrasena por el propio usuario (RF-72, RF-73). El cierre de las demas sesiones y
@@ -206,7 +269,7 @@ export class AuthService {
     // La etiqueta de la app autenticadora es el codigo de usuario: el correo ya no es la identidad.
     return {
       secret,
-      otpauthUrl: this.totp.otpauthUrl(user.code ?? user.institutionalEmail, secret),
+      otpauthUrl: this.totp.otpauthUrl(user.code ?? user.id, secret),
     };
   }
 

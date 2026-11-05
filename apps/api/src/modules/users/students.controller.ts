@@ -13,9 +13,13 @@ import { Roles } from '../../common/auth/roles.decorator.js';
 import { actorOf, type RequestWithUser } from '../academic/request-user.js';
 import { ZodValidationPipe } from '../academic/zod-validation.pipe.js';
 import { ActiveActorGuard } from './active-actor.guard.js';
-import { EnrollmentsService, type TransferResult } from './enrollments.service.js';
+import {
+  EnrollmentsService,
+  type CreatedStudent,
+  type TransferResult,
+} from './enrollments.service.js';
 import { GuardianLinksService, type LinkList } from './guardian-links.service.js';
-import type { EnrollmentView, UserView } from './user-views.js';
+import type { EnrollmentView } from './user-views.js';
 import {
   createStudentSchema,
   enrollSchema,
@@ -44,7 +48,7 @@ export class StudentsController {
   create(
     @Body(new ZodValidationPipe(createStudentSchema)) dto: CreateStudentDto,
     @Req() req: RequestWithUser,
-  ): Promise<{ user: UserView; enrollment: EnrollmentView }> {
+  ): Promise<CreatedStudent> {
     return this.enrollments.createStudent(dto, actorOf(req));
   }
 

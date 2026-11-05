@@ -221,7 +221,9 @@ export class UserImportService {
       where: { institutionalEmail: { in: emails } },
       select: { institutionalEmail: true },
     });
-    return new Set(rows.map((r) => r.institutionalEmail.toLowerCase()));
+    return new Set(
+      rows.flatMap((r) => (r.institutionalEmail ? [r.institutionalEmail.toLowerCase()] : [])),
+    );
   }
 
   private async readSections(db: Db, academicYearId: string): Promise<Map<string, SectionInfo>> {
@@ -253,10 +255,16 @@ export class UserImportService {
       select: { id: true, institutionalEmail: true, role: true, status: true },
     });
     return new Map(
-      rows.map((u) => [
-        u.institutionalEmail.toLowerCase(),
-        { id: u.id, role: u.role, status: u.status },
-      ]),
+      rows.flatMap((u) =>
+        u.institutionalEmail
+          ? [
+              [
+                u.institutionalEmail.toLowerCase(),
+                { id: u.id, role: u.role, status: u.status },
+              ] as const,
+            ]
+          : [],
+      ),
     );
   }
 }

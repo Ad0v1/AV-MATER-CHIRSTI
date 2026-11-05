@@ -134,6 +134,9 @@ model GuardianStudent {
   // TRUE = vigente; NULL = revocado; nunca FALSE (CHECK). UNIQUE(guardianId, studentId, isActive):
   // un solo vínculo vigente por par; los revocados se conservan (RN-13/14, D-032).
   isActive   Boolean?  @default(true)
+  // TRUE = apoderado principal (el que recibe los avisos, RF-86); NULL = no principal o revocado.
+  // UNIQUE(studentId, isActive, isPrimary): como mucho un principal vigente por alumno.
+  isPrimary  Boolean?
   createdAt  DateTime  @default(now())
   revokedAt  DateTime?
 
@@ -141,5 +144,6 @@ model GuardianStudent {
   student  User @relation("GuardianStudentStudent", fields: [studentId], references: [id], onDelete: Restrict, onUpdate: Restrict)
 
   @@unique([guardianId, studentId, isActive])
+  @@unique([studentId, isActive, isPrimary])
   @@index([studentId])
 }

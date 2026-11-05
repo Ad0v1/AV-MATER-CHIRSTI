@@ -8,15 +8,23 @@ import {
 import { AuditService } from '../../common/audit/audit.service.js';
 import { PrismaService } from '../../common/prisma/prisma.service.js';
 import type { Prisma } from '../../generated/prisma/client.js';
+import type { UserStatus } from '../../generated/prisma/enums.js';
 import { AcademicEventPublisher } from '../academic/academic-events.js';
 import { MSG, mapPrismaError } from '../academic/academic.errors.js';
 import type { Actor } from '../academic/request-user.js';
 import { INSTITUTION_EMAIL_DOMAIN } from './institution-domain.js';
 import {
+  CredentialIssuerService,
+  type IssuedCredentials,
+} from '../auth/credential-issuer.service.js';
+import {
   enrollmentInclude,
+  linkInclude,
   toEnrollmentView,
+  toGuardianLinkView,
   toUserView,
   type EnrollmentView,
+  type GuardianLinkView,
   type UserView,
 } from './user-views.js';
 import { recordUsers } from './users-audit.js';
@@ -32,6 +40,30 @@ import type {
 import { USERS_MSG } from './users.errors.js';
 
 export type TransferResult = { closed: EnrollmentView; current: EnrollmentView };
+
+// Respuesta del alta (RF-18). Las contrasenas iniciales solo viajan aqui, una vez (RF-70).
+export type CreatedStudent = {
+  user: UserView;
+  credentials: IssuedCredentials;
+  enrollment: EnrollmentView;
+  guardians: Array<{
+    user: UserView;
+    link: GuardianLinkView;
+    // Verdadero si el apoderado se creo ahora; falso si ya existia y solo se vinculo (RF-86).
+    created: boolean;
+    credentials?: IssuedCredentials;
+  }>;
+};
+
+type CreatedGuardian = {
+  user: Awaited<ReturnType<PrismaService['user']['findUniqueOrThrow']>>;
+  link: Awaited<ReturnType<PrismaService['guardianStudent']['findUniqueOrThrow']>> & {
+    guardian: { id: string; fullName: string; status: UserStatus };
+    student: { id: string; fullName: string; status: UserStatus };
+  };
+  created: boolean;
+  credentials?: IssuedCredentials;
+};
 
 /** Estudiante bloqueado FOR UPDATE: 404 si no existe, 422 si no es STUDENT o está WITHDRAWN. */
 async function lockEnrollableStudent(tx: Prisma.TransactionClient, id: string): Promise<void> {
@@ -50,52 +82,121 @@ export class EnrollmentsService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly events: AcademicEventPublisher,
+    private readonly issuer: CredentialIssuerService,
     @Inject(INSTITUTION_EMAIL_DOMAIN) private readonly domain: string | null,
   ) {}
 
-  // RF-18: usuario STUDENT y su matrícula vigente en una sola transacción (bloquea solo el año).
-  async createStudent(
-    dto: CreateStudentDto,
-    actor: Actor,
-  ): Promise<{ user: UserView; enrollment: EnrollmentView }> {
-    assertEmailDomain(dto.institutionalEmail, 'STUDENT', this.domain);
-    await assertEmailFree(this.prisma, dto.institutionalEmail);
+  // RF-18: alumno con su codigo, su contrasena inicial, su matricula vigente y de 1 a 2 apoderados
+  // (RF-86), todo en una sola transaccion. Los apoderados se buscan por DNI: si ya existe uno
+  // (el de un hermano), se reutiliza; si no, se crea con sus propias credenciales.
+  async createStudent(dto: CreateStudentDto, actor: Actor): Promise<CreatedStudent> {
+    if (dto.institutionalEmail) {
+      assertEmailDomain(dto.institutionalEmail, 'STUDENT', this.domain);
+      await assertEmailFree(this.prisma, dto.institutionalEmail);
+    }
     const now = new Date();
 
-    const { user, enrollment } = await this.prisma
+    const result = await this.prisma
       .$transaction(async (tx) => {
         const section = await resolveTargetSection(tx, dto.sectionId);
-        const created = await tx.user.create({
-          data: {
-            institutionalEmail: dto.institutionalEmail,
-            fullName: dto.fullName,
-            role: 'STUDENT',
-          },
+        const { user, credentials } = await this.issuer.createUser(tx, {
+          fullName: dto.fullName,
+          role: 'STUDENT',
+          dni: dto.dni,
+          dniVerified: dto.dniVerified,
+          institutionalEmail: dto.institutionalEmail,
         });
-        const enrolled = await tx.enrollment.create({
+        const enrollment = await tx.enrollment.create({
           data: {
-            studentId: created.id,
+            studentId: user.id,
             sectionId: section.id,
             academicYearId: section.academicYearId,
             effectiveFrom: now,
           },
           include: enrollmentInclude,
         });
-        return { user: created, enrollment: enrolled };
-      })
-      .catch((e: unknown) => mapPrismaError(e, USERS_MSG.emailTaken));
 
-    await recordUsers(this.audit, actor, 'user.create', 'User', user.id, {
-      after: { role: user.role, status: user.status },
+        const guardians: CreatedGuardian[] = [];
+        for (const [index, ref] of dto.guardians.entries()) {
+          const existing = await this.issuer.findByDni(tx, ref.dni);
+          let guardian: CreatedGuardian['user'];
+          let issued: CreatedGuardian['credentials'];
+          if (existing) {
+            if (existing.role !== 'GUARDIAN') {
+              throw new UnprocessableEntityException(USERS_MSG.guardianNotGuardian);
+            }
+            if (existing.status === 'WITHDRAWN') {
+              throw new UnprocessableEntityException(USERS_MSG.guardianWithdrawn);
+            }
+            await lockUserForUpdate(tx, existing.id);
+            guardian = existing;
+          } else {
+            if (!ref.fullName) throw new UnprocessableEntityException(USERS_MSG.guardianRequired);
+            const created = await this.issuer.createUser(tx, {
+              fullName: ref.fullName,
+              role: 'GUARDIAN',
+              dni: ref.dni,
+              dniVerified: ref.dniVerified,
+            });
+            guardian = created.user;
+            issued = created.credentials;
+          }
+          const link = await tx.guardianStudent.create({
+            data: {
+              guardianId: guardian.id,
+              studentId: user.id,
+              isPrimary: index === 0 ? true : null,
+            },
+            include: linkInclude,
+          });
+          guardians.push({
+            user: guardian,
+            link,
+            created: issued !== undefined,
+            credentials: issued,
+          });
+        }
+        return { user, credentials, enrollment, guardians };
+      })
+      .catch((e: unknown) => mapPrismaError(e, USERS_MSG.duplicate));
+
+    // La bitacora lleva solo ids, roles y estados: nunca DNI, codigos ni contrasenas.
+    await recordUsers(this.audit, actor, 'user.create', 'User', result.user.id, {
+      after: { role: result.user.role, status: result.user.status },
     });
-    await recordUsers(this.audit, actor, 'enrollment.create', 'Enrollment', enrollment.id, {
+    await recordUsers(this.audit, actor, 'enrollment.create', 'Enrollment', result.enrollment.id, {
       after: {
-        studentId: user.id,
-        sectionId: enrollment.sectionId,
-        academicYearId: enrollment.academicYearId,
+        studentId: result.user.id,
+        sectionId: result.enrollment.sectionId,
+        academicYearId: result.enrollment.academicYearId,
       },
     });
-    return { user: toUserView(user), enrollment: toEnrollmentView(enrollment) };
+    for (const g of result.guardians) {
+      if (g.created) {
+        await recordUsers(this.audit, actor, 'user.create', 'User', g.user.id, {
+          after: { role: g.user.role, status: g.user.status },
+        });
+      }
+      await recordUsers(this.audit, actor, 'guardian_link.create', 'GuardianStudent', g.link.id, {
+        after: {
+          guardianId: g.user.id,
+          studentId: result.user.id,
+          isActive: true,
+          isPrimary: g.link.isPrimary === true,
+        },
+      });
+    }
+    return {
+      user: toUserView(result.user),
+      credentials: result.credentials,
+      enrollment: toEnrollmentView(result.enrollment),
+      guardians: result.guardians.map((g) => ({
+        user: toUserView(g.user),
+        link: toGuardianLinkView(g.link),
+        created: g.created,
+        ...(g.credentials ? { credentials: g.credentials } : {}),
+      })),
+    };
   }
 
   // Matrícula de un estudiante existente (también la rematrícula tras un retiro).

@@ -59,6 +59,22 @@ export const manualEmailSchema = z.object({
 });
 export const userIdSchema = z.object({ id: z.uuid() });
 
+// RF-83: telefono de 9 digitos y direccion opcional. Un campo en null lo borra.
+export const updateProfileSchema = z
+  .strictObject({
+    phone: z
+      .string()
+      .trim()
+      .regex(/^\d{9}$/, 'debe tener 9 digitos')
+      .nullable()
+      .optional(),
+    address: z.string().trim().min(1).max(255).nullable().optional(),
+  })
+  .refine((v) => v.phone !== undefined || v.address !== undefined, {
+    message: 'Debes enviar al menos un campo',
+  });
+export type UpdateProfileDto = z.infer<typeof updateProfileSchema>;
+
 export type LoginDto = z.infer<typeof loginSchema>;
 export type AcceptPolicyDto = z.infer<typeof acceptPolicySchema>;
 export type ChangePasswordDto = z.infer<typeof changePasswordSchema>;

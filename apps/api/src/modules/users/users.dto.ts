@@ -47,6 +47,16 @@ const booleanQuery = z
   .optional()
   .transform((v) => v === 'true');
 
+/** DNI de 8 dígitos (RF-69). El administrador lo escribe dos veces: dni y dniConfirm. */
+export const dniSchema = z
+  .string()
+  .trim()
+  .regex(/^\d{8}$/, 'El DNI debe tener 8 dígitos');
+
+const dniFields = { dni: dniSchema, dniConfirm: dniSchema, dniVerified: z.boolean().optional() };
+const dniMatches = (v: { dni: string; dniConfirm: string }) => v.dni === v.dniConfirm;
+const DNI_MISMATCH = { message: 'Los dos DNI no coinciden', path: ['dniConfirm'] };
+
 // --- Usuarios -------------------------------------------------------------
 
 export const listUsersQuerySchema = z
@@ -54,6 +64,9 @@ export const listUsersQuerySchema = z
     q: z.string().trim().min(2).max(100).optional(),
     role: z.enum(ROLES).optional(),
     status: z.enum(STATUSES).optional(),
+    // RF-87: estado de las credenciales. NONE = sin contraseña, PENDING = no cambió la inicial.
+    credentials: z.enum(['NONE', 'PENDING', 'READY']).optional(),
+    emailVerified: z.enum(['true', 'false']).optional(),
     gradeLevel: z.coerce.number().int().min(1).max(5).optional(),
     sectionId: idSchema.optional(),
     academicYearId: idSchema.optional(),
@@ -86,11 +99,31 @@ export type ChangeStatusDto = z.output<typeof changeStatusSchema>;
 
 // --- Estudiantes y matrículas --------------------------------------------
 
-export const createStudentSchema = z.strictObject({
-  institutionalEmail: emailSchema,
-  fullName: fullNameSchema,
-  sectionId: idSchema,
-});
+/**
+ * Apoderado del alumno nuevo (RF-18, RF-86): se identifica por su DNI. Si ya existe un apoderado con
+ * ese DNI (por ejemplo, el de un hermano) se reutiliza; si no, se crea y hace falta su nombre.
+ */
+const guardianRefSchema = z
+  .strictObject({ ...dniFields, fullName: fullNameSchema.optional() })
+  .refine(dniMatches, DNI_MISMATCH);
+
+export const createStudentSchema = z
+  .strictObject({
+    institutionalEmail: emailSchema.optional(),
+    fullName: fullNameSchema,
+    sectionId: idSchema,
+    ...dniFields,
+    // Hasta 2 apoderados; el primero es el principal (RF-86).
+    guardians: z.array(guardianRefSchema).min(1).max(2),
+  })
+  .refine(dniMatches, DNI_MISMATCH)
+  .refine(
+    (v) => new Set([v.dni, ...v.guardians.map((g) => g.dni)]).size === v.guardians.length + 1,
+    {
+      message: 'El alumno y sus apoderados deben tener DNI distintos',
+      path: ['guardians'],
+    },
+  );
 export type CreateStudentDto = z.output<typeof createStudentSchema>;
 
 export const enrollSchema = z.strictObject({ sectionId: idSchema });
@@ -109,23 +142,29 @@ export type ListEnrollmentsQuery = z.output<typeof listEnrollmentsQuerySchema>;
 
 // --- Docentes y apoderados -----------------------------------------------
 
-export const createTeacherSchema = z.strictObject({
-  institutionalEmail: emailSchema,
-  fullName: fullNameSchema,
-});
+export const createTeacherSchema = z
+  .strictObject({
+    institutionalEmail: emailSchema.optional(),
+    fullName: fullNameSchema,
+    ...dniFields,
+  })
+  .refine(dniMatches, DNI_MISMATCH);
 export type CreateTeacherDto = z.output<typeof createTeacherSchema>;
 
-export const createGuardianSchema = z.strictObject({
-  institutionalEmail: emailSchema,
-  fullName: fullNameSchema,
-  studentIds: z
-    .array(idSchema)
-    .min(1)
-    .max(10)
-    .refine((ids) => new Set(ids).size === ids.length, {
-      message: 'Los estudiantes no se pueden repetir',
-    }),
-});
+export const createGuardianSchema = z
+  .strictObject({
+    institutionalEmail: emailSchema.optional(),
+    fullName: fullNameSchema,
+    ...dniFields,
+    studentIds: z
+      .array(idSchema)
+      .min(1)
+      .max(10)
+      .refine((ids) => new Set(ids).size === ids.length, {
+        message: 'Los estudiantes no se pueden repetir',
+      }),
+  })
+  .refine(dniMatches, DNI_MISMATCH);
 export type CreateGuardianDto = z.output<typeof createGuardianSchema>;
 
 export const linkStudentSchema = z.strictObject({ studentId: idSchema });
@@ -141,3 +180,18 @@ export type ListLinksQuery = z.output<typeof listLinksQuerySchema>;
  */
 export const revokeLinkSchema = z.strictObject({ reason: z.string().trim().min(10).max(500) });
 export type RevokeLinkDto = z.output<typeof revokeLinkSchema>;
+
+// --- Credenciales (RF-69, RF-74, RF-84) -------------------------------------
+
+/**
+ * RF-84: corrección del DNI. El motivo va a la bitácora inmutable (D-024): no debe llevar datos
+ * personales, de salud ni familiares (p. ej. "error de digitación al registrar").
+ */
+export const correctDniSchema = z
+  .strictObject({
+    dni: dniSchema,
+    dniConfirm: dniSchema,
+    reason: z.string().trim().min(10).max(500),
+  })
+  .refine(dniMatches, DNI_MISMATCH);
+export type CorrectDniDto = z.output<typeof correctDniSchema>;

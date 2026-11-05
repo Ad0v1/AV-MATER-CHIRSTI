@@ -5,6 +5,7 @@ import {
   HttpCode,
   Inject,
   Param,
+  Patch,
   Post,
   Req,
   Res,
@@ -14,6 +15,7 @@ import { Throttle } from '@nestjs/throttler';
 import type { Request, Response } from 'express';
 import { AuditService } from '../../common/audit/audit.service.js';
 import {
+  AllowPendingContactData,
   AllowPendingEmailVerification,
   AllowPendingPasswordChange,
 } from '../../common/auth/pending-setup.guard.js';
@@ -32,10 +34,11 @@ import {
   recoverRequestSchema,
   startEmailSchema,
   totpCodeSchema,
+  updateProfileSchema,
   userIdSchema,
   verifyEmailSchema,
 } from './auth.dto.js';
-import { AuthService } from './auth.service.js';
+import { AuthService, type ProfileView } from './auth.service.js';
 import { EmailVerificationService } from './email-verification.service.js';
 import { PasswordRecoveryService } from './password-recovery.service.js';
 
@@ -47,6 +50,7 @@ type SessionInfo = {
   mustAcceptPolicy: boolean;
   mustChangePassword: boolean;
   mustVerifyEmail: boolean;
+  mustCompleteContact: boolean;
 };
 
 @Controller('auth')
@@ -69,13 +73,18 @@ export class AuthController {
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ): Promise<SessionInfo> {
-    const { user, mustAcceptPolicy, mustChangePassword, mustVerifyEmail } = await this.auth.login(
-      parseBody(loginSchema, body),
-      req.ip,
-    );
+    const { user, mustAcceptPolicy, mustChangePassword, mustVerifyEmail, mustCompleteContact } =
+      await this.auth.login(parseBody(loginSchema, body), req.ip);
     const token = await this.sessions.create(user);
     res.cookie(SESSION_COOKIE, token, this.cookieOptions());
-    return { id: user.id, role: user.role, mustAcceptPolicy, mustChangePassword, mustVerifyEmail };
+    return {
+      id: user.id,
+      role: user.role,
+      mustAcceptPolicy,
+      mustChangePassword,
+      mustVerifyEmail,
+      mustCompleteContact,
+    };
   }
 
   // Contrato docs/03: usuario autenticado y rol, mas los pasos del primer ingreso que le faltan.
@@ -89,6 +98,7 @@ export class AuthController {
       mustAcceptPolicy: await this.auth.mustAcceptPolicy(user.id),
       mustChangePassword: user.mustChangePassword === true,
       mustVerifyEmail: user.mustVerifyEmail === true,
+      mustCompleteContact: user.mustCompleteContact === true,
     };
   }
 
@@ -106,11 +116,11 @@ export class AuthController {
     const user = this.requireUser(req);
     await this.auth.changePassword(user.id, parseBody(changePasswordSchema, body), req.ip);
     await this.sessions.revokeAll(user.id);
-    // El cambio de contrasena no cumple el paso del correo: si aun falta, la sesion nueva lo conserva.
+    // Los demas pasos del primer ingreso no se cumplen con esto: la sesion nueva los conserva.
     const token = await this.sessions.create({
       id: user.id,
       role: user.role,
-      ...(user.mustVerifyEmail ? { mustVerifyEmail: true as const } : {}),
+      ...(await this.auth.pendingFlagsOf(user.id)),
     });
     res.cookie(SESSION_COOKIE, token, this.cookieOptions());
   }
@@ -149,8 +159,39 @@ export class AuthController {
     const user = this.requireUser(req);
     await this.emails.verify(user.id, parseBody(verifyEmailSchema, body).code, req.ip);
     await this.sessions.revokeAll(user.id);
-    const token = await this.sessions.create({ id: user.id, role: user.role });
+    const token = await this.sessions.create({
+      id: user.id,
+      role: user.role,
+      ...(await this.auth.pendingFlagsOf(user.id)),
+    });
     res.cookie(SESSION_COOKIE, token, this.cookieOptions());
+  }
+
+  // RF-83: datos del propio usuario.
+  @Get('profile')
+  @AllowPendingContactData()
+  getProfile(@Req() req: RequestWithUser): Promise<ProfileView> {
+    return this.auth.getProfile(this.requireUser(req).id);
+  }
+
+  // RF-83: telefono y direccion. Al completar el paso pendiente se abre una sesion nueva.
+  @Patch('profile')
+  @AllowPendingContactData()
+  @HttpCode(204)
+  async updateProfile(
+    @Body() body: unknown,
+    @Req() req: RequestWithUser,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<void> {
+    const user = this.requireUser(req);
+    await this.auth.updateProfile(user.id, parseBody(updateProfileSchema, body), req.ip);
+    const flags = await this.auth.pendingFlagsOf(user.id);
+    const token = await this.sessions.create({ id: user.id, role: user.role, ...flags });
+    res.cookie(SESSION_COOKIE, token, this.cookieOptions());
+    // La sesion anterior sigue con el paso pendiente: se cierra.
+    const cookies = req.cookies as Record<string, string> | undefined;
+    const previous = cookies?.[SESSION_COOKIE];
+    if (previous) await this.sessions.destroy(previous);
   }
 
   // RF-82: pide un codigo de recuperacion. Siempre responde 204, exista o no el usuario.

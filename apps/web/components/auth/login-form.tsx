@@ -45,6 +45,7 @@ export function LoginForm() {
           mustAcceptPolicy?: boolean;
           mustChangePassword?: boolean;
           mustVerifyEmail?: boolean;
+          mustCompleteContact?: boolean;
         };
         // Pasos del primer ingreso, en orden: contraseña, política y correo (RF-71). La API
         // bloquea todo lo demás hasta cumplirlos.
@@ -54,9 +55,11 @@ export function LoginForm() {
             ? '/politica'
             : data.mustVerifyEmail
               ? '/verificar-correo'
-              : isRole(data.role)
-                ? HOME_BY_ROLE[data.role]
-                : '/';
+              : data.mustCompleteContact
+                ? '/mi-perfil'
+                : isRole(data.role)
+                  ? HOME_BY_ROLE[data.role]
+                  : '/';
         router.replace(target);
         router.refresh();
         return;

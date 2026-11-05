@@ -23,7 +23,9 @@ async function VerifyEmailContent() {
   const user = await requireUser();
   if (user.mustChangePassword) redirect('/cambiar-clave');
   if (user.mustAcceptPolicy) redirect('/politica');
-  if (!user.mustVerifyEmail) redirect(HOME_BY_ROLE[user.role]);
+  if (!user.mustVerifyEmail) {
+    redirect(user.mustCompleteContact ? '/mi-perfil' : HOME_BY_ROLE[user.role]);
+  }
 
   return (
     <>

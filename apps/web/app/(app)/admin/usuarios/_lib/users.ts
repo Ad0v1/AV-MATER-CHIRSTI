@@ -6,6 +6,7 @@ import { isUuid } from '../../_shared/lib/validation';
 import { sectionLabel } from '../../_shared/lib/format';
 import type { StatusTone } from '../../_shared/lib/format';
 import type {
+  CredentialStatus,
   EnrollmentEndReason,
   EnrollmentView,
   SectionOption,
@@ -49,6 +50,34 @@ export const END_REASON_LABELS: Record<EnrollmentEndReason, string> = {
 export const isRole = (v: unknown): v is UserRole =>
   typeof v === 'string' && (ROLES as readonly string[]).includes(v);
 
+export const CREDENTIAL_STATUSES = [
+  'NONE',
+  'PENDING',
+  'READY',
+] as const satisfies CredentialStatus[];
+
+export const isCredentialStatus = (v: unknown): v is CredentialStatus =>
+  typeof v === 'string' && (CREDENTIAL_STATUSES as readonly string[]).includes(v);
+
+/** Estado de las credenciales (RF-87), en palabras del colegio. */
+export const CREDENTIAL_LABELS: Record<CredentialStatus, string> = {
+  NONE: 'Sin contraseña',
+  PENDING: 'Aún no cambió la contraseña inicial',
+  READY: 'Ya cambió su contraseña',
+};
+
+export const CREDENTIAL_SHORT: Record<CredentialStatus, string> = {
+  NONE: 'Sin contraseña',
+  PENDING: 'Pendiente',
+  READY: 'Lista',
+};
+
+export const CREDENTIAL_TONES: Record<CredentialStatus, StatusTone> = {
+  NONE: 'closed',
+  PENDING: 'future',
+  READY: 'active',
+};
+
 export const isStatus = (v: unknown): v is UserStatus =>
   typeof v === 'string' && (STATUSES as readonly string[]).includes(v);
 
@@ -63,6 +92,9 @@ export const SEARCH_MAX = 100;
 export type UserFilters = {
   role?: UserRole;
   status?: UserStatus;
+  /** RF-87: estado de las credenciales y correo verificado. */
+  credentials?: CredentialStatus;
+  emailVerified?: 'true' | 'false';
   gradeLevel?: number;
   sectionId?: string;
   page: number;
@@ -95,6 +127,10 @@ export function parseUserFilters(params: RawParams): UserFilters {
   const filters: UserFilters = { page: parsePage(first(params.page)) };
   if (isRole(role)) filters.role = role;
   if (isStatus(status)) filters.status = status;
+  const credentials = first(params.credentials);
+  if (isCredentialStatus(credentials)) filters.credentials = credentials;
+  const emailVerified = first(params.emailVerified);
+  if (emailVerified === 'true' || emailVerified === 'false') filters.emailVerified = emailVerified;
   if (filters.role === 'STUDENT') {
     const grade = parseGradeLevel(first(params.gradeLevel));
     const sectionId = first(params.sectionId);
@@ -133,6 +169,10 @@ export function buildUserListQuery(
   const params = new URLSearchParams();
   if (filters.role && isRole(filters.role)) params.set('role', filters.role);
   if (filters.status && isStatus(filters.status)) params.set('status', filters.status);
+  if (isCredentialStatus(filters.credentials)) params.set('credentials', filters.credentials);
+  if (filters.emailVerified === 'true' || filters.emailVerified === 'false') {
+    params.set('emailVerified', filters.emailVerified);
+  }
   if (filters.role === 'STUDENT') {
     if (filters.gradeLevel !== undefined && parseGradeLevel(String(filters.gradeLevel))) {
       params.set('gradeLevel', String(filters.gradeLevel));
@@ -213,6 +253,9 @@ export function userPathLabel(path: string): string | undefined {
   const labels: Record<string, string> = {
     fullName: 'Nombre',
     institutionalEmail: 'Correo',
+    dni: 'DNI',
+    dniConfirm: 'Confirmación del DNI',
+    guardians: 'Apoderados',
     sectionId: 'Sección',
     studentIds: 'Estudiantes',
     studentId: 'Estudiante',
@@ -380,7 +423,7 @@ export function toStudentChoice(item: UserListItem): StudentChoice {
   return {
     id: item.id,
     fullName: item.fullName,
-    institutionalEmail: item.institutionalEmail,
+    code: item.code,
     status: item.status,
     sectionLabel: item.currentSection
       ? sectionLabel(item.currentSection.gradeLevel, item.currentSection.code)
@@ -393,6 +436,7 @@ export function toStudentChoice(item: UserListItem): StudentChoice {
 export const userFocusIds = {
   data: 'datos-usuario',
   status: 'estado-usuario',
+  access: 'acceso-usuario',
   enrollments: 'matriculas',
   guardians: 'apoderados',
   students: 'estudiantes-vinculados',
@@ -447,4 +491,36 @@ export function withoutCreatedFlag(pathname: string, search: string): string | n
   params.delete(CREATED_FLAG);
   const qs = params.toString();
   return qs ? `${pathname}?${qs}` : pathname;
+}
+
+// --- DNI y credenciales (RF-69, RF-70, RF-74, RF-84) -----------------------------
+
+export const DNI_LENGTH = 8;
+
+/** DNI de 8 dígitos (sin espacios en los extremos), o el error junto al campo. */
+export function normalizeDni(raw: unknown): Normalized {
+  const value = typeof raw === 'string' ? raw.trim() : '';
+  if (!/^\d{8}$/.test(value)) return { ok: false, error: 'El DNI debe tener 8 dígitos.' };
+  return { ok: true, value };
+}
+
+/** El DNI y su confirmación (se escribe dos veces), o los errores por campo. */
+export function dniPair(
+  rawDni: unknown,
+  rawConfirm: unknown,
+): { ok: true; value: string } | { ok: false; errors: { dni?: string; dniConfirm?: string } } {
+  const dni = normalizeDni(rawDni);
+  if (!dni.ok) return { ok: false, errors: { dni: dni.error } };
+  const confirm = typeof rawConfirm === 'string' ? rawConfirm.trim() : '';
+  if (confirm !== dni.value) {
+    return { ok: false, errors: { dniConfirm: 'Los dos DNI no coinciden.' } };
+  }
+  return { ok: true, value: dni.value };
+}
+
+/** Teléfono de 9 dígitos (RF-83), o el error junto al campo. */
+export function normalizePhone(raw: unknown): Normalized {
+  const value = typeof raw === 'string' ? raw.replace(/\s+/g, '') : '';
+  if (!/^\d{9}$/.test(value)) return { ok: false, error: 'El teléfono debe tener 9 dígitos.' };
+  return { ok: true, value };
 }
