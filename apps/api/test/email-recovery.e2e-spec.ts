@@ -1,3 +1,4 @@
+import { generateSync } from 'otplib';
 import request from 'supertest';
 import { createTestApp, type TestApp } from './helpers.js';
 import { DniService } from './../src/modules/auth/dni.service.js';
@@ -27,7 +28,7 @@ async function addUser(t: TestApp, o: Overrides = {}) {
   const email = o.email === undefined ? 'familia@correo.pe' : o.email;
   t.prisma.users.push({
     id: o.id ?? USER_ID,
-    institutionalEmail: `${o.id ?? USER_ID}@colegio.example`,
+    email: `${o.id ?? USER_ID}@colegio.example`,
     code: o.code ?? CODE,
     dniEncrypted: t.app.get(DniService).encrypt('45678901'),
     contactEmail: email,
@@ -66,6 +67,18 @@ describe('Correo verificado, politica y recuperacion (e2e)', () => {
   async function cookieOf(code = CODE) {
     const res = await login(code).expect(200);
     return res.headers['set-cookie'] ?? [];
+  }
+
+  // El administrador no puede hacer nada hasta activar el 2FA (RF-85): se activa por la API y se
+  // devuelve la sesion nueva, ya sin ese paso pendiente.
+  async function adminCookieOf(code = CODE) {
+    const first = await cookieOf(code);
+    const setup = await post('/2fa/setup').set('Cookie', first).expect(201);
+    const enabled = await post('/2fa/enable')
+      .set('Cookie', first)
+      .send({ code: generateSync({ secret: setup.body.secret }) })
+      .expect(200);
+    return enabled.headers['set-cookie'] ?? [];
   }
 
   describe('primer ingreso con el correo pendiente (RN-18, RF-80)', () => {
@@ -339,7 +352,7 @@ describe('Correo verificado, politica y recuperacion (e2e)', () => {
     it('el administrador marca el correo de otro usuario con motivo y queda en la bitacora', async () => {
       await addUser(t, { id: ADMIN_ID, code: '2600000000', role: 'ADMIN' });
       await addUser(t, { verified: false, email: null });
-      const cookie = await cookieOf('2600000000');
+      const cookie = await adminCookieOf('2600000000');
       const reason = 'El servidor de correo estuvo caido el dia de la matricula';
 
       await post(`/users/${USER_ID}/email/manual-verification`)
@@ -358,7 +371,7 @@ describe('Correo verificado, politica y recuperacion (e2e)', () => {
     it('exige motivo de al menos 10 caracteres y rol administrador', async () => {
       await addUser(t, { id: ADMIN_ID, code: '2600000000', role: 'ADMIN' });
       await addUser(t, { verified: false, email: null });
-      const adminCookie = await cookieOf('2600000000');
+      const adminCookie = await adminCookieOf('2600000000');
       await post(`/users/${USER_ID}/email/manual-verification`)
         .set('Cookie', adminCookie)
         .send({ email: 'a@correo.pe', reason: 'corto' })
@@ -380,7 +393,7 @@ describe('Correo verificado, politica y recuperacion (e2e)', () => {
 
     it('responde 404 si el usuario no existe', async () => {
       await addUser(t, { id: ADMIN_ID, code: '2600000000', role: 'ADMIN' });
-      const cookie = await cookieOf('2600000000');
+      const cookie = await adminCookieOf('2600000000');
       await post('/users/00000000-0000-7000-8000-0000000000ff/email/manual-verification')
         .set('Cookie', cookie)
         .send({ email: 'a@correo.pe', reason: 'Motivo suficientemente largo' })

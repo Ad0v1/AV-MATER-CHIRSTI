@@ -23,6 +23,18 @@ describe('pendingFlags (RF-71, RF-83)', () => {
     expect(pendingFlags({ role: 'STUDENT', emailVerifiedAt: verified, phone: null })).toEqual({});
   });
 
+  it('RF-85: un administrador sin 2FA debe activarlo; con 2FA o de otro rol, no', () => {
+    const base = { emailVerifiedAt: verified, phone: null };
+    expect(pendingFlags({ ...base, role: 'ADMIN' })).toEqual({ mustEnableTwoFactor: true });
+    expect(
+      pendingFlags({ ...base, role: 'ADMIN', localCredential: { totpSecretEncrypted: null } }),
+    ).toEqual({ mustEnableTwoFactor: true });
+    expect(
+      pendingFlags({ ...base, role: 'ADMIN', localCredential: { totpSecretEncrypted: 'v1.x' } }),
+    ).toEqual({});
+    expect(pendingFlags({ ...base, role: 'TEACHER' })).toEqual({});
+  });
+
   it('un apoderado nuevo tiene los dos pasos pendientes', () => {
     expect(pendingFlags({ role: 'GUARDIAN', emailVerifiedAt: null, phone: null })).toEqual({
       mustVerifyEmail: true,

@@ -1,4 +1,4 @@
-import { ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { AuditService } from '../../common/audit/audit.service.js';
 import { PrismaService } from '../../common/prisma/prisma.service.js';
 import { SessionService } from '../../common/session/session.service.js';
@@ -12,7 +12,6 @@ import {
   type IssuedCredentials,
 } from '../auth/credential-issuer.service.js';
 import { LoginAttemptsService } from '../auth/login-attempts.service.js';
-import { INSTITUTION_EMAIL_DOMAIN } from './institution-domain.js';
 import {
   enrollmentInclude,
   linkInclude,
@@ -34,12 +33,7 @@ import {
   lockYearForShare,
   readUserRole,
 } from './users-locks.js';
-import {
-  assertEmailDomain,
-  assertStatusChangeAllowed,
-  buildUserSearchWhere,
-  closeInstant,
-} from './users-policy.js';
+import { assertStatusChangeAllowed, buildUserSearchWhere, closeInstant } from './users-policy.js';
 import { assertEmailFree } from './users-queries.js';
 import type {
   ChangeStatusDto,
@@ -82,7 +76,7 @@ export const SEARCH_IDS_LIMIT = 5000;
 const listSelect = {
   id: true,
   code: true,
-  institutionalEmail: true,
+  email: true,
   contactEmail: true,
   emailVerifiedAt: true,
   dniVerifiedAt: true,
@@ -111,7 +105,6 @@ export class UsersService {
     private readonly issuer: CredentialIssuerService,
     private readonly sessions: SessionService,
     private readonly attempts: LoginAttemptsService,
-    @Inject(INSTITUTION_EMAIL_DOMAIN) private readonly domain: string | null,
   ) {}
 
   // RF-25: búsqueda paginada por nombre o correo, rol, estado, grado y sección (año activo por defecto).
@@ -137,7 +130,7 @@ export class UsersService {
       rows.map(async (r): Promise<UserListItem> => ({
         id: r.id,
         code: r.code,
-        institutionalEmail: r.institutionalEmail,
+        email: r.email,
         contactEmail: r.contactEmail,
         emailVerified: r.emailVerifiedAt !== null,
         dniVerified: r.dniVerifiedAt !== null,
@@ -194,15 +187,11 @@ export class UsersService {
   async update(id: string, dto: UpdateUserDto, actor: Actor): Promise<UserView> {
     const user = await this.prisma.user.findUnique({ where: { id } });
     if (!user) throw new NotFoundException(USERS_MSG.userNotFound);
-    const data: { fullName?: string; institutionalEmail?: string } = {};
+    const data: { fullName?: string; email?: string } = {};
     if (dto.fullName !== undefined && dto.fullName !== user.fullName) data.fullName = dto.fullName;
-    if (
-      dto.institutionalEmail !== undefined &&
-      dto.institutionalEmail !== user.institutionalEmail
-    ) {
-      assertEmailDomain(dto.institutionalEmail, user.role, this.domain);
-      await assertEmailFree(this.prisma, dto.institutionalEmail, id);
-      data.institutionalEmail = dto.institutionalEmail;
+    if (dto.email !== undefined && dto.email !== user.email) {
+      await assertEmailFree(this.prisma, dto.email, id);
+      data.email = dto.email;
     }
     const changedFields = Object.keys(data);
     if (changedFields.length === 0) return toUserView(user);
@@ -313,9 +302,8 @@ export class UsersService {
 
   // RF-19: alta de docente, con su codigo y su contrasena inicial (RF-68, RF-70).
   async createTeacher(dto: CreateTeacherDto, actor: Actor): Promise<CreatedTeacher> {
-    if (dto.institutionalEmail) {
-      assertEmailDomain(dto.institutionalEmail, 'TEACHER', this.domain);
-      await assertEmailFree(this.prisma, dto.institutionalEmail);
+    if (dto.email) {
+      await assertEmailFree(this.prisma, dto.email);
     }
     const { user, credentials } = await this.prisma
       .$transaction((tx) =>
@@ -324,7 +312,7 @@ export class UsersService {
           role: 'TEACHER',
           dni: dto.dni,
           dniVerified: dto.dniVerified,
-          institutionalEmail: dto.institutionalEmail,
+          email: dto.email,
         }),
       )
       .catch((e: unknown) => mapPrismaError(e, USERS_MSG.duplicate));
@@ -416,7 +404,7 @@ export class UsersService {
   private async searchIds(q: string): Promise<string[]> {
     const rows = await this.prisma.$queryRaw<{ id: string }[]>`
       SELECT id FROM User
-      WHERE LOCATE(${q}, fullName) > 0 OR LOCATE(${q}, institutionalEmail) > 0
+      WHERE LOCATE(${q}, fullName) > 0 OR LOCATE(${q}, email) > 0
          OR LOCATE(${q}, contactEmail) > 0 OR LOCATE(${q}, code) > 0
       ORDER BY id LIMIT ${SEARCH_IDS_LIMIT}`;
     return rows.map((r) => r.id);

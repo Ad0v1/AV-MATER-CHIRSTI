@@ -14,7 +14,6 @@ export const USERS_MSG = {
   lastGuardian: 'El alumno debe tener al menos un apoderado vigente',
   noCredential: 'El usuario no puede iniciar sesión todavía',
   sameDni: 'El DNI nuevo es igual al actual',
-  emailDomain: 'El correo no pertenece al dominio institucional',
   notStudent: 'El usuario no es un estudiante',
   notGuardian: 'El usuario no es un apoderado',
   studentWithdrawn: 'El estudiante está retirado',

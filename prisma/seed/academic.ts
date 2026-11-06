@@ -26,19 +26,19 @@ async function freeUserCode(prisma: PrismaClient): Promise<string> {
 }
 
 export async function seedAcademic(prisma: PrismaClient): Promise<void> {
-  // 1. Usuarios (clave natural: institutionalEmail). Se restablecen nombre, rol y estado; el codigo
+  // 1. Usuarios (clave natural: email). Se restablecen nombre, rol y estado; el codigo
   //    se asigna una sola vez y no cambia al repetir el seed (RN-16).
   const userIds = new Map<string, string>();
   for (const u of ALL_USERS) {
     const data = { fullName: u.fullName, role: u.role, status: u.status };
     const existing = await prisma.user.findUnique({
-      where: { institutionalEmail: u.institutionalEmail },
+      where: { email: u.email },
       select: { code: true },
     });
     const code = existing?.code ?? (await freeUserCode(prisma));
     const row = await prisma.user.upsert({
-      where: { institutionalEmail: u.institutionalEmail },
-      create: { institutionalEmail: u.institutionalEmail, code, ...data },
+      where: { email: u.email },
+      create: { email: u.email, code, ...data },
       update: { ...data, code },
       select: { id: true },
     });

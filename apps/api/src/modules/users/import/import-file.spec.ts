@@ -10,7 +10,7 @@ import { detectFormat, parseImportFile, sha256Of } from './import-file.js';
 
 const ZIP = Buffer.from([0x50, 0x4b, 0x03, 0x04, 0, 0]);
 const OLE = Buffer.from([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1]);
-const CSV = Buffer.from('correo,nombre_completo\n', 'utf8');
+const CSV = Buffer.from('dni,nombre_completo\n', 'utf8');
 
 describe('detectFormat (extensión + bytes mágicos)', () => {
   it('xlsx con ZIP y csv sin ZIP; la extensión no distingue mayúsculas', () => {
@@ -53,14 +53,14 @@ describe('parseImportFile', () => {
     expect(parsed).toEqual({
       format: 'csv',
       sha256: sha256Of(CSV),
-      rows: [{ row: 1, cells: ['correo', 'nombre_completo'] }],
+      rows: [{ row: 1, cells: ['dni', 'nombre_completo'] }],
     });
     expect(parsed.sha256).toMatch(/^[0-9a-f]{64}$/);
 
     const { body } = await buildTemplate('teachers', 'xlsx');
     const xlsx = await parseImportFile(file('plantilla.xlsx', body));
     expect(xlsx.format).toBe('xlsx');
-    expect(xlsx.rows[0]).toEqual({ row: 1, cells: ['correo', 'nombre_completo'] });
+    expect(xlsx.rows[0]).toEqual({ row: 1, cells: ['dni', 'nombre_completo'] });
   });
 
   it('con sha256 esperado distinto → 409 antes de leer las filas', async () => {

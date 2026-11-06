@@ -14,8 +14,10 @@ import { AuditSink } from './../src/common/audit/audit.service.js';
 import { SESSION_COOKIE } from './../src/common/session/session-cookie.js';
 import { SessionService } from './../src/common/session/session.service.js';
 import { MemorySessionStore, SessionStore } from './../src/common/session/session.store.js';
+import { loadEnv } from './../src/config/env.js';
 import { PrismaClient } from './../src/generated/prisma/client.js';
-import { INSTITUTION_EMAIL_DOMAIN } from './../src/modules/users/institution-domain.js';
+import { DniService } from './../src/modules/auth/dni.service.js';
+import { PasswordService } from './../src/modules/auth/password.service.js';
 import { MIB } from './../src/modules/users/import/import.constants.js';
 import {
   buildZip,
@@ -26,24 +28,55 @@ import {
 } from './../src/modules/users/import/zip-builder.mock-spec.js';
 import { MemoryAuditSink } from './helpers.js';
 
-// RF-21: importacion masiva de usuarios. Usa MySQL real con el seed cargado (solo local con
-// Docker). Archivos generados en el test (sin binarios en el repo). Solo crea usuarios
-// qa-f4-*@colegio.example en 3A/3B de 2026 (y la seccion inactiva 3F, que se borra al final).
+// RF-21: importacion masiva de usuarios (por DNI, D-058). Usa MySQL real con el seed cargado (solo
+// local con Docker). Archivos generados en el test (sin binarios en el repo). Los usuarios que crea
+// llevan DNI ficticios 91000001..91008000 y se limpian por su hash; las secciones 3A/3B del 2026
+// son las del seed y la inactiva 3F se crea y se borra aqui.
 config({ path: fileURLToPath(new URL('../../../.env', import.meta.url)), quiet: true });
 
 const API = '/api/v1';
 const DOMAIN = 'colegio.example';
 const QA_PREFIX = 'qa-f4-';
 const INACTIVE_SECTION = 'F';
-const qa = (key: string, domain = DOMAIN) => `${QA_PREFIX}${key}@${domain}`;
+
+// DNI ficticios: los sueltos salen de una secuencia; los de las pruebas de 1000 filas, de un rango fijo.
+const QA_DNI_BASE = 91_000_000;
+const BULK_BASE = QA_DNI_BASE + 5_000;
+const QA_DNI_COUNT = 8_000;
+let dniSeq = 0;
+const nd = () => String(QA_DNI_BASE + ++dniSeq);
+const dniService = new DniService(loadEnv());
+const qaDniHashes = () =>
+  Array.from({ length: QA_DNI_COUNT }, (_, i) => dniService.hash(String(QA_DNI_BASE + i + 1)));
 
 type Role = 'ADMIN' | 'TEACHER' | 'STUDENT' | 'GUARDIAN';
 type Json = Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
 type Cell = string | number | boolean | Date | Record<string, unknown>;
 
-const STUDENT_HEADER = ['correo', 'nombre_completo', 'grado', 'seccion'];
-const TEACHER_HEADER = ['correo', 'nombre_completo'];
-const GUARDIAN_HEADER = ['correo_apoderado', 'nombre_apoderado', 'correo_estudiante'];
+const STUDENT_HEADER = [
+  'dni',
+  'nombre_completo',
+  'grado',
+  'seccion',
+  'dni_apoderado',
+  'nombre_apoderado',
+  'dni_apoderado_2',
+  'nombre_apoderado_2',
+];
+const TEACHER_HEADER = ['dni', 'nombre_completo'];
+const GUARDIAN_HEADER = ['dni_apoderado', 'nombre_apoderado', 'dni_estudiante'];
+
+/** Fila de estudiante: los apoderados van al final y son opcionales en el helper. */
+const stu = (
+  dni: string,
+  name: string,
+  grade: string | number,
+  section: string,
+  g1: string,
+  g1Name = '',
+  g2 = '',
+  g2Name = '',
+) => [dni, name, String(grade), section, g1, g1Name, g2, g2Name];
 
 // --- Generadores de archivos ---------------------------------------------------------------
 
@@ -98,9 +131,7 @@ async function buildApp(options: { throttle: boolean }): Promise<Harness> {
     .overrideProvider(SessionStore)
     .useValue(new MemorySessionStore())
     .overrideProvider(AuditSink)
-    .useValue(sink)
-    .overrideProvider(INSTITUTION_EMAIL_DOMAIN)
-    .useValue(DOMAIN);
+    .useValue(sink);
   // El limite propio de preview/commit (10 por minuto) se desactiva en la app principal para no
   // obligar a trocear los casos; el bloque de 429 usa una app propia con el limitador real.
   if (!options.throttle)
@@ -119,6 +150,16 @@ describe.skipIf(!process.env.DATABASE_URL)('Importacion masiva RF-21 (e2e, MySQL
   let sec3A: string;
   let sec3B: string;
   let yearId: string;
+
+  // Personas que ya existen antes de importar (se crean por Prisma, con DNI cifrado).
+  const fx = {
+    student: { dni: nd(), id: '' }, // estudiante activo
+    withdrawn: { dni: nd(), id: '' }, // estudiante retirado
+    teacher: { dni: nd(), id: '' },
+    guardian: { dni: nd(), id: '', name: 'QA F4 Apoderado Existente' },
+    guardianOut: { dni: nd(), id: '' }, // apoderado retirado
+    kids: [] as Array<{ dni: string; id: string }>, // 11 estudiantes para TOO_MANY_STUDENTS
+  };
 
   const cookies = new Map<string, string>();
   const bodies: string[] = []; // cuerpos JSON de respuestas de import (revision de fugas)
@@ -141,8 +182,11 @@ describe.skipIf(!process.env.DATABASE_URL)('Importacion masiva RF-21 (e2e, MySQL
     if (o.file) req.attach('file', o.file.data, { filename: o.file.name });
     return req;
   };
+  // Las respuestas del commit llevan la hoja de credenciales (base64); no se guarda en `bodies`
+  // porque ahi se busca que no se repitan valores de celdas.
   const rec = (res: request.Response) => {
-    bodies.push(JSON.stringify(res.body));
+    const body = res.body as Json;
+    bodies.push(JSON.stringify({ ...body, credentialsSheet: undefined }));
     return res;
   };
   const preview = async (type: string, name: string, data: Buffer, key = 'admin') =>
@@ -158,11 +202,24 @@ describe.skipIf(!process.env.DATABASE_URL)('Importacion masiva RF-21 (e2e, MySQL
     (res.body.errors as Json[]).map((e) => `${e.row}:${e.column}:${e.code}`);
   const detailCodes = (res: request.Response) =>
     (res.body.error.details as Json[]).map((e) => `${e.row}:${e.column}:${e.code}`);
+  const byDni = (dni: string) =>
+    prisma.user.findUniqueOrThrow({ where: { dniHash: dniService.hash(dni) } });
+  const sheetOf = async (res: request.Response) => {
+    const sheet = res.body.credentialsSheet as Json;
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.load(Buffer.from(sheet.base64, 'base64') as unknown as ExcelJS.Buffer);
+    const rows: string[][] = [];
+    wb.getWorksheet('Credenciales')!.eachRow((row, n) => {
+      if (n > 1) rows.push((row.values as unknown[]).slice(1).map(String));
+    });
+    return { sheet, rows };
+  };
 
   const counts = async () => ({
     years: await prisma.academicYear.count(),
     sections: await prisma.section.count(),
     users: await prisma.user.count(),
+    credentials: await prisma.localCredential.count(),
     enrollments: await prisma.enrollment.count(),
     links: await prisma.guardianStudent.count(),
     courses: await prisma.course.count(),
@@ -171,7 +228,9 @@ describe.skipIf(!process.env.DATABASE_URL)('Importacion masiva RF-21 (e2e, MySQL
 
   const cleanQaData = async () => {
     const users = await prisma.user.findMany({
-      where: { institutionalEmail: { startsWith: QA_PREFIX } },
+      where: {
+        OR: [{ email: { startsWith: QA_PREFIX } }, { dniHash: { in: qaDniHashes() } }],
+      },
       select: { id: true },
     });
     const ids = users.map((u) => u.id);
@@ -186,6 +245,24 @@ describe.skipIf(!process.env.DATABASE_URL)('Importacion masiva RF-21 (e2e, MySQL
   const createSession = async (key: string, userId: string, role: Role) => {
     cookies.set(key, await h.sessions.create({ id: userId, role }));
   };
+
+  const makeUser = (
+    dni: string,
+    fullName: string,
+    role: Role,
+    status: 'ACTIVE' | 'INACTIVE' | 'WITHDRAWN' = 'ACTIVE',
+    email?: string,
+  ) =>
+    prisma.user.create({
+      data: {
+        fullName,
+        role,
+        status,
+        dniEncrypted: dniService.encrypt(dni),
+        dniHash: dniService.hash(dni),
+        email: email,
+      },
+    });
 
   beforeAll(async () => {
     prisma = new PrismaClient({ adapter: new PrismaMariaDb(process.env.DATABASE_URL!) });
@@ -206,27 +283,31 @@ describe.skipIf(!process.env.DATABASE_URL)('Importacion masiva RF-21 (e2e, MySQL
     await prisma.section.create({
       data: { academicYearId: yearId, gradeLevel: 3, code: INACTIVE_SECTION, isActive: false },
     });
-    const inactiveAdmin = await prisma.user.create({
-      data: {
-        institutionalEmail: qa('admin-inactivo'),
-        fullName: 'QA F4 Admin Inactivo',
-        role: 'ADMIN',
-        status: 'INACTIVE',
-      },
-    });
-    await prisma.user.create({
-      data: {
-        institutionalEmail: qa('retirado'),
-        fullName: 'QA F4 Retirado',
-        role: 'STUDENT',
-        status: 'WITHDRAWN',
-      },
-    });
+    const inactiveAdmin = await makeUser(
+      nd(),
+      'QA F4 Admin Inactivo',
+      'ADMIN',
+      'INACTIVE',
+      `${QA_PREFIX}admin-inactivo@${DOMAIN}`,
+    );
+    fx.student.id = (await makeUser(fx.student.dni, 'QA F4 Estudiante Existente', 'STUDENT')).id;
+    fx.withdrawn.id = (
+      await makeUser(fx.withdrawn.dni, 'QA F4 Retirado', 'STUDENT', 'WITHDRAWN')
+    ).id;
+    fx.teacher.id = (await makeUser(fx.teacher.dni, 'QA F4 Docente Existente', 'TEACHER')).id;
+    fx.guardian.id = (await makeUser(fx.guardian.dni, fx.guardian.name, 'GUARDIAN')).id;
+    fx.guardianOut.id = (
+      await makeUser(fx.guardianOut.dni, 'QA F4 Apoderado Retirado', 'GUARDIAN', 'WITHDRAWN')
+    ).id;
+    for (let i = 0; i < 11; i++) {
+      const dni = nd();
+      fx.kids.push({ dni, id: (await makeUser(dni, `QA F4 Hijo ${i + 1}`, 'STUDENT')).id });
+    }
 
     h = await buildApp({ throttle: false });
     for (const key of ['admin', 'docente01', 'estudiante01', 'apoderado01']) {
       const user = await prisma.user.findUniqueOrThrow({
-        where: { institutionalEmail: `${key}@${DOMAIN}` },
+        where: { email: `${key}@${DOMAIN}` },
       });
       await createSession(key, user.id, user.role as Role);
     }
@@ -244,7 +325,7 @@ describe.skipIf(!process.env.DATABASE_URL)('Importacion masiva RF-21 (e2e, MySQL
 
   // ---------------------------------------------------------------------------------------
   describe('Autenticacion y roles (RF-21)', () => {
-    const tiny = { name: 'a.csv', data: csv([TEACHER_HEADER, [qa('auth'), 'QA F4 Auth']]) };
+    const tiny = { name: 'a.csv', data: csv([TEACHER_HEADER, [nd(), 'QA F4 Auth']]) };
     const call = (key: string | null, route: string) => {
       if (route === 'template') {
         const r = http().get(`${API}/users/import/template?type=students&format=csv`);
@@ -363,13 +444,10 @@ describe.skipIf(!process.env.DATABASE_URL)('Importacion masiva RF-21 (e2e, MySQL
         const empty = await preview('teachers', name, await download('teachers'));
         expect(empty.status).toBe(400);
         expect(empty.body.error.code).toBe('VALIDATION_ERROR');
-        const cases: [string, (string | number)[]][] = [
-          ['teachers', [qa('rt-doc'), 'QA F4 Round Docente']],
-          ['students', [qa('rt-est'), 'QA F4 Round Estudiante', 3, 'A']],
-          [
-            'guardians',
-            [qa('rt-apo', 'gmail.com'), 'QA F4 Round Apoderado', `estudiante01@${DOMAIN}`],
-          ],
+        const cases: [string, string[]][] = [
+          ['teachers', [nd(), 'QA F4 Round Docente']],
+          ['students', stu(nd(), 'QA F4 Round Estudiante', 3, 'A', nd(), 'QA F4 Round Apoderado')],
+          ['guardians', [nd(), 'QA F4 Round Apoderado', fx.student.dni]],
         ];
         for (const [type, row] of cases) {
           const base = await download(type);
@@ -405,13 +483,15 @@ describe.skipIf(!process.env.DATABASE_URL)('Importacion masiva RF-21 (e2e, MySQL
   });
 
   // ---------------------------------------------------------------------------------------
-  describe('Estudiantes: preview y commit (RF-21, RF-19, RF-24)', () => {
-    const s1 = qa('s01');
-    const s2 = qa('s02');
+  describe('Estudiantes: preview y commit (RF-21, RF-76, RF-86)', () => {
+    const s1 = nd();
+    const s2 = nd();
+    const g1 = nd(); // apoderado nuevo compartido por los dos hermanos
+    const g2 = nd(); // segundo apoderado nuevo del estudiante 2
     const file = csv([
       STUDENT_HEADER,
-      [s1.toUpperCase(), 'QA F4  Estudiante   Uno', '3', 'a'], // correo en mayusculas, seccion en minuscula
-      [s2, 'QA F4 Estudiante Dos', '3', 'B'],
+      stu(s1, 'QA F4  Estudiante   Uno', 3, 'a', g1, 'QA F4 Apoderado Compartido'), // seccion en minuscula
+      stu(s2, 'QA F4 Estudiante Dos', 3, 'B', g1, '', g2, 'QA F4 Segundo Apoderado'),
     ]);
 
     it('RF-21: preview CSV valido no escribe y devuelve el resumen y el SHA-256', async () => {
@@ -427,60 +507,118 @@ describe.skipIf(!process.env.DATABASE_URL)('Importacion masiva RF-21 (e2e, MySQL
         errorRows: 0,
         errors: [],
         errorsTruncated: false,
-        summary: { users: 2, enrollments: 2, links: 0 },
+        // 2 alumnos + 2 apoderados nuevos; 2 matriculas; 3 vinculos.
+        summary: { users: 4, enrollments: 2, links: 3 },
         canConfirm: true,
       });
       expect(await counts()).toEqual(before);
     });
 
-    it('RF-21: commit crea usuarios y matriculas vigentes en 3A y 3B del año activo', async () => {
+    it('RF-21/RF-76: commit crea cuentas con contraseña inicial, matriculas y vinculos, y devuelve la hoja', async () => {
       const before = await counts();
       const res = await commit('students', 'estudiantes.csv', file);
       expect(res.status).toBe(201);
-      expect(res.body).toEqual({
-        type: 'students',
-        created: { users: 2, enrollments: 2, links: 0 },
-      });
+      expect(res.body.type).toBe('students');
+      expect(res.body.created).toEqual({ users: 4, enrollments: 2, links: 3 });
       const after = await counts();
-      expect(after.users).toBe(before.users + 2);
+      expect(after.users).toBe(before.users + 4);
+      expect(after.credentials).toBe(before.credentials + 4);
       expect(after.enrollments).toBe(before.enrollments + 2);
-      expect(after.links).toBe(before.links);
+      expect(after.links).toBe(before.links + 3);
 
-      const u1 = await prisma.user.findUniqueOrThrow({ where: { institutionalEmail: s1 } });
+      const u1 = await byDni(s1);
       expect(u1).toMatchObject({
         role: 'STUDENT',
         status: 'ACTIVE',
         fullName: 'QA F4 Estudiante Uno',
       });
+      expect(u1.code).toMatch(/^\d{10}$/);
+      expect(u1.dniEncrypted).not.toContain(s1);
+      expect(dniService.decrypt(u1.dniEncrypted!)).toBe(s1);
       const e1 = await prisma.enrollment.findMany({ where: { studentId: u1.id } });
       expect(e1).toHaveLength(1);
       expect(e1[0]).toMatchObject({ sectionId: sec3A, academicYearId: yearId, isCurrent: true });
-      const u2 = await prisma.user.findUniqueOrThrow({ where: { institutionalEmail: s2 } });
+      const u2 = await byDni(s2);
       const e2 = await prisma.enrollment.findFirstOrThrow({ where: { studentId: u2.id } });
       expect(e2).toMatchObject({ sectionId: sec3B, academicYearId: yearId, isCurrent: true });
+
+      // El primer apoderado es el principal de cada hijo; el segundo, no.
+      const guardian1 = await byDni(g1);
+      const guardian2 = await byDni(g2);
+      expect(guardian1.role).toBe('GUARDIAN');
+      const links = await prisma.guardianStudent.findMany({
+        where: { studentId: { in: [u1.id, u2.id] } },
+      });
+      const key = (l: (typeof links)[number]) => `${l.studentId}:${l.guardianId}:${l.isPrimary}`;
+      expect(links.map(key).sort()).toEqual(
+        [
+          `${u1.id}:${guardian1.id}:true`,
+          `${u2.id}:${guardian1.id}:true`,
+          `${u2.id}:${guardian2.id}:null`,
+        ].sort(),
+      );
+
+      // Cada cuenta debe cambiar la clave al entrar y la de la hoja es la guardada.
+      const creds = await prisma.localCredential.findMany({
+        where: { userId: { in: [u1.id, u2.id, guardian1.id, guardian2.id] } },
+      });
+      expect(creds).toHaveLength(4);
+      expect(creds.every((c) => c.mustChangePassword)).toBe(true);
+      const { sheet, rows } = await sheetOf(res);
+      expect(sheet.filename).toMatch(/^credenciales-students-\d{4}-\d{2}-\d{2}\.xlsx$/);
+      expect(sheet.contentType).toContain('spreadsheetml');
+      expect(rows).toHaveLength(4);
+      const passwords = new PasswordService();
+      const row = rows.find((r) => r[1] === 'QA F4 Estudiante Uno')!;
+      expect(row[0]).toBe('Estudiante');
+      expect(row[2]).toBe('3.º A');
+      expect(row[3]).toBe(u1.code);
+      const cred = creds.find((c) => c.userId === u1.id)!;
+      expect(await passwords.verify(cred.passwordHash, row[4])).toBe(true);
+      // Ni el DNI ni los codigos de otros salen en la hoja.
+      expect(JSON.stringify(rows)).not.toContain(s1);
     });
 
-    it('RF-21: repetir el mismo archivo responde 422 EMAIL_TAKEN sin cambiar nada', async () => {
+    it('RF-21: repetir el mismo archivo responde 422 DNI_TAKEN sin cambiar nada', async () => {
       const before = await counts();
       const pre = await preview('students', 'estudiantes.csv', file);
       expect(pre.status).toBe(200);
-      expect(codes(pre)).toEqual(['2:correo:EMAIL_TAKEN', '3:correo:EMAIL_TAKEN']);
+      // Los apoderados ya existen y se reutilizan; lo repetido son los alumnos.
+      expect(codes(pre)).toEqual(['2:dni:DNI_TAKEN', '3:dni:DNI_TAKEN']);
       expect(pre.body.canConfirm).toBe(false);
       const res = await commit('students', 'estudiantes.csv', file);
       expect(res.status).toBe(422);
       expect(res.body.error.code).toBe('BUSINESS_RULE_VIOLATION');
-      expect(detailCodes(res)).toEqual(['2:correo:EMAIL_TAKEN', '3:correo:EMAIL_TAKEN']);
-      expect(await counts()).toEqual({
-        ...before,
+      expect(detailCodes(res)).toEqual(['2:dni:DNI_TAKEN', '3:dni:DNI_TAKEN']);
+      expect(await counts()).toEqual(before);
+    });
+
+    it('RF-21: un alumno nuevo con un apoderado que ya existe lo reutiliza (sin cuenta nueva para el)', async () => {
+      const sNew = nd();
+      const data = csv([
+        STUDENT_HEADER,
+        stu(sNew, 'QA F4 Estudiante Reutiliza', 3, 'A', fx.guardian.dni),
+      ]);
+      const before = await counts();
+      const res = await commit('students', 'reutiliza.csv', data);
+      expect(res.status).toBe(201);
+      expect(res.body.created).toEqual({ users: 1, enrollments: 1, links: 1 });
+      expect(await counts()).toMatchObject({ users: before.users + 1, links: before.links + 1 });
+      const link = await prisma.guardianStudent.findFirstOrThrow({
+        where: { studentId: (await byDni(sNew)).id },
       });
+      expect(link).toMatchObject({ guardianId: fx.guardian.id, isPrimary: true, isActive: true });
+      const { rows } = await sheetOf(res);
+      expect(rows.map((r) => r[0])).toEqual(['Estudiante']);
     });
 
     it('RF-21: CSV con ";" y BOM, tildes y eñes; el commit conserva el nombre', async () => {
+      const dniA = nd();
       const data = csv(
         [
           STUDENT_HEADER,
-          [qa('s03'), 'QA F4 Ñandú Pérez', '3', 'A'],
-          [qa('s04'), 'QA F4 Ibáñez', '3', 'B'],
+          stu(dniA, 'QA F4 Ñandú Pérez', 3, 'A', nd(), 'QA F4 Apoderado Ñ'),
+          stu(nd(), 'QA F4 Ibáñez', 3, 'B', nd(), 'QA F4 Apoderado I'),
         ],
         { sep: ';', bom: true, eol: '\r\n' },
       );
@@ -489,13 +627,14 @@ describe.skipIf(!process.env.DATABASE_URL)('Importacion masiva RF-21 (e2e, MySQL
       expect(pre.body).toMatchObject({ totalRows: 2, validRows: 2, canConfirm: true });
       const res = await commit('students', 'excel-es.csv', data);
       expect(res.status).toBe(201);
-      const u = await prisma.user.findUniqueOrThrow({ where: { institutionalEmail: qa('s03') } });
-      expect(u.fullName).toBe('QA F4 Ñandú Pérez');
+      expect((await byDni(dniA)).fullName).toBe('QA F4 Ñandú Pérez');
     });
 
     it('RF-21: campo entre comillas con coma, encabezados con tildes y en otro orden', async () => {
       const data = Buffer.from(
-        'Sección,Grado,"Nombre Completo",Correo\n' + `A,3,"QA F4 Pérez, Ana",${qa('s05')}\n` + '\n',
+        'Sección,Grado,"Nombre Completo",DNI,DNI Apoderado,Nombre Apoderado,DNI Apoderado 2,Nombre Apoderado 2\n' +
+          `A,3,"QA F4 Pérez, Ana",${nd()},${nd()},"QA F4 Apoderado, Pérez",,\n` +
+          '\n',
         'utf8',
       );
       const res = await preview('students', 'otro-orden.csv', data);
@@ -504,31 +643,39 @@ describe.skipIf(!process.env.DATABASE_URL)('Importacion masiva RF-21 (e2e, MySQL
     });
 
     it('RF-21: las filas vacias se ignoran y el numero de fila es el fisico', async () => {
-      const data = Buffer.from(`${STUDENT_HEADER.join(',')}\n,,,\n\n${qa('s06')},ab,3,A\n`, 'utf8');
+      const data = Buffer.from(
+        `${STUDENT_HEADER.join(',')}\n,,,,,,,\n\n${nd()},ab,3,A,${nd()},QA F4 Apo\n`,
+        'utf8',
+      );
       const res = await preview('students', 'vacias.csv', data);
       expect(res.status).toBe(200);
       expect(res.body.totalRows).toBe(1);
       expect(codes(res)).toEqual(['4:nombre_completo:INVALID_NAME']);
     });
 
-    it('RF-21: preview XLSX de estudiantes (grado como numero entero) y commit', async () => {
-      const data = await xlsx([STUDENT_HEADER, [qa('s07'), 'QA F4 Estudiante Siete', 3, 'A']]);
+    it('RF-21: preview y commit XLSX de estudiantes (DNI y grado como numeros)', async () => {
+      const dniA = Number(nd());
+      const data = await xlsx([
+        STUDENT_HEADER,
+        [dniA, 'QA F4 Estudiante Siete', 3, 'A', Number(nd()), 'QA F4 Apoderado Siete', '', ''],
+      ]);
       const pre = await preview('students', 'estudiantes.xlsx', data);
       expect(pre.status).toBe(200);
       expect(pre.body).toMatchObject({ format: 'xlsx', validRows: 1, canConfirm: true });
       const res = await commit('students', 'estudiantes.xlsx', data);
       expect(res.status).toBe(201);
-      expect(res.body.created).toEqual({ users: 1, enrollments: 1, links: 0 });
+      expect(res.body.created).toEqual({ users: 2, enrollments: 1, links: 1 });
     });
   });
 
   // ---------------------------------------------------------------------------------------
-  describe('Docentes: preview y commit (RF-21, RF-22)', () => {
-    it('RF-21/RF-22: preview y commit de docentes en XLSX, con correo en mayusculas normalizado', async () => {
+  describe('Docentes: preview y commit (RF-21, RF-22, RF-76)', () => {
+    it('RF-21/RF-22: preview y commit de docentes en XLSX, con hoja de credenciales', async () => {
+      const t1 = nd();
       const data = await xlsx([
         TEACHER_HEADER,
-        [qa('t01').toUpperCase(), 'QA F4 Docente Uno'],
-        [qa('t02'), 'QA F4 Docente Dos'],
+        [t1, 'QA F4 Docente Uno'],
+        [nd(), 'QA F4 Docente Dos'],
       ]);
       const pre = await preview('teachers', 'docentes.xlsx', data);
       expect(pre.body).toMatchObject({
@@ -542,27 +689,36 @@ describe.skipIf(!process.env.DATABASE_URL)('Importacion masiva RF-21 (e2e, MySQL
       const res = await commit('teachers', 'docentes.xlsx', data);
       expect(res.status).toBe(201);
       expect(res.body.created).toEqual({ users: 2, enrollments: 0, links: 0 });
-      const u = await prisma.user.findUniqueOrThrow({ where: { institutionalEmail: qa('t01') } });
+      const u = await byDni(t1);
       expect(u).toMatchObject({ role: 'TEACHER', status: 'ACTIVE' });
+      const cred = await prisma.localCredential.findUniqueOrThrow({ where: { userId: u.id } });
+      expect(cred.mustChangePassword).toBe(true);
+      const { rows } = await sheetOf(res);
+      expect(rows.map((r) => r[0])).toEqual(['Docente', 'Docente']);
     });
 
-    it('RF-21: docente con dominio ajeno → EMAIL_DOMAIN (INSTITUTION_EMAIL_DOMAIN)', async () => {
-      const data = csv([TEACHER_HEADER, [qa('t03', 'otro.example'), 'QA F4 Docente Tres']]);
+    it('RF-21: DNI mal formado (con letras, de 7 o de 9 digitos) → INVALID_DNI', async () => {
+      const data = csv([
+        TEACHER_HEADER,
+        ['1234567', 'QA F4 Docente Tres'],
+        ['123456789', 'QA F4 Docente Cuatro'],
+        ['12ab5678', 'QA F4 Docente Cinco'],
+      ]);
       const res = await preview('teachers', 'dom.csv', data);
-      expect(codes(res)).toEqual(['2:correo:EMAIL_DOMAIN']);
+      expect(codes(res)).toEqual(['2:dni:INVALID_DNI', '3:dni:INVALID_DNI', '4:dni:INVALID_DNI']);
     });
   });
 
   // ---------------------------------------------------------------------------------------
-  describe('Apoderados: preview y commit (RF-21, RF-20)', () => {
-    const g1 = qa('g01', 'gmail.example'); // dominio ajeno: el apoderado esta exento (D-013)
-
-    it('RF-21/RF-20/D-013: apoderado con 2 hijos y dominio ajeno: preview y commit', async () => {
+  describe('Apoderados: preview y commit (RF-21, RF-20, RF-86)', () => {
+    it('RF-21/RF-86: apoderado nuevo con 2 hijos: preview y commit con hoja de credenciales', async () => {
+      const gNew = nd();
+      const [k1, k2] = fx.kids;
       const data = csv(
         [
           GUARDIAN_HEADER,
-          [g1, 'QA F4 Apoderado Uno', qa('s01')],
-          [g1, 'QA F4 Apoderado Uno', qa('s02')],
+          [gNew, 'QA F4 Apoderado Uno', k1.dni],
+          [gNew, 'QA F4 Apoderado Uno', k2.dni],
         ],
         { sep: ';', bom: true },
       );
@@ -582,28 +738,33 @@ describe.skipIf(!process.env.DATABASE_URL)('Importacion masiva RF-21 (e2e, MySQL
       expect(after.users).toBe(before.users + 1);
       expect(after.links).toBe(before.links + 2);
 
-      const g = await prisma.user.findUniqueOrThrow({ where: { institutionalEmail: g1 } });
+      const g = await byDni(gNew);
       expect(g).toMatchObject({ role: 'GUARDIAN', status: 'ACTIVE' });
-      const links = await prisma.guardianStudent.findMany({
-        where: { guardianId: g.id },
-        include: { student: true },
-      });
-      expect(links.every((l) => l.isActive)).toBe(true);
-      expect(links.map((l) => l.student.institutionalEmail).sort()).toEqual([qa('s01'), qa('s02')]);
+      const links = await prisma.guardianStudent.findMany({ where: { guardianId: g.id } });
+      expect(links.every((l) => l.isActive && l.isPrimary === true)).toBe(true);
+      expect(links.map((l) => l.studentId).sort()).toEqual([k1.id, k2.id].sort());
+      const { rows } = await sheetOf(res);
+      expect(rows.map((r) => r[0])).toEqual(['Apoderado']);
     });
 
-    it('RF-21: el estudiante del archivo de apoderados no se valida contra el dominio', async () => {
-      // El alumno del seed existe; el apoderado nuevo es de otro dominio y no da EMAIL_DOMAIN.
-      const data = csv([
-        GUARDIAN_HEADER,
-        [qa('g02', 'otro.example'), 'QA F4 Apoderado Dos', `estudiante05@${DOMAIN}`],
-      ]);
-      const res = await preview('guardians', 'g.csv', data);
-      expect(res.body.canConfirm).toBe(true);
+    it('RF-21: vincular un apoderado que ya existe no crea cuentas ni hoja de credenciales', async () => {
+      const k = fx.kids[2];
+      const data = csv([GUARDIAN_HEADER, [fx.guardian.dni, '', k.dni]]);
+      const res = await commit('guardians', 'existente.csv', data);
+      expect(res.status).toBe(201);
+      expect(res.body.created).toEqual({ users: 0, enrollments: 0, links: 1 });
+      expect(res.body.credentialsSheet).toBeNull();
+      const link = await prisma.guardianStudent.findFirstOrThrow({
+        where: { studentId: k.id, guardianId: fx.guardian.id },
+      });
+      expect(link.isPrimary).toBe(true);
     });
 
     it('RF-21: apoderado XLSX con un hijo', async () => {
-      const data = await xlsx([GUARDIAN_HEADER, [qa('g03'), 'QA F4 Apoderado Tres', qa('s03')]]);
+      const data = await xlsx([
+        GUARDIAN_HEADER,
+        [Number(nd()), 'QA F4 Apoderado Tres', Number(fx.kids[3].dni)],
+      ]);
       const res = await commit('guardians', 'g.xlsx', data);
       expect(res.status).toBe(201);
       expect(res.body.created).toEqual({ users: 1, enrollments: 0, links: 1 });
@@ -614,138 +775,162 @@ describe.skipIf(!process.env.DATABASE_URL)('Importacion masiva RF-21 (e2e, MySQL
   describe('Codigos de error por fila (RF-21)', () => {
     it('RF-21: students: todos los codigos de fila del CSV, con fila y columna', async () => {
       const long = 'N'.repeat(501);
+      const dup = nd();
+      const ok = (name: string) => stu(nd(), name, 3, 'A', nd(), 'QA F4 Apoderado Valido');
       const data = csv([
         STUDENT_HEADER,
-        ['', 'QA F4 Uno', '3', 'A'], // 2 REQUIRED
-        ['no-es-correo', 'QA F4 Dos', '3', 'A'], // 3 INVALID_EMAIL
-        [qa('dom', 'otro.example'), 'QA F4 Tres', '3', 'A'], // 4 EMAIL_DOMAIN
-        [qa('nom'), 'ab', '3', 'A'], // 5 INVALID_NAME
-        [qa('nom2'), '=cmd|ZZSENTINELA', '3', 'A'], // 6 INVALID_NAME (formula)
-        [qa('gr'), 'QA F4 Grado', '9', 'A'], // 7 INVALID_GRADE
-        [qa('se'), 'QA F4 Seccion', '3', '!!'], // 8 INVALID_SECTION
-        [qa('sn'), 'QA F4 Sin Seccion', '3', 'Z'], // 9 SECTION_NOT_FOUND
-        [qa('si'), 'QA F4 Seccion Inactiva', '3', INACTIVE_SECTION], // 10 SECTION_INACTIVE
-        [qa('dup'), 'QA F4 Duplicado', '3', 'A'], // 11 valida
-        [qa('dup'), 'QA F4 Duplicado', '3', 'A'], // 12 DUPLICATE_IN_FILE
-        [`estudiante01@${DOMAIN}`, 'QA F4 Ocupado', '3', 'A'], // 13 EMAIL_TAKEN
-        [qa('ext'), 'QA F4 Extra', '3', 'A', 'sobra'], // 14 EXTRA_CELLS
-        [qa('lar'), long, '3', 'A'], // 15 TOO_LONG
-        [qa('ok'), 'QA F4 Valido', '3', 'B'], // 16 valida
+        stu('', 'QA F4 Uno', 3, 'A', nd(), 'QA F4 Apo'), // 2 REQUIRED
+        stu('no-es-dni', 'QA F4 Dos', 3, 'A', nd(), 'QA F4 Apo'), // 3 INVALID_DNI
+        stu(nd(), 'ab', 3, 'A', nd(), 'QA F4 Apo'), // 4 INVALID_NAME
+        stu(nd(), '=cmd|ZZSENTINELA', 3, 'A', nd(), 'QA F4 Apo'), // 5 INVALID_NAME (formula)
+        stu(nd(), 'QA F4 Grado', 9, 'A', nd(), 'QA F4 Apo'), // 6 INVALID_GRADE
+        stu(nd(), 'QA F4 Seccion', 3, '!!', nd(), 'QA F4 Apo'), // 7 INVALID_SECTION
+        stu(nd(), 'QA F4 Sin Seccion', 3, 'Z', nd(), 'QA F4 Apo'), // 8 SECTION_NOT_FOUND
+        stu(nd(), 'QA F4 Seccion Inactiva', 3, INACTIVE_SECTION, nd(), 'QA F4 Apo'), // 9 SECTION_INACTIVE
+        stu(dup, 'QA F4 Duplicado', 3, 'A', nd(), 'QA F4 Apo'), // 10 valida
+        stu(dup, 'QA F4 Duplicado', 3, 'A', nd(), 'QA F4 Apo'), // 11 DUPLICATE_IN_FILE
+        stu(fx.student.dni, 'QA F4 Ocupado', 3, 'A', nd(), 'QA F4 Apo'), // 12 DNI_TAKEN
+        [...ok('QA F4 Extra'), 'sobra'], // 13 EXTRA_CELLS
+        stu(nd(), long, 3, 'A', nd(), 'QA F4 Apo'), // 14 TOO_LONG
+        ok('QA F4 Valido'), // 15 valida
       ]);
       const res = await preview('students', 'codigos.csv', data);
       expect(res.status).toBe(200);
       expect(codes(res)).toEqual([
-        '2:correo:REQUIRED',
-        '3:correo:INVALID_EMAIL',
-        '4:correo:EMAIL_DOMAIN',
+        '2:dni:REQUIRED',
+        '3:dni:INVALID_DNI',
+        '4:nombre_completo:INVALID_NAME',
         '5:nombre_completo:INVALID_NAME',
-        '6:nombre_completo:INVALID_NAME',
-        '7:grado:INVALID_GRADE',
-        '8:seccion:INVALID_SECTION',
-        '9:seccion:SECTION_NOT_FOUND',
-        '10:seccion:SECTION_INACTIVE',
-        '12:correo:DUPLICATE_IN_FILE',
-        '13:correo:EMAIL_TAKEN',
-        '14:null:EXTRA_CELLS',
-        '15:nombre_completo:TOO_LONG',
+        '6:grado:INVALID_GRADE',
+        '7:seccion:INVALID_SECTION',
+        '8:seccion:SECTION_NOT_FOUND',
+        '9:seccion:SECTION_INACTIVE',
+        '11:dni:DUPLICATE_IN_FILE',
+        '12:dni:DNI_TAKEN',
+        '13:null:EXTRA_CELLS',
+        '14:nombre_completo:TOO_LONG',
       ]);
       expect(res.body).toMatchObject({
-        totalRows: 15,
+        totalRows: 14,
         validRows: 2,
-        errorRows: 13,
+        errorRows: 12,
         errorsTruncated: false,
         canConfirm: false,
-        summary: { users: 2, enrollments: 2, links: 0 },
       });
-      const dup = (res.body.errors as Json[]).find((e) => e.code === 'DUPLICATE_IN_FILE')!;
-      expect(dup.message).toContain('fila 11');
+      const dupErr = (res.body.errors as Json[]).find((e) => e.code === 'DUPLICATE_IN_FILE')!;
+      expect(dupErr.message).toContain('fila 10');
       for (const e of res.body.errors as Json[]) {
         expect(typeof e.message).toBe('string');
         expect(e.message.length).toBeGreaterThan(0);
       }
     });
 
-    it('RF-21: students XLSX: FORMULA_NOT_ALLOWED e INVALID_CELL (fecha, booleano, decimal)', async () => {
-      const data = await xlsx([
+    it('RF-21: students: reglas de los apoderados del alumno', async () => {
+      const gNew = nd();
+      const data = csv([
         STUDENT_HEADER,
-        [qa('x1'), { formula: 'HYPERLINK("http://x","y")', result: 'y' }, 3, 'A'], // 2
-        [qa('x2'), 'QA F4 Fecha', new Date(Date.UTC(2026, 0, 1)), 'A'], // 3
-        [qa('x3'), 'QA F4 Booleano', true, 'A'], // 4
-        [qa('x4'), 'QA F4 Decimal', 3.5, 'A'], // 5
-        [qa('x5'), 'QA F4 Valido', 3, 'a'], // 6 valida
+        stu(nd(), 'QA F4 Sin Apoderado', 3, 'A', ''), // 2 REQUIRED dni_apoderado
+        stu(nd(), 'QA F4 Apoderado Sin Nombre', 3, 'A', nd()), // 3 GUARDIAN_NAME_REQUIRED
+        stu(nd(), 'QA F4 Apoderado Docente', 3, 'A', fx.teacher.dni), // 4 NOT_GUARDIAN
+        stu(nd(), 'QA F4 Apoderado Retirado', 3, 'A', fx.guardianOut.dni), // 5 GUARDIAN_WITHDRAWN
+        stu(nd(), 'QA F4 Mismo Apoderado', 3, 'A', gNew, 'QA F4 Apo', gNew, 'QA F4 Apo'), // 6 DUPLICATE_GUARDIAN
+        stu(nd(), 'QA F4 Apoderado Mal Dni', 3, 'A', 'xx'), // 7 INVALID_DNI
+        stu(nd(), 'QA F4 Segundo Sin Nombre', 3, 'A', gNew, 'QA F4 Apo', nd()), // 8 GUARDIAN_NAME_REQUIRED (2)
       ]);
-      const res = await preview('students', 'celdas.xlsx', data);
+      const res = await preview('students', 'apoderados.csv', data);
       expect(res.status).toBe(200);
       expect(codes(res)).toEqual([
-        '2:nombre_completo:FORMULA_NOT_ALLOWED',
-        '3:grado:INVALID_CELL',
-        '4:grado:INVALID_CELL',
-        '5:grado:INVALID_CELL',
+        '2:dni_apoderado:REQUIRED',
+        '3:dni_apoderado:GUARDIAN_NAME_REQUIRED',
+        '4:dni_apoderado:NOT_GUARDIAN',
+        '5:dni_apoderado:GUARDIAN_WITHDRAWN',
+        '6:dni_apoderado_2:DUPLICATE_GUARDIAN',
+        '7:dni_apoderado:INVALID_DNI',
+        '8:dni_apoderado_2:GUARDIAN_NAME_REQUIRED',
       ]);
-      expect(res.body).toMatchObject({ totalRows: 5, validRows: 1, canConfirm: false });
     });
 
-    it('RF-21: teachers: REQUIRED, INVALID_EMAIL, DUPLICATE_IN_FILE y EMAIL_TAKEN', async () => {
+    it('RF-21: teachers: REQUIRED, INVALID_DNI, DUPLICATE_IN_FILE y DNI_TAKEN', async () => {
+      const t11 = nd();
       const data = csv([
         TEACHER_HEADER,
-        [qa('t10'), ''], // 2 REQUIRED
-        ['sin-arroba', 'QA F4 Docente'], // 3 INVALID_EMAIL
-        [qa('t11'), 'QA F4 Docente Once'], // 4 valida
-        [qa('t11'), 'QA F4 Docente Once'], // 5 DUPLICATE_IN_FILE
-        [`docente01@${DOMAIN}`, 'QA F4 Ocupado'], // 6 EMAIL_TAKEN
+        [nd(), ''], // 2 REQUIRED
+        ['sin-dni', 'QA F4 Docente'], // 3 INVALID_DNI
+        [t11, 'QA F4 Docente Once'], // 4 valida
+        [t11, 'QA F4 Docente Once'], // 5 DUPLICATE_IN_FILE
+        [fx.teacher.dni, 'QA F4 Ocupado'], // 6 DNI_TAKEN
       ]);
       const res = await preview('teachers', 'd.csv', data);
       expect(codes(res)).toEqual([
         '2:nombre_completo:REQUIRED',
-        '3:correo:INVALID_EMAIL',
-        '5:correo:DUPLICATE_IN_FILE',
-        '6:correo:EMAIL_TAKEN',
+        '3:dni:INVALID_DNI',
+        '5:dni:DUPLICATE_IN_FILE',
+        '6:dni:DNI_TAKEN',
       ]);
     });
 
     it('RF-21: guardians: todos los codigos de fila', async () => {
+      const ga = nd();
+      const [k1, k2] = fx.kids;
+      const [k3, k4] = fx.kids.slice(5);
       const data = csv([
         GUARDIAN_HEADER,
-        [qa('ga', 'otro.example'), 'QA F4 Apo A', `estudiante01@${DOMAIN}`], // 2 valida (exenta)
-        [qa('ga', 'otro.example'), 'QA F4 Apo A', `estudiante01@${DOMAIN}`], // 3 DUPLICATE_LINK
-        [qa('ga', 'otro.example'), 'QA F4 Otro Nombre', `estudiante02@${DOMAIN}`], // 4 NAME_MISMATCH
-        [qa('gb'), 'QA F4 Apo B', qa('gb')], // 5 SAME_PERSON
-        [qa('gc'), 'QA F4 Apo C', qa('noexiste')], // 6 STUDENT_NOT_FOUND
-        [qa('gd'), 'QA F4 Apo D', `docente01@${DOMAIN}`], // 7 NOT_STUDENT
-        [qa('ge'), 'QA F4 Apo E', qa('retirado')], // 8 STUDENT_WITHDRAWN
-        [`apoderado01@${DOMAIN}`, 'QA F4 Apo F', `estudiante03@${DOMAIN}`], // 9 EMAIL_TAKEN
-        [qa('gg'), '', `estudiante04@${DOMAIN}`], // 10 REQUIRED
-        [qa('gh'), 'QA F4 Apo H', 'no-es-correo'], // 11 INVALID_EMAIL
+        [ga, 'QA F4 Apo A', k1.dni], // 2 valida
+        [ga, 'QA F4 Apo A', k1.dni], // 3 DUPLICATE_LINK
+        [ga, 'QA F4 Otro Nombre', k2.dni], // 4 NAME_MISMATCH
+        [fx.student.dni, 'QA F4 Apo B', fx.student.dni], // 5 SAME_PERSON
+        [nd(), 'QA F4 Apo C', nd()], // 6 STUDENT_NOT_FOUND
+        [nd(), 'QA F4 Apo D', fx.teacher.dni], // 7 NOT_STUDENT
+        [nd(), 'QA F4 Apo E', fx.withdrawn.dni], // 8 STUDENT_WITHDRAWN
+        [fx.teacher.dni, 'QA F4 Apo F', k3.dni], // 9 NOT_GUARDIAN
+        [fx.guardianOut.dni, 'QA F4 Apo G', k3.dni], // 10 GUARDIAN_WITHDRAWN
+        [nd(), '', k4.dni], // 11 GUARDIAN_NAME_REQUIRED
+        [nd(), 'QA F4 Apo H', 'no-es-dni'], // 12 INVALID_DNI
       ]);
       const res = await preview('guardians', 'g.csv', data);
       expect(res.status).toBe(200);
       expect(codes(res)).toEqual([
-        '3:correo_estudiante:DUPLICATE_LINK',
+        '3:dni_estudiante:DUPLICATE_LINK',
         '4:nombre_apoderado:NAME_MISMATCH',
-        '5:correo_estudiante:SAME_PERSON',
-        '6:correo_estudiante:STUDENT_NOT_FOUND',
-        '7:correo_estudiante:NOT_STUDENT',
-        '8:correo_estudiante:STUDENT_WITHDRAWN',
-        '9:correo_apoderado:EMAIL_TAKEN',
-        '10:nombre_apoderado:REQUIRED',
-        '11:correo_estudiante:INVALID_EMAIL',
+        '5:dni_estudiante:SAME_PERSON',
+        '6:dni_estudiante:STUDENT_NOT_FOUND',
+        '7:dni_estudiante:NOT_STUDENT',
+        '8:dni_estudiante:STUDENT_WITHDRAWN',
+        '9:dni_apoderado:NOT_GUARDIAN',
+        '10:dni_apoderado:GUARDIAN_WITHDRAWN',
+        '11:dni_apoderado:GUARDIAN_NAME_REQUIRED',
+        '12:dni_estudiante:INVALID_DNI',
       ]);
       expect(res.body.summary).toEqual({ users: 1, enrollments: 0, links: 1 });
     });
 
     it('RF-21: guardians: el hijo 11 de un apoderado → TOO_MANY_STUDENTS', async () => {
-      const rows = Array.from({ length: 11 }, (_, i) => [
-        qa('gm', 'otro.example'),
-        'QA F4 Apo Muchos',
-        `estudiante${String(i + 1).padStart(2, '0')}@${DOMAIN}`,
-      ]);
+      const gm = nd();
+      const rows = fx.kids.map((k) => [gm, 'QA F4 Apo Muchos', k.dni]);
       const res = await preview('guardians', 'muchos.csv', csv([GUARDIAN_HEADER, ...rows]));
-      expect(codes(res)).toEqual(['12:correo_estudiante:TOO_MANY_STUDENTS']);
+      expect(codes(res)).toEqual(['12:dni_estudiante:TOO_MANY_STUDENTS']);
       expect(res.body.summary).toEqual({ users: 1, enrollments: 0, links: 10 });
     });
 
+    it('RF-21: guardians: un estudiante con 2 apoderados no admite otro → MAX_GUARDIANS (preview y commit)', async () => {
+      const kid = fx.kids[9];
+      const data1 = csv([
+        GUARDIAN_HEADER,
+        [nd(), 'QA F4 Apoderado Uno', kid.dni],
+        [nd(), 'QA F4 Apoderado Dos', kid.dni],
+        [nd(), 'QA F4 Apoderado Tres', kid.dni],
+      ]);
+      const pre = await preview('guardians', 'max.csv', data1);
+      expect(codes(pre)).toEqual(['4:dni_estudiante:MAX_GUARDIANS']);
+      const res = await commit('guardians', 'max.csv', data1);
+      expect(res.status).toBe(422);
+      expect(detailCodes(res)).toEqual(['4:dni_estudiante:MAX_GUARDIANS']);
+    });
+
     it('RF-21: errorsTruncated: mas de 500 errores se devuelven recortados', async () => {
-      const rows = Array.from({ length: 600 }, (_, i) => [`malo${i}`, 'QA F4 Truncado', '3', 'A']);
+      const rows = Array.from({ length: 600 }, (_, i) =>
+        stu(`malo${i}`, 'QA F4 Truncado', 3, 'A', nd().slice(0, 8), 'QA F4 Apo'),
+      );
       const res = await preview('students', 'truncado.csv', csv([STUDENT_HEADER, ...rows]));
       expect(res.status).toBe(200);
       expect(res.body.errors).toHaveLength(500);
@@ -755,13 +940,13 @@ describe.skipIf(!process.env.DATABASE_URL)('Importacion masiva RF-21 (e2e, MySQL
 
   // ---------------------------------------------------------------------------------------
   describe('Archivo, formato y limites (RF-21, RNF-09)', () => {
-    const okRow = [qa('lim'), 'QA F4 Limite'];
+    const okRow = [nd(), 'QA F4 Limite'];
 
     it('RF-21: 1000 filas es el maximo valido; 1001 responde 400', async () => {
       const mk = (n: number) =>
         csv([
           TEACHER_HEADER,
-          ...Array.from({ length: n }, (_, i) => [qa(`bulk${i}`), 'QA F4 Masivo']),
+          ...Array.from({ length: n }, (_, i) => [String(BULK_BASE + i), 'QA F4 Masivo']),
         ]);
       const ok = await preview('teachers', 'mil.csv', mk(1000));
       expect(ok.status).toBe(200);
@@ -889,17 +1074,17 @@ describe.skipIf(!process.env.DATABASE_URL)('Importacion masiva RF-21 (e2e, MySQL
     });
 
     it('RF-21: 5001 filas fisicas (con vacias) en CSV y en XLSX → 400; 5000 pasan el limite', async () => {
-      const header = `${TEACHER_HEADER.join(',')}\n${qa('fis')},QA F4 Fisico\n`;
+      const header = `${TEACHER_HEADER.join(',')}\n${nd()},QA F4 Fisico\n`;
       const csv5000 = Buffer.from(header + '\n'.repeat(4998)); // 5000 lineas fisicas
       const csv5001 = Buffer.from(header + '\n'.repeat(4999));
       expect((await preview('teachers', 'fis5000.csv', csv5000)).status).toBe(200);
       const bad = await preview('teachers', 'fis5001.csv', csv5001);
       expect(bad.status).toBe(400);
       expect(bad.body.error.code).toBe('VALIDATION_ERROR');
-      const head = `<row r="1">${inlineCell('A1', 'correo')}${inlineCell('B1', 'nombre_completo')}</row>`;
+      const head = `<row r="1">${inlineCell('A1', 'dni')}${inlineCell('B1', 'nombre_completo')}</row>`;
       const xl = (empty: number) =>
         rawXlsx(
-          `<sheetData>${head}<row r="2">${inlineCell('A2', qa('fisx'))}${inlineCell('B2', 'QA F4 Fisico')}</row>` +
+          `<sheetData>${head}<row r="2">${inlineCell('A2', nd())}${inlineCell('B2', 'QA F4 Fisico')}</row>` +
             Array.from({ length: empty }, (_, i) => `<row r="${i + 3}"/>`).join('') +
             '</sheetData>',
         );
@@ -932,27 +1117,27 @@ describe.skipIf(!process.env.DATABASE_URL)('Importacion masiva RF-21 (e2e, MySQL
 
     it('RF-21: CSV mal formado: no UTF-8, comilla sin cerrar → 400; byte NUL → 415', async () => {
       const latin1 = Buffer.concat([
-        Buffer.from(`${TEACHER_HEADER.join(',')}\n${qa('l1')},QA F4 Jos`),
+        Buffer.from(`${TEACHER_HEADER.join(',')}\n${nd()},QA F4 Jos`),
         Buffer.from([0xe9]),
         Buffer.from('\n'),
       ]);
       expect((await preview('teachers', 'latin1.csv', latin1)).status).toBe(400);
-      const quote = Buffer.from(`${TEACHER_HEADER.join(',')}\n${qa('l2')},"QA F4 sin cerrar\n`);
+      const quote = Buffer.from(`${TEACHER_HEADER.join(',')}\n${nd()},"QA F4 sin cerrar\n`);
       expect((await preview('teachers', 'comilla.csv', quote)).status).toBe(400);
-      const nul = Buffer.from(`${TEACHER_HEADER.join(',')}\n${qa('l3')},QA F4\u0000X\n`);
+      const nul = Buffer.from(`${TEACHER_HEADER.join(',')}\n${nd()},QA F4\u0000X\n`);
       expect((await preview('teachers', 'nul.csv', nul)).status).toBe(415);
     });
 
     it('RF-21: encabezados invalidos (faltante, desconocido, repetido) y sin filas → 400', async () => {
       const cases: Buffer[] = [
-        csv([['correo'], [qa('h1')]]),
+        csv([['dni'], [nd()]]),
         csv([
           [...TEACHER_HEADER, 'extra'],
-          [qa('h2'), 'QA F4 Nombre', 'x'],
+          [nd(), 'QA F4 Nombre', 'x'],
         ]),
         csv([
-          ['correo', 'correo', 'nombre_completo'],
-          [qa('h3'), qa('h3'), 'QA F4 Nombre'],
+          ['dni', 'dni', 'nombre_completo'],
+          [nd(), nd(), 'QA F4 Nombre'],
         ]),
         csv([TEACHER_HEADER]),
         Buffer.from('\n\n'),
@@ -1024,8 +1209,9 @@ describe.skipIf(!process.env.DATABASE_URL)('Importacion masiva RF-21 (e2e, MySQL
   // ---------------------------------------------------------------------------------------
   describe('Confirmacion: hash, errores y concurrencia (RF-21)', () => {
     it('RF-21: hash distinto al del archivo responde 409 y no escribe', async () => {
-      const data = csv([TEACHER_HEADER, [qa('hs1'), 'QA F4 Hash Uno']]);
-      const other = csv([TEACHER_HEADER, [qa('hs1'), 'QA F4 Hash Otro']]);
+      const t = nd();
+      const data = csv([TEACHER_HEADER, [t, 'QA F4 Hash Uno']]);
+      const other = csv([TEACHER_HEADER, [t, 'QA F4 Hash Otro']]);
       const before = await counts();
       const res = await commit('teachers', 'h.csv', data, sha256(other));
       expect(res.status).toBe(409);
@@ -1034,34 +1220,36 @@ describe.skipIf(!process.env.DATABASE_URL)('Importacion masiva RF-21 (e2e, MySQL
     });
 
     it('RF-21: commit con errores de archivo responde 422 con details y no cambia los conteos', async () => {
-      const data = csv([TEACHER_HEADER, [qa('ce1'), 'QA F4 Valido'], ['malo', 'QA F4 Invalido']]);
+      const t = nd();
+      const data = csv([TEACHER_HEADER, [t, 'QA F4 Valido'], ['malo', 'QA F4 Invalido']]);
       const before = await counts();
       const res = await commit('teachers', 'e.csv', data);
       expect(res.status).toBe(422);
       expect(res.body.error.code).toBe('BUSINESS_RULE_VIOLATION');
-      expect(detailCodes(res)).toEqual(['3:correo:INVALID_EMAIL']);
+      expect(detailCodes(res)).toEqual(['3:dni:INVALID_DNI']);
       expect(await counts()).toEqual(before);
-      expect(await prisma.user.count({ where: { institutionalEmail: qa('ce1') } })).toBe(0);
+      expect(await prisma.user.count({ where: { dniHash: dniService.hash(t) } })).toBe(0);
     });
 
     it('RF-21: todo o nada: una fila ocupada en la BD impide crear las demas (422)', async () => {
+      const t = nd();
       const data = csv([
         STUDENT_HEADER,
-        [qa('tn1'), 'QA F4 Todo Nada', '3', 'A'],
-        [`estudiante02@${DOMAIN}`, 'QA F4 Ocupado', '3', 'A'],
+        stu(t, 'QA F4 Todo Nada', 3, 'A', nd(), 'QA F4 Apo'),
+        stu(fx.student.dni, 'QA F4 Ocupado', 3, 'A', nd(), 'QA F4 Apo'),
       ]);
       const before = await counts();
       const res = await commit('students', 'tn.csv', data);
       expect(res.status).toBe(422);
-      expect(detailCodes(res)).toEqual(['3:correo:EMAIL_TAKEN']);
+      expect(detailCodes(res)).toEqual(['3:dni:DNI_TAKEN']);
       expect(await counts()).toEqual(before);
     });
 
     it('RF-21: seccion inactiva o inexistente en el commit → 422 sin escribir', async () => {
       const data = csv([
         STUDENT_HEADER,
-        [qa('si1'), 'QA F4 Inactiva', '3', INACTIVE_SECTION],
-        [qa('si2'), 'QA F4 Inexistente', '3', 'Z'],
+        stu(nd(), 'QA F4 Inactiva', 3, INACTIVE_SECTION, nd(), 'QA F4 Apo'),
+        stu(nd(), 'QA F4 Inexistente', 3, 'Z', nd(), 'QA F4 Apo'),
       ]);
       const before = await counts();
       const res = await commit('students', 'si.csv', data);
@@ -1076,8 +1264,8 @@ describe.skipIf(!process.env.DATABASE_URL)('Importacion masiva RF-21 (e2e, MySQL
     it('RF-21: dos commits paralelos del mismo archivo → un 201 y el otro 409 (sin duplicar)', async () => {
       const data = csv([
         TEACHER_HEADER,
-        [qa('par1'), 'QA F4 Paralelo Uno'],
-        [qa('par2'), 'QA F4 Paralelo Dos'],
+        [nd(), 'QA F4 Paralelo Uno'],
+        [nd(), 'QA F4 Paralelo Dos'],
       ]);
       const before = await counts();
       const results = await Promise.all([
@@ -1095,28 +1283,57 @@ describe.skipIf(!process.env.DATABASE_URL)('Importacion masiva RF-21 (e2e, MySQL
       results.forEach(rec);
       const statuses = results.map((r) => r.status).sort((a, b) => a - b);
       successfulCommits += statuses.filter((s) => s === 201).length;
-      // Carrera de unicidad (P2002) → 409; si el segundo ya ve el correo ocupado → 422.
+      // Carrera de unicidad (P2002 sobre el hash del DNI) → 409; si el segundo ya ve el DNI → 422.
       expect(statuses[0]).toBe(201);
       expect([409, 422]).toContain(statuses[1]);
-      expect(statuses).toEqual([201, 409]);
       const after = await counts();
       expect(after.users).toBe(before.users + 2);
+      expect(after.credentials).toBe(before.credentials + 2);
     });
+
+    it('RF-76: 1000 docentes se importan en una sola transaccion dentro del tiempo permitido', async () => {
+      const rows = Array.from({ length: 1000 }, (_, i) => [
+        String(BULK_BASE + i),
+        `QA F4 Masivo ${i}`,
+      ]);
+      const data = csv([TEACHER_HEADER, ...rows]);
+      const before = await counts();
+      const started = Date.now();
+      const res = await commit('teachers', 'mil.csv', data);
+      expect(res.status).toBe(201);
+      expect(Date.now() - started).toBeLessThan(20_000);
+      expect(res.body.created.users).toBe(1000);
+      expect((await counts()).users).toBe(before.users + 1000);
+      expect((await sheetOf(res)).rows).toHaveLength(1000);
+      // Codigos distintos entre si.
+      const created = await prisma.user.findMany({
+        where: { dniHash: { in: rows.map((r) => dniService.hash(r[0])) } },
+        select: { code: true },
+      });
+      expect(new Set(created.map((u) => u.code)).size).toBe(1000);
+    }, 120_000);
   });
 
   // ---------------------------------------------------------------------------------------
   describe('Bitacora sin datos personales (RF-21, RNF-09/11, D-024)', () => {
-    it('RF-21: un unico evento users.import.commit por importacion confirmada, sin correos ni nombres', async () => {
+    it('RF-21: un unico evento users.import.commit por importacion confirmada, sin DNI ni nombres', async () => {
+      const a = nd();
+      const b = nd();
+      const g = nd();
       const data = csv([
         STUDENT_HEADER,
-        [qa('au1'), 'QA F4 Auditoria Uno', '3', 'A'],
-        [qa('au2'), 'QA F4 Auditoria Dos', '3', 'B'],
+        stu(a, 'QA F4 Auditoria Uno', 3, 'A', g, 'QA F4 Auditoria Apo'),
+        stu(b, 'QA F4 Auditoria Dos', 3, 'B', g),
       ]);
       const start = h.sink.records.length;
       // un preview, un commit rechazado (hash) y uno fallido (422) no registran nada
       await preview('students', 'au.csv', data);
       await commit('students', 'au.csv', data, 'b'.repeat(64));
-      await commit('students', 'au.csv', csv([STUDENT_HEADER, ['malo', 'QA F4 Mal', '3', 'A']]));
+      await commit(
+        'students',
+        'au.csv',
+        csv([STUDENT_HEADER, stu('malo', 'QA F4 Mal', 3, 'A', nd(), 'QA F4 Apo')]),
+      );
       expect(h.sink.records.slice(start)).toHaveLength(0);
 
       const res = await commit('students', 'au.csv', data);
@@ -1135,20 +1352,24 @@ describe.skipIf(!process.env.DATABASE_URL)('Importacion masiva RF-21 (e2e, MySQL
         type: 'students',
         format: 'csv',
         rows: 2,
-        usersCreated: 2,
+        usersCreated: 3,
         enrollmentsCreated: 2,
-        linksCreated: 0,
+        linksCreated: 2,
       });
-      expect(after.userIds).toHaveLength(2);
+      expect(after.userIds).toHaveLength(3);
       const created = await prisma.user.findMany({
-        where: { institutionalEmail: { in: [qa('au1'), qa('au2')] } },
+        where: { dniHash: { in: [a, b, g].map((d) => dniService.hash(d)) } },
         select: { id: true },
       });
       expect((after.userIds as string[]).sort()).toEqual(created.map((u) => u.id).sort());
       const dump = JSON.stringify(ev);
-      expect(dump).not.toContain('@');
-      expect(dump).not.toContain(QA_PREFIX);
-      expect(dump).not.toContain('QA F4');
+      for (const secret of [a, b, g, 'QA F4', '@', QA_PREFIX]) expect(dump).not.toContain(secret);
+      // Ni la contraseña inicial ni el codigo de ninguna cuenta nueva.
+      const { rows } = await sheetOf(res);
+      for (const row of rows) {
+        expect(dump).not.toContain(row[3]);
+        expect(dump).not.toContain(row[4]);
+      }
     });
   });
 
@@ -1162,7 +1383,7 @@ describe.skipIf(!process.env.DATABASE_URL)('Importacion masiva RF-21 (e2e, MySQL
       process.env.RATE_LIMIT_PER_MINUTE = '1000'; // que solo actue el limite propio (10/min)
       rl = await buildApp({ throttle: true });
       const admin = await prisma.user.findUniqueOrThrow({
-        where: { institutionalEmail: `admin@${DOMAIN}` },
+        where: { email: `admin@${DOMAIN}` },
       });
       cookies.set('rlAdmin', await rl.sessions.create({ id: admin.id, role: 'ADMIN' }));
     });
@@ -1174,7 +1395,7 @@ describe.skipIf(!process.env.DATABASE_URL)('Importacion masiva RF-21 (e2e, MySQL
     });
 
     it('RF-21: la peticion 11 de preview en un minuto responde 429', async () => {
-      const data = csv([TEACHER_HEADER, [qa('rl1'), 'QA F4 Limite']]);
+      const data = csv([TEACHER_HEADER, [nd(), 'QA F4 Limite']]);
       for (let i = 0; i < 10; i++) {
         const res = await send(
           'rlAdmin',
@@ -1196,7 +1417,7 @@ describe.skipIf(!process.env.DATABASE_URL)('Importacion masiva RF-21 (e2e, MySQL
     });
 
     it('RF-21: la peticion 11 de commit en un minuto responde 429', async () => {
-      const data = csv([TEACHER_HEADER, [qa('rl2'), 'QA F4 Limite']]);
+      const data = csv([TEACHER_HEADER, [nd(), 'QA F4 Limite']]);
       const wrong = 'c'.repeat(64);
       for (let i = 0; i < 10; i++) {
         const res = await send(
@@ -1221,19 +1442,18 @@ describe.skipIf(!process.env.DATABASE_URL)('Importacion masiva RF-21 (e2e, MySQL
 
   // ---------------------------------------------------------------------------------------
   describe('Cierre', () => {
-    it('RNF-09/RF-21: ninguna respuesta de import repite valores de celdas (ni correos ni nombres)', () => {
+    it('RNF-09/RF-21: ninguna respuesta de import repite valores de celdas (ni DNI ni nombres)', () => {
       expect(bodies.length).toBeGreaterThan(30);
       const forbidden = [
-        '.example',
         'qa-f4',
         'QA F4',
         'ZZSENTINELA',
-        'no-es-correo',
-        'sin-arroba',
-        'otro.example',
+        'no-es-dni',
+        'sin-dni',
         'cmd|',
         'estudiante0',
         'docente01',
+        String(QA_DNI_BASE).slice(0, 5) + '0', // 91000...: ningun DNI de prueba
       ];
       for (const body of bodies) {
         for (const token of forbidden) {
@@ -1244,17 +1464,15 @@ describe.skipIf(!process.env.DATABASE_URL)('Importacion masiva RF-21 (e2e, MySQL
 
     it('RF-21: en toda la corrida hay exactamente un evento users.import.commit por cada 201', () => {
       const events = h.sink.records.filter((r) => r.action === 'users.import.commit');
-      expect(successfulCommits).toBeGreaterThanOrEqual(7);
+      expect(successfulCommits).toBeGreaterThanOrEqual(8);
       expect(events).toHaveLength(successfulCommits);
       expect(h.sink.records.every((r) => r.action === 'users.import.commit')).toBe(true);
     });
 
-    it('RF-21: tras limpiar los datos qa-f4-%, los conteos vuelven a los del seed', async () => {
+    it('RF-21: tras limpiar los datos de prueba, los conteos vuelven a los del seed', async () => {
       await cleanQaData();
       expect(await counts()).toEqual(baseline);
-      expect(
-        await prisma.user.count({ where: { institutionalEmail: { startsWith: QA_PREFIX } } }),
-      ).toBe(0);
+      expect(await prisma.user.count({ where: { dniHash: { in: qaDniHashes() } } })).toBe(0);
     });
   });
 });

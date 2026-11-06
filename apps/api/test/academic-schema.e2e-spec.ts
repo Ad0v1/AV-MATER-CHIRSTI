@@ -56,7 +56,7 @@ describe.skipIf(!process.env.DATABASE_URL)('Esquema academico (e2e, MySQL)', () 
   const newGuardian = (tx: Tx, key: string) =>
     tx.user.create({
       data: {
-        institutionalEmail: email(key),
+        email: email(key),
         fullName: `Ficticio ${key}`,
         role: 'GUARDIAN',
       },
@@ -65,7 +65,7 @@ describe.skipIf(!process.env.DATABASE_URL)('Esquema academico (e2e, MySQL)', () 
   const newStudent = (tx: Tx, key: string) =>
     tx.user.create({
       data: {
-        institutionalEmail: email(key),
+        email: email(key),
         fullName: `Ficticio ${key}`,
         role: 'STUDENT',
       },
@@ -386,7 +386,7 @@ describe.skipIf(!process.env.DATABASE_URL)('Esquema academico (e2e, MySQL)', () 
     it('RF-18..20: conteos de usuarios por rol', async () => {
       const byRole = async (role: 'STUDENT' | 'TEACHER' | 'GUARDIAN' | 'ADMIN') =>
         prisma.user.count({
-          where: { role, institutionalEmail: { endsWith: `@${SEED_EMAIL_DOMAIN}` } },
+          where: { role, email: { endsWith: `@${SEED_EMAIL_DOMAIN}` } },
         });
       expect(await byRole('STUDENT')).toBe(STUDENTS.length);
       expect(await byRole('TEACHER')).toBe(TEACHERS.length);
@@ -396,12 +396,12 @@ describe.skipIf(!process.env.DATABASE_URL)('Esquema academico (e2e, MySQL)', () 
     });
 
     it('RNF-09: todos los correos del seed estan en @colegio.example', async () => {
-      const users = await prisma.user.findMany({ select: { institutionalEmail: true } });
+      const users = await prisma.user.findMany({ select: { email: true } });
       expect(users.length).toBeGreaterThanOrEqual(ALL_USERS.length);
       for (const u of users) {
         // Los usuarios nuevos nacen sin correo del colegio (D-058): solo se revisan los que lo tienen.
-        if (u.institutionalEmail === null) continue;
-        expect(u.institutionalEmail.endsWith(`@${SEED_EMAIL_DOMAIN}`)).toBe(true);
+        if (u.email === null) continue;
+        expect(u.email.endsWith(`@${SEED_EMAIL_DOMAIN}`)).toBe(true);
       }
     });
 
@@ -415,7 +415,7 @@ describe.skipIf(!process.env.DATABASE_URL)('Esquema academico (e2e, MySQL)', () 
 
     it('RF-24: estudiante03 tiene matricula cerrada TRANSFER en 3A y vigente en 3B', async () => {
       const rows = await prisma.enrollment.findMany({
-        where: { student: { institutionalEmail: email(TRANSFERRED_STUDENT) } },
+        where: { student: { email: email(TRANSFERRED_STUDENT) } },
         include: { section: true },
         orderBy: { effectiveFrom: 'asc' },
       });
@@ -428,7 +428,7 @@ describe.skipIf(!process.env.DATABASE_URL)('Esquema academico (e2e, MySQL)', () 
 
     it('RF-23: estudiante60 esta WITHDRAWN con matricula cerrada WITHDRAWAL y sin vigente', async () => {
       const student = await prisma.user.findUniqueOrThrow({
-        where: { institutionalEmail: email(WITHDRAWN_STUDENT) },
+        where: { email: email(WITHDRAWN_STUDENT) },
         include: { enrollments: true },
       });
       expect(student.status).toBe('WITHDRAWN');
@@ -438,9 +438,7 @@ describe.skipIf(!process.env.DATABASE_URL)('Esquema academico (e2e, MySQL)', () 
 
     it('RF-25: los tests no dejaron datos de prueba (años 2090+ ni correos qa-)', async () => {
       expect(await prisma.academicYear.count({ where: { year: { gte: 2090 } } })).toBe(0);
-      expect(
-        await prisma.user.count({ where: { institutionalEmail: { startsWith: 'qa-' } } }),
-      ).toBe(0);
+      expect(await prisma.user.count({ where: { email: { startsWith: 'qa-' } } })).toBe(0);
     });
   });
 });

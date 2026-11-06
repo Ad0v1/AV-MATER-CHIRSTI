@@ -3,7 +3,7 @@ import type { Reflector } from '@nestjs/core';
 import { PendingSetupGuard } from './pending-setup.guard.js';
 import type { AuthenticatedUser } from './roles.js';
 
-type Step = 'password' | 'email' | 'contact' | undefined;
+type Step = 'password' | 'email' | 'twofactor' | 'contact' | undefined;
 
 function check(user: AuthenticatedUser | undefined, routeStep: Step): boolean {
   const reflector = { getAllAndOverride: () => routeStep } as unknown as Reflector;
@@ -47,9 +47,31 @@ describe('PendingSetupGuard (RN-18)', () => {
     expect(() => check(user, undefined)).toThrow(ForbiddenException);
   });
 
+  it('RF-85: con el 2FA pendiente deja las rutas de contraseña, correo y 2FA, no las de contacto', () => {
+    const user = { id: 'a1', role: 'ADMIN' as const, mustEnableTwoFactor: true as const };
+    expect(check(user, 'password')).toBe(true);
+    expect(check(user, 'email')).toBe(true);
+    expect(check(user, 'twofactor')).toBe(true);
+    expect(() => check(user, 'contact')).toThrow(ForbiddenException);
+    expect(() => check(user, undefined)).toThrow(ForbiddenException);
+  });
+
+  it('RF-85: el 2FA va después de la contraseña y del correo', () => {
+    const user = {
+      id: 'a1',
+      role: 'ADMIN' as const,
+      mustVerifyEmail: true as const,
+      mustEnableTwoFactor: true as const,
+    };
+    expect(() => check(user, 'twofactor')).toThrow(ForbiddenException);
+    const first = { ...user, mustChangePassword: true as const };
+    expect(() => check(first, 'email')).toThrow(ForbiddenException);
+  });
+
   it.each([
     [{ mustChangePassword: true as const }, 'PASSWORD_CHANGE_REQUIRED'],
     [{ mustVerifyEmail: true as const }, 'EMAIL_VERIFICATION_REQUIRED'],
+    [{ mustEnableTwoFactor: true as const }, 'TWO_FACTOR_REQUIRED'],
     [{ mustCompleteContact: true as const }, 'CONTACT_DATA_REQUIRED'],
   ])('el rechazo lleva el código del primer paso pendiente (%o)', (flags, code) => {
     try {

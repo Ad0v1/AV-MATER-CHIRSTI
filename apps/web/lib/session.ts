@@ -11,6 +11,7 @@ export type SessionUser = {
   mustAcceptPolicy: boolean;
   mustChangePassword: boolean;
   mustVerifyEmail: boolean;
+  mustEnableTwoFactor: boolean;
   mustCompleteContact: boolean;
 };
 
@@ -43,6 +44,7 @@ export async function getSession(): Promise<SessionUser | null> {
       mustAcceptPolicy: data.mustAcceptPolicy === true,
       mustChangePassword: data.mustChangePassword === true,
       mustVerifyEmail: data.mustVerifyEmail === true,
+      mustEnableTwoFactor: data.mustEnableTwoFactor === true,
       mustCompleteContact: data.mustCompleteContact === true,
     };
   } catch {

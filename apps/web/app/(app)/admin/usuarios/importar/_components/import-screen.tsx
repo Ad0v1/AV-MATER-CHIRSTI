@@ -34,6 +34,7 @@ import {
   type ImportType,
 } from '../_lib/import-guards';
 import {
+  CREDENTIALS_WARNING,
   IMPORTING_MESSAGE,
   IMPORT_FILE_PATH,
   MAX_ROW_ERRORS,
@@ -52,6 +53,7 @@ import {
   parseCommitResult,
   parseImportReport,
   previewAnnouncement,
+  sheetBlob,
   templateHref,
   typeChangeMessage,
   VALIDATING_MESSAGE,
@@ -63,9 +65,10 @@ const REPORT_TITLE_ID = 'reporte-importacion-titulo';
 const DONE_TITLE_ID = 'importacion-hecha-titulo';
 
 const TYPE_COLUMNS: Record<ImportType, string> = {
-  students: 'correo, nombre_completo, grado, seccion',
-  teachers: 'correo, nombre_completo',
-  guardians: 'correo_apoderado, nombre_apoderado, correo_estudiante',
+  students:
+    'dni, nombre_completo, grado, seccion, dni_apoderado, nombre_apoderado, dni_apoderado_2, nombre_apoderado_2',
+  teachers: 'dni, nombre_completo',
+  guardians: 'dni_apoderado, nombre_apoderado, dni_estudiante',
 };
 
 type FocusTarget = 'start' | 'alert' | 'report' | 'done' | null;
@@ -100,6 +103,7 @@ export function ImportScreen() {
   const [inputKey, setInputKey] = useState(0);
   const [templateError, setTemplateError] = useState<string | null>(null);
   const [downloading, setDownloading] = useState<ImportFormat | null>(null);
+  const [sheetState, setSheetState] = useState<'pending' | 'downloaded' | 'failed'>('pending');
   const announce = useAnnounce();
 
   const alertRef = useRef<HTMLDivElement>(null);
@@ -214,8 +218,29 @@ export function ImportScreen() {
     });
   }
 
+  function downloadSheet() {
+    const sheet = state.result?.credentialsSheet;
+    const blob = sheet ? sheetBlob(sheet) : null;
+    if (!sheet || !blob) {
+      setSheetState('failed');
+      announce('No se pudo preparar la hoja de credenciales.');
+      return;
+    }
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = sheet.filename;
+    document.body.append(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 0);
+    setSheetState('downloaded');
+    announce('Hoja de credenciales descargada.');
+  }
+
   function reset() {
     file.current = null;
+    setSheetState('pending');
     setInputKey((k) => k + 1);
     // El botón desaparece: el foco va al inicio del paso 1, no a <body> (MEDIO de UX, INFORME 19).
     focusNext.current = 'start';
@@ -397,6 +422,27 @@ export function ImportScreen() {
             Importación completada
           </h2>
           <p className="text-sm">{createdText(state.result.type, state.result.created)}.</p>
+          {state.result.credentialsSheet ? (
+            <Alert role="note">
+              <AlertTitle>Hoja de credenciales</AlertTitle>
+              <AlertDescription>
+                <p>{CREDENTIALS_WARNING}</p>
+                <div className="mt-3">
+                  <Button type="button" className={TOUCH} onClick={downloadSheet}>
+                    {sheetState === 'downloaded'
+                      ? 'Descargar de nuevo la hoja'
+                      : 'Descargar hoja de credenciales (.xlsx)'}
+                  </Button>
+                </div>
+                {sheetState === 'failed' ? (
+                  <p className="mt-2 text-destructive" role="alert">
+                    No se pudo preparar la hoja. Restablece la contraseña de cada usuario desde su
+                    ficha.
+                  </p>
+                ) : null}
+              </AlertDescription>
+            </Alert>
+          ) : null}
           <div className="flex flex-col gap-2 sm:flex-row">
             <Link
               href={USERS_PATH}

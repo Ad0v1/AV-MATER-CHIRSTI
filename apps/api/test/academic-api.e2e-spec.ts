@@ -171,7 +171,7 @@ describe.skipIf(!process.env.DATABASE_URL)('API academica F2 (e2e, MySQL)', () =
     const sessions = app.get(SessionService);
     for (const key of keys) {
       const user = await prisma.user.findUniqueOrThrow({
-        where: { institutionalEmail: `${key}@colegio.example` },
+        where: { email: `${key}@colegio.example` },
       });
       ids.set(key, user.id);
       roles.set(key, user.role as Role);
