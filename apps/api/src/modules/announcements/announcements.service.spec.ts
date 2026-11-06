@@ -170,7 +170,7 @@ describe('AnnouncementsService (RF-32)', () => {
       ),
     ).toBe(409);
     const b = setup();
-    b.prisma.academicYear.findUnique.mockResolvedValueOnce({ closedAt: new Date() });
+    b.prisma.academicYear.findUnique.mockResolvedValueOnce({ closedAt: new Date() } as never);
     expect(
       await statusOf(
         b.service.createInstitutional(admin, actor, {

@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../../common/prisma/prisma.service.js';
 import type { NotificationType } from '../../../generated/prisma/enums.js';
-import { isSafeEmail } from '../../jobs/mailer.service.js';
+import { deliverableEmail } from '../../jobs/mailer.service.js';
 import { QueueService } from '../../queue/index.js';
 import {
   dedupeKey,
@@ -47,7 +47,7 @@ export class NotificationFanout {
     for (const part of chunks(unique, INSERT_CHUNK)) {
       const users = await this.prisma.user.findMany({
         where: { id: { in: part }, status: 'ACTIVE' },
-        select: { id: true, institutionalEmail: true },
+        select: { id: true, contactEmail: true, emailVerifiedAt: true },
       });
       const rows = users.map((u) => {
         const key = dedupeKey(type, entityId, u.id, variant);
@@ -57,9 +57,7 @@ export class NotificationFanout {
           type,
           entityId,
           dedupeKey: key,
-          emailStatus: isSafeEmail(u.institutionalEmail)
-            ? ('PENDING' as const)
-            : ('SKIPPED' as const),
+          emailStatus: deliverableEmail(u) ? ('PENDING' as const) : ('SKIPPED' as const),
         };
       });
       if (rows.length === 0) continue;

@@ -2,7 +2,7 @@ import { Injectable, Logger, type OnModuleInit } from '@nestjs/common';
 import { type Job, UnrecoverableError } from 'bullmq';
 import { z } from 'zod';
 import { PrismaService } from '../../../common/prisma/prisma.service.js';
-import { isSafeEmail, MailerService } from '../../jobs/mailer.service.js';
+import { deliverableEmail, MailerService } from '../../jobs/mailer.service.js';
 import { JobProcessorRegistry, type JobProcessor } from '../../jobs/processor.registry.js';
 import { DEFAULT_ATTEMPTS } from '../../queue/index.js';
 import { EMAIL_BATCH, NOTIFICATION_JOBS, RETENTION } from '../notification.constants.js';
@@ -58,7 +58,7 @@ export class SendEmailProcessor implements JobProcessor, OnModuleInit {
       (
         await this.prisma.user.findMany({
           where: { id: { in: [...new Set(rows.map((r) => r.recipientId))] } },
-          select: { id: true, status: true, institutionalEmail: true },
+          select: { id: true, status: true, contactEmail: true, emailVerifiedAt: true },
         })
       ).map((u) => [u.id, u]),
     );
@@ -69,12 +69,13 @@ export class SendEmailProcessor implements JobProcessor, OnModuleInit {
     let consecutive = 0;
     for (const row of rows) {
       const user = users.get(row.recipientId);
-      if (!user || user.status !== 'ACTIVE' || !isSafeEmail(user.institutionalEmail)) {
+      const email = user ? deliverableEmail(user) : null;
+      if (!user || user.status !== 'ACTIVE' || !email) {
         skipped += await this.mark(row.id, { emailStatus: 'SKIPPED' });
         continue;
       }
       try {
-        await this.mailer.sendNotice(user.institutionalEmail, row.type);
+        await this.mailer.sendNotice(email, row.type);
       } catch {
         failed++;
         consecutive++;

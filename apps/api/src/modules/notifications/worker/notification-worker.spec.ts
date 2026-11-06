@@ -24,7 +24,7 @@ describe('jobUuid', () => {
 });
 
 describe('NotificationFanout', () => {
-  function setup(users: { id: string; institutionalEmail: string }[]) {
+  function setup(users: { id: string; contactEmail: string; emailVerifiedAt: Date }[]) {
     const created: Record<string, unknown>[] = [];
     const prisma = {
       user: {
@@ -57,8 +57,8 @@ describe('NotificationFanout', () => {
 
   it('crea un aviso por destinatario ACTIVE con skipDuplicates; sin correo válido → SKIPPED', async () => {
     const { fanout, prisma, created, enqueue } = setup([
-      { id: 'u1', institutionalEmail: 'a@colegio.example' },
-      { id: 'u2', institutionalEmail: 'sin-correo' },
+      { id: 'u1', contactEmail: 'a@colegio.example', emailVerifiedAt: new Date() },
+      { id: 'u2', contactEmail: 'sin-correo', emailVerifiedAt: new Date() },
     ]);
     const res = await fanout.notify('ANNOUNCEMENT_PUBLISHED', uuid(9), ['u1', 'u2', 'u1', 'u3']);
     expect(res).toEqual({ recipients: 3, created: 2, emailJobs: 1 });
@@ -78,7 +78,8 @@ describe('NotificationFanout', () => {
   it('INSTITUTION: correos en lotes de 100 con jobId estable', async () => {
     const users = Array.from({ length: 250 }, (_, i) => ({
       id: `u${String(i).padStart(3, '0')}`,
-      institutionalEmail: `e${i}@colegio.example`,
+      contactEmail: `e${i}@colegio.example`,
+      emailVerifiedAt: new Date(),
     }));
     const a = setup(users);
     await a.fanout.notify(
@@ -87,7 +88,7 @@ describe('NotificationFanout', () => {
       users.map((u) => u.id),
     );
     const sizes = a.enqueue.mock.calls.map(
-      (c) => (c[2] as { notificationIds: string[] }).notificationIds.length,
+      (c) => ((c as unknown[])[2] as { notificationIds: string[] }).notificationIds.length,
     );
     expect(sizes).toEqual([100, 100, 50]);
     const b = setup(users);
@@ -96,7 +97,9 @@ describe('NotificationFanout', () => {
       uuid(1),
       users.map((u) => u.id),
     );
-    expect(b.enqueue.mock.calls.map((c) => c[3])).toEqual(a.enqueue.mock.calls.map((c) => c[3]));
+    expect(b.enqueue.mock.calls.map((c) => (c as unknown[])[3])).toEqual(
+      a.enqueue.mock.calls.map((c) => (c as unknown[])[3]),
+    );
   });
 
   it('sin destinatarios no consulta ni encola', async () => {
@@ -167,9 +170,24 @@ describe('SendEmailProcessor', () => {
       user: {
         findMany: vi.fn(() =>
           Promise.resolve([
-            { id: 'u1', status: 'ACTIVE', institutionalEmail: 'u1@colegio.example' },
-            { id: 'u2', status: 'INACTIVE', institutionalEmail: 'u2@colegio.example' },
-            { id: 'u3', status: 'ACTIVE', institutionalEmail: 'u3@colegio.example' },
+            {
+              id: 'u1',
+              status: 'ACTIVE',
+              contactEmail: 'u1@colegio.example',
+              emailVerifiedAt: new Date(),
+            },
+            {
+              id: 'u2',
+              status: 'INACTIVE',
+              contactEmail: 'u2@colegio.example',
+              emailVerifiedAt: new Date(),
+            },
+            {
+              id: 'u3',
+              status: 'ACTIVE',
+              contactEmail: 'u3@colegio.example',
+              emailVerifiedAt: new Date(),
+            },
           ]),
         ),
       },

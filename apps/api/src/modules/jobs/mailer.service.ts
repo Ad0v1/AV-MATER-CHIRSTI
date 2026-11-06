@@ -27,6 +27,18 @@ export function isSafeEmail(value: string): boolean {
   return value.length <= 191 && EMAIL.test(value);
 }
 
+/**
+ * Correo al que se puede escribir a un usuario: solo el de contacto ya verificado (RF-80, D-062).
+ * El institucional es opcional desde el login por codigo y no se usa para avisos.
+ */
+export function deliverableEmail(user: {
+  contactEmail: string | null;
+  emailVerifiedAt: Date | null;
+}): string | null {
+  const email = user.contactEmail;
+  return email && user.emailVerifiedAt && isSafeEmail(email) ? email : null;
+}
+
 /** Remitente si SMTP_FROM no esta definido (solo en local; en produccion es obligatorio). */
 export const DEFAULT_SMTP_FROM = 'Aula Virtual <no-responder@aula.local>';
 
