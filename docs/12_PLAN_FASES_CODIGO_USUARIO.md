@@ -59,6 +59,8 @@
 
 ## Fase E — 2FA obligatorio del administrador (Dev 1)
 
+> **Estado (06/11/2026): implementada** (API, pantallas y pruebas; sin commit). Paso `twofactor` en el primer ingreso (después de la contraseña y el correo), 10 códigos de recuperación de un solo uso con HMAC (`RecoveryCode`, migración `auth_codigos_recuperacion_2fa`), ingreso con código de recuperación, códigos nuevos con un código vigente de la app y reinicio del 2FA por otro administrador. Pantalla `/activar-2fa` (clave manual; sin QR hasta que se acuerde una librería) y panel en «Mi perfil». Detalle en `03_CONTRATOS.md`.
+
 **RF:** 85. Puede hacerse en paralelo a la Fase B.
 
 - El administrador no entra al sistema hasta activar el TOTP; se agregan códigos de recuperación de un solo uso, guardados con hash.

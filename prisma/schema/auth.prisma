@@ -48,6 +48,7 @@ model User {
 
   localCredential   LocalCredential?
   policyAcceptances PolicyAcceptance[]
+  recoveryCodes     RecoveryCode[]
   auditLogs         AuditLog[]
 
   // Relaciones inversas de Dev 2 (academic.prisma)
@@ -75,6 +76,20 @@ model LocalCredential {
   mustChangePassword  Boolean   @default(false)
   passwordChangedAt   DateTime?
   user                User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// Codigos de recuperacion del 2FA del administrador (RF-85): de un solo uso y solo con hash. El
+// codigo en claro se muestra una unica vez, al activar el 2FA o al regenerarlos.
+model RecoveryCode {
+  id        String    @id @default(uuid(7)) @db.Char(36)
+  userId    String    @db.Char(36)
+  // HMAC-SHA-256 del codigo (hex). Los codigos tienen 50 bits de entropia, por eso basta un hash con clave.
+  codeHash  String    @unique @db.Char(64)
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, usedAt])
 }
 
 // Aceptacion de politica y terminos por version (RF-07).

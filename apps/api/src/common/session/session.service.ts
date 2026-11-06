@@ -40,6 +40,7 @@ export class SessionService {
           role: parsed.role as AuthenticatedUser['role'],
           ...(parsed.mustChangePassword === true ? { mustChangePassword: true as const } : {}),
           ...(parsed.mustVerifyEmail === true ? { mustVerifyEmail: true as const } : {}),
+          ...(parsed.mustEnableTwoFactor === true ? { mustEnableTwoFactor: true as const } : {}),
           ...(parsed.mustCompleteContact === true ? { mustCompleteContact: true as const } : {}),
         };
       }

@@ -768,15 +768,15 @@ Efecto, todo o nada (si cualquier error, no se escribe nada):
 
 ### Sesión y pasos del primer ingreso
 
-- La sesión viaja en la cookie `aula_sid`. `POST /auth/login`, `GET /auth/me` y los cambios de estado devuelven `{ id, role, mustAcceptPolicy, mustChangePassword, mustVerifyEmail }`.
-- Mientras `mustChangePassword` sea verdadero, la API responde **403 `PASSWORD_CHANGE_REQUIRED`** a todo salvo `me`, `logout` y `password`. Con `mustVerifyEmail`, responde **403 `EMAIL_VERIFICATION_REQUIRED`** a todo salvo esas rutas, `policy/accept` y `email/*` (RN-18). Orden: contraseña, política, correo.
+- La sesión viaja en la cookie `aula_sid`. `POST /auth/login`, `GET /auth/me` y los cambios de estado devuelven `{ id, role, mustAcceptPolicy, mustChangePassword, mustVerifyEmail, mustEnableTwoFactor, mustCompleteContact }`.
+- Mientras `mustChangePassword` sea verdadero, la API responde **403 `PASSWORD_CHANGE_REQUIRED`** a todo salvo `me`, `logout` y `password`. Con `mustVerifyEmail`, responde **403 `EMAIL_VERIFICATION_REQUIRED`** a todo salvo esas rutas, `policy/accept` y `email/*` (RN-18). Con `mustEnableTwoFactor` (solo el ADMIN sin 2FA, RF-85), responde **403 `TWO_FACTOR_REQUIRED`** a todo salvo `me`, `logout`, `password`, `policy/accept`, `email/*` y `2fa/*`. Orden: contraseña, política, correo, 2FA y, para el apoderado, datos de contacto.
 - Cambiar la contraseña, verificar el correo o recuperar la contraseña cierran todas las sesiones anteriores del usuario (RF-78) y, cuando corresponde, abren una nueva.
 
 ### Endpoints
 
 | Método y ruta | Rol | Cuerpo | Respuesta | Límite |
 | --- | --- | --- | --- | --- |
-| `POST /auth/login` | público | `{ code, password, totp? }` (`code`: 10 dígitos) | 200 con la sesión; 401 genérico (código mal escrito, inexistente, bloqueado o clave errada); 403 cuenta inactiva | 5/min por IP; 5 fallos seguidos por cuenta bloquean 15 min |
+| `POST /auth/login` | público | `{ code, password, totp? \| recoveryCode? }` (`code`: 10 dígitos; `totp`: 6 dígitos; `recoveryCode`: `XXXXX-XXXXX`, no ambos) | 200 con la sesión; 401 genérico (código mal escrito, inexistente, bloqueado o clave errada); 401 `TOTP_REQUIRED`, `TOTP_INVALID` o `RECOVERY_CODE_INVALID` si la cuenta tiene 2FA; 403 cuenta inactiva | 5/min por IP; 5 fallos seguidos por cuenta bloquean 15 min |
 | `GET /auth/me` | sesión | — | 200 con la sesión | — |
 | `POST /auth/password` | sesión | `{ currentPassword, newPassword }` | 204 y cookie nueva; 400 `INVALID_CURRENT_PASSWORD` o lista de problemas de la política | 5/min |
 | `POST /auth/policy/accept` | sesión | `{ privacy: true, terms: true, onBehalfOfWards? }` (el apoderado debe enviar `onBehalfOfWards: true`) | 204; 400 | — |
@@ -785,14 +785,20 @@ Efecto, todo o nada (si cualquier error, no se escribe nada):
 | `POST /auth/recover/request` | público | `{ code }` (código de usuario) | 204 siempre, exista o no el usuario | 3/min |
 | `POST /auth/recover/confirm` | público | `{ code, emailCode, newPassword }` | 204; 400 `INVALID_RECOVERY` (mismo error para todo fallo del código) o lista de problemas de la política | 5/min |
 | `POST /auth/users/:id/email/manual-verification` | ADMIN | `{ email, reason }` (motivo de 10 a 500 caracteres) | 204; 404 | — |
-| `POST /auth/2fa/setup`, `POST /auth/2fa/enable`, `POST /auth/logout` | ver docs/11 | sin cambios | — | — |
+| `POST /auth/2fa/setup` | ADMIN | — | 201 `{ secret, otpauthUrl }` (el secreto queda pendiente 10 min); 409 si el 2FA ya está activo | 5/min |
+| `POST /auth/2fa/enable` | ADMIN | `{ code }` (6 dígitos de la app) | 200 `{ recoveryCodes: string[10] }` **una sola vez**, cookie nueva y cierre de las demás sesiones; 400 | 5/min |
+| `GET /auth/2fa/status` | ADMIN | — | 200 `{ enabled, recoveryCodesLeft }` | — |
+| `POST /auth/2fa/recovery-codes` | ADMIN | `{ code }` (6 dígitos vigentes de la app) | 200 `{ recoveryCodes }` (juego nuevo; el anterior deja de valer); 400 | 5/min |
+| `POST /auth/users/:id/2fa/reset` | ADMIN | — | 204; borra el secreto y los códigos del usuario y cierra sus sesiones; 400 si es el propio; 404 | — |
+| `POST /auth/logout` | sesión | — | 204 | — |
 
 ### Reglas
 
 - **Código de usuario:** 10 dígitos; `AA` (año de alta, hora de Lima) + 7 aleatorios + dígito de control Luhn. Un código con el dígito de control mal responde igual que uno inexistente y no cuenta como intento.
 - **Códigos de un solo uso (correo y recuperación):** 6 dígitos, vigentes 5 minutos, 5 intentos (al quinto fallo el código se invalida), guardados con hash en Redis.
 - **Política de contraseñas:** 8 a 128 caracteres; no puede ser común, repetir un carácter ni contener el código de usuario o el DNI; el cambio debe ser distinto de la actual.
-- **Bitácora:** `auth.login`, `auth.login_failed`, `auth.account_locked`, `auth.login_blocked`, `auth.password_changed`, `auth.password_change_failed`, `auth.password_recovered`, `auth.recovery_requested`, `auth.email_code_sent`, `auth.email_verified`, `auth.email_verified_manually` y `auth.policy_accepted`. Nunca llevan contraseñas, códigos, correos ni DNI; el motivo de la verificación manual es texto libre y no debe contener datos personales.
+- **2FA del administrador (RF-85, D-064):** obligatorio desde el primer ingreso. Los códigos de recuperación son 10 por juego, de 10 caracteres (`XXXXX-XXXXX`, sin 0/O/1/I/L, 49 bits), de un solo uso, guardados solo como HMAC-SHA-256 con la clave `TOTP_ENCRYPTION_KEY` (tabla `RecoveryCode`). Un código de recuperación inválido cuenta como intento fallido para el bloqueo. Quien perdió su teléfono y sus códigos lo resuelve con el reinicio de otro administrador.
+- **Bitácora:** `auth.2fa_enabled`, `auth.2fa_recovery_used` (solo cuántos quedan), `auth.2fa_recovery_regenerated`, `auth.2fa_reset`, `auth.login`, `auth.login_failed`, `auth.account_locked`, `auth.login_blocked`, `auth.password_changed`, `auth.password_change_failed`, `auth.password_recovered`, `auth.recovery_requested`, `auth.email_code_sent`, `auth.email_verified`, `auth.email_verified_manually` y `auth.policy_accepted`. Nunca llevan contraseñas, códigos, correos ni DNI; el motivo de la verificación manual es texto libre y no debe contener datos personales.
 - **Variables de entorno nuevas:** `PII_ENCRYPTION_KEY`, `LOGIN_MAX_FAILED_ATTEMPTS`, `LOGIN_LOCK_SECONDS`, `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS` y `SMTP_FROM`. En producción son obligatorias la clave y las credenciales SMTP.
 
 ### Cambios de la Fase C en la API de usuarios (RF-18 a RF-20, RF-69, RF-74, RF-83, RF-84, RF-86, RF-87)

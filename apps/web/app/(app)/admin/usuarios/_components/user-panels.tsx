@@ -26,6 +26,7 @@ import {
   linkStudentAction,
   makePrimaryAction,
   resetPasswordAction,
+  resetTwoFactorAction,
   revokeLinkAction,
   transferAction,
   updateUserAction,
@@ -310,6 +311,32 @@ export function ResetPasswordForm({ userId }: { userId: string }) {
         <div>
           <SubmitButton pendingText="Generando…" variant="outline">
             Generar contraseña temporal
+          </SubmitButton>
+        </div>
+      </form>
+    </details>
+  );
+}
+
+/** Reinicia el 2FA de otro administrador (RF-85). No sirve para la propia cuenta: la API lo rechaza. */
+export function ResetTwoFactorForm({ userId }: { userId: string }) {
+  const [state, formAction] = useActionState(resetTwoFactorAction.bind(null, userId), IDLE);
+  const { formRef, alertRef } = useFormRefs(state);
+  return (
+    <details className="rounded-xl p-3 ring-1 ring-foreground/10">
+      <summary className="min-h-11 cursor-pointer content-center text-sm font-medium">
+        Reiniciar la verificación en dos pasos
+      </summary>
+      <form ref={formRef} action={formAction} noValidate className="mt-3 flex flex-col gap-3">
+        <p className="text-sm text-muted-foreground">
+          Úsalo si este administrador perdió su teléfono y sus códigos de recuperación. Se borran su
+          clave y sus códigos, se cierran sus sesiones y deberá activar la verificación de nuevo en
+          su próximo ingreso.
+        </p>
+        <FormMessage state={state} alertRef={alertRef} />
+        <div>
+          <SubmitButton pendingText="Reiniciando…" variant="outline">
+            Reiniciar verificación en dos pasos
           </SubmitButton>
         </div>
       </form>

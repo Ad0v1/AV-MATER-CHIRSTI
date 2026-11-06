@@ -17,6 +17,8 @@ export function LoginForm() {
   const [code, setCode] = useState('');
   const [password, setPassword] = useState('');
   const [totp, setTotp] = useState('');
+  const [recovery, setRecovery] = useState('');
+  const [useRecovery, setUseRecovery] = useState(false);
   const [needsTotp, setNeedsTotp] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
@@ -36,7 +38,11 @@ export function LoginForm() {
       const res = await fetch('/api/v1/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code, password, ...(needsTotp ? { totp } : {}) }),
+        body: JSON.stringify({
+          code,
+          password,
+          ...(needsTotp ? (useRecovery ? { recoveryCode: recovery } : { totp }) : {}),
+        }),
       });
 
       if (res.ok) {
@@ -45,21 +51,25 @@ export function LoginForm() {
           mustAcceptPolicy?: boolean;
           mustChangePassword?: boolean;
           mustVerifyEmail?: boolean;
+          mustEnableTwoFactor?: boolean;
           mustCompleteContact?: boolean;
         };
-        // Pasos del primer ingreso, en orden: contraseña, política y correo (RF-71). La API
-        // bloquea todo lo demás hasta cumplirlos.
+        // Pasos del primer ingreso, en orden: contraseña, política y correo (RF-71); el
+        // administrador además activa el 2FA (RF-85). La API bloquea todo lo demás hasta
+        // cumplirlos.
         const target = data.mustChangePassword
           ? '/cambiar-clave'
           : data.mustAcceptPolicy
             ? '/politica'
             : data.mustVerifyEmail
               ? '/verificar-correo'
-              : data.mustCompleteContact
-                ? '/mi-perfil'
-                : isRole(data.role)
-                  ? HOME_BY_ROLE[data.role]
-                  : '/';
+              : data.mustEnableTwoFactor
+                ? '/activar-2fa'
+                : data.mustCompleteContact
+                  ? '/mi-perfil'
+                  : isRole(data.role)
+                    ? HOME_BY_ROLE[data.role]
+                    : '/';
         router.replace(target);
         router.refresh();
         return;
@@ -73,7 +83,11 @@ export function LoginForm() {
       }
       if (res.status === 429) {
         setError('Demasiados intentos. Espera un minuto e inténtalo de nuevo.');
-      } else if (res.status === 401 && !body.error?.code?.startsWith('TOTP')) {
+      } else if (
+        res.status === 401 &&
+        !body.error?.code?.startsWith('TOTP') &&
+        body.error?.code !== 'RECOVERY_CODE_INVALID'
+      ) {
         setError('Código o contraseña incorrectos.');
       } else {
         setError(body.error?.message ?? 'No se pudo iniciar sesión. Inténtalo de nuevo.');
@@ -118,7 +132,33 @@ export function LoginForm() {
         disabled={pending || needsTotp}
       />
 
-      {needsTotp && (
+      {needsTotp && useRecovery && (
+        <div className="grid gap-1.5">
+          <label htmlFor="recovery" className="text-sm font-medium text-ink">
+            Código de recuperación
+          </label>
+          <Input
+            id="recovery"
+            autoComplete="off"
+            autoCapitalize="characters"
+            spellCheck={false}
+            maxLength={11}
+            required
+            autoFocus
+            value={recovery}
+            onChange={(e) => setRecovery(e.target.value.toUpperCase())}
+            disabled={pending}
+            aria-describedby="recovery-help"
+            className="h-11 bg-surface text-center font-mono text-lg tracking-widest"
+          />
+          <p id="recovery-help" className="text-xs text-ink-3">
+            Escribe uno de los códigos que guardaste al activar la verificación (XXXXX-XXXXX). Cada
+            uno sirve una sola vez.
+          </p>
+        </div>
+      )}
+
+      {needsTotp && !useRecovery && (
         <div className="grid gap-1.5">
           <label htmlFor="totp" className="text-sm font-medium text-ink">
             Código de verificación
@@ -141,6 +181,19 @@ export function LoginForm() {
             Ingresa los 6 dígitos de tu aplicación autenticadora.
           </p>
         </div>
+      )}
+
+      {needsTotp && (
+        <button
+          type="button"
+          onClick={() => {
+            setUseRecovery((v) => !v);
+            setError(null);
+          }}
+          className="min-h-11 text-left text-sm text-brand underline-offset-2 hover:underline"
+        >
+          {useRecovery ? 'Usar el código de la aplicación' : 'Usar un código de recuperación'}
+        </button>
       )}
 
       {error && (

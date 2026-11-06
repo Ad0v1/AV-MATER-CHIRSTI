@@ -1,19 +1,30 @@
 import { BadRequestException } from '@nestjs/common';
 import { z } from 'zod';
 
-export const loginSchema = z.object({
-  // Codigo de usuario de 10 digitos (RF-68). El digito de control se comprueba en el servicio.
-  code: z
-    .string()
-    .trim()
-    .regex(/^\d{10}$/, 'debe tener 10 digitos'),
-  password: z.string().min(1).max(256),
-  // Codigo de 6 digitos de la app autenticadora; solo se exige si la cuenta tiene 2FA.
-  totp: z
-    .string()
-    .regex(/^\d{6}$/, 'debe tener 6 digitos')
-    .optional(),
-});
+export const loginSchema = z
+  .object({
+    // Codigo de usuario de 10 digitos (RF-68). El digito de control se comprueba en el servicio.
+    code: z
+      .string()
+      .trim()
+      .regex(/^\d{10}$/, 'debe tener 10 digitos'),
+    password: z.string().min(1).max(256),
+    // Codigo de 6 digitos de la app autenticadora; solo se exige si la cuenta tiene 2FA.
+    totp: z
+      .string()
+      .regex(/^\d{6}$/, 'debe tener 6 digitos')
+      .optional(),
+    // Codigo de recuperacion de un solo uso (RF-85), en lugar del de la app: XXXXX-XXXXX.
+    recoveryCode: z
+      .string()
+      .trim()
+      .regex(/^[A-Za-z0-9]{5}[\s-]?[A-Za-z0-9]{5}$/, 'formato XXXXX-XXXXX')
+      .optional(),
+  })
+  .refine(
+    (v) => !(v.totp && v.recoveryCode),
+    'envia el codigo de la app o uno de recuperacion, no ambos',
+  );
 
 export const totpCodeSchema = z.object({
   code: z.string().regex(/^\d{6}$/, 'debe tener 6 digitos'),

@@ -18,6 +18,7 @@ import { FilesModule } from './modules/files/files.module.js';
 import { SubmissionsModule } from './modules/submissions/submissions.module.js';
 import { AuthService } from './modules/auth/auth.service.js';
 import { CredentialsModule } from './modules/auth/credentials.module.js';
+import { RecoveryCodesService } from './modules/auth/recovery-codes.service.js';
 import { TotpService } from './modules/auth/totp.service.js';
 import { PendingSetupGuard } from './common/auth/pending-setup.guard.js';
 import { MailModule } from './common/mail/mail.module.js';
@@ -47,6 +48,7 @@ import { PasswordRecoveryService } from './modules/auth/password-recovery.servic
   providers: [
     AuthService,
     TotpService,
+    RecoveryCodesService,
     OneTimeCodeService,
     EmailVerificationService,
     PasswordRecoveryService,

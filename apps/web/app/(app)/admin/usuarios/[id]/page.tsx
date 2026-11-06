@@ -34,6 +34,7 @@ import {
   LinkStudentForm,
   MakePrimaryForm,
   ResetPasswordForm,
+  ResetTwoFactorForm,
   RevokeLinkAction,
   StatusAction,
   TransferAction,
@@ -195,6 +196,7 @@ async function UserPage({
         </dl>
         {!user.dniVerified ? <VerifyDniForm userId={user.id} /> : null}
         <ResetPasswordForm userId={user.id} />
+        {user.role === 'ADMIN' ? <ResetTwoFactorForm userId={user.id} /> : null}
         <CorrectDniForm userId={user.id} />
       </Section>
 
