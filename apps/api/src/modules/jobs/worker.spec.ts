@@ -170,13 +170,16 @@ describe('procesadores de maintenance y notifications', () => {
     expect(p.everyMs).toBeGreaterThan(0);
   });
 
-  it('result-expiry-sweep: delega en BackgroundJobService.expireResults', async () => {
+  it('result-expiry-sweep: vence resultados y marca los RUNNING colgados (STALLED)', async () => {
     const registry = new JobProcessorRegistry();
     const expireResults = vi.fn(() => Promise.resolve(0));
+    const failStalled = vi.fn(() => Promise.resolve(2));
     const p = new ResultExpiryProcessor(registry, {
       expireResults,
+      failStalled,
     } as unknown as BackgroundJobService);
-    await expect(p.handle()).resolves.toEqual({ expired: 0 });
+    await expect(p.handle()).resolves.toEqual({ expired: 0, stalled: 2 });
+    expect(failStalled).toHaveBeenCalledTimes(1);
   });
 
   it('mail-check: solo escribe a la direccion de SMTP_FROM', async () => {

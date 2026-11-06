@@ -69,10 +69,10 @@ describe('parseSettingsForm (RF-61)', () => {
     expect(r.values.band0_literal).toBe('<b>');
   });
 
-  it('plazo: 1 y 3650 valen; decimales, negativos y texto no', () => {
-    expect(parseSettingsForm(form({ purgeAfterDays: '1' })).ok).toBe(true);
+  it('plazo: 30 y 3650 valen; menos de 30, decimales, negativos y texto no', () => {
+    expect(parseSettingsForm(form({ purgeAfterDays: '30' })).ok).toBe(true);
     expect(parseSettingsForm(form({ purgeAfterDays: '3650' })).ok).toBe(true);
-    for (const v of ['3651', '1.5', '-1', 'diez', '']) {
+    for (const v of ['1', '29', '3651', '1.5', '-1', 'diez', '']) {
       expect(parseSettingsForm(form({ purgeAfterDays: v })).ok).toBe(false);
     }
   });

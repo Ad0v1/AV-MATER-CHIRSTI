@@ -171,7 +171,7 @@ describe.skipIf(!process.env.DATABASE_URL)('Calificaciones de Dev 4, fase 4b (e2
       'apoderado01',
     ]) {
       const user = await prisma.user.findUniqueOrThrow({
-        where: { institutionalEmail: `${key}@colegio.example` },
+        where: { email: `${key}@colegio.example` },
       });
       ids.set(key, user.id);
     }
@@ -703,7 +703,7 @@ describe.skipIf(!process.env.DATABASE_URL)('Calificaciones de Dev 4, fase 4b (e2
       });
       await prisma.guardianStudent.update({
         where: { id: link.id },
-        data: { isActive: null, revokedAt: new Date() },
+        data: { isActive: null, isPrimary: null, revokedAt: new Date() }, // CHECK: solo un vigente es principal
       });
       try {
         await get('apoderado01', `/guardian/students/${ids.get('estudiante01')}/grades`).expect(
@@ -716,7 +716,7 @@ describe.skipIf(!process.env.DATABASE_URL)('Calificaciones de Dev 4, fase 4b (e2
       } finally {
         await prisma.guardianStudent.update({
           where: { id: link.id },
-          data: { isActive: true, revokedAt: null },
+          data: { isActive: true, isPrimary: link.isPrimary, revokedAt: null },
         });
       }
       await get('apoderado01', `/guardian/students/${ids.get('estudiante01')}/grades`).expect(200);
@@ -742,7 +742,7 @@ describe.skipIf(!process.env.DATABASE_URL)('Calificaciones de Dev 4, fase 4b (e2
   const idOf = async (key: string) =>
     (
       await prisma.user.findUniqueOrThrow({
-        where: { institutionalEmail: `${key}@colegio.example` },
+        where: { email: `${key}@colegio.example` },
       })
     ).id;
 });

@@ -9,7 +9,7 @@ import {
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { loadStorageConfig } from '../storage/storage.config.js';
 import type { StorageConfig } from '../storage/index.js';
-import { LOGO_MIME, type LogoFormat } from './logo-image.js';
+import { LOGO_MAX_BYTES, LOGO_MIME, type LogoFormat } from './logo-image.js';
 
 // Logo institucional en el bucket privado, prefijo institution/ (U5). Fuera de StoredFile (que
 // exige courseSectionId) y de StorageService de Dev 3 (solo claves .pdf). Mismo patrón que
@@ -75,6 +75,21 @@ export class InstitutionLogoStorage {
     });
     const url = await getSignedUrl(this.s3, command, { expiresIn: LOGO_URL_TTL_SECONDS });
     return { url, expiresAt: new Date(Date.now() + LOGO_URL_TTL_SECONDS * 1000).toISOString() };
+  }
+
+  /**
+   * Bytes del logo para embeberlo en los reportes (RF-58). Rechaza objetos mayores que
+   * LOGO_MAX_BYTES (ya se validó al subirlo, U5; esto evita cargar algo inesperado en memoria).
+   */
+  async download(key: string): Promise<Buffer> {
+    assertLogoKey(key);
+    const res = await this.s3.send(new GetObjectCommand({ Bucket: this.config.bucket, Key: key }));
+    if (Number(res.ContentLength ?? 0) > LOGO_MAX_BYTES || !res.Body) {
+      throw new Error('Logo invalido');
+    }
+    const bytes = Buffer.from(await res.Body.transformToByteArray());
+    if (bytes.length > LOGO_MAX_BYTES) throw new Error('Logo invalido');
+    return bytes;
   }
 
   /** Un objeto que ya no existe no es error (S3 responde 204). */

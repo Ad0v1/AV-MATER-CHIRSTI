@@ -35,11 +35,11 @@ describe('updateSettingsSchema (RF-61)', () => {
     expect(dto.literalScale.map((b) => b.literal)).toEqual(['C', 'AD', 'B', 'A']);
   });
 
-  it('purgeAfterDays entre 1 y 3650, entero', () => {
-    for (const purgeAfterDays of [1, 3650]) {
+  it('purgeAfterDays entre 30 y 3650, entero', () => {
+    for (const purgeAfterDays of [30, 3650]) {
       expect(pipe.transform({ ...valid, purgeAfterDays }).purgeAfterDays).toBe(purgeAfterDays);
     }
-    for (const purgeAfterDays of [0, 3651, 1.5, '60', null]) {
+    for (const purgeAfterDays of [0, 1, 29, 3651, 1.5, '60', null]) {
       const r = detailsOf(() => pipe.transform({ ...valid, purgeAfterDays }));
       expect(r.message[0].path).toBe('purgeAfterDays');
     }

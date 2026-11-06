@@ -42,6 +42,8 @@ export class TrackedJobRunner {
       if (!retryable) throw new UnrecoverableError(code);
       throw new Error(code);
     }
-    await this.jobs.succeed(id, result);
+    const marked = await this.jobs.succeed(id, result);
+    // La fila ya no estaba RUNNING (p. ej. el barrido la dio por colgada): nadie apunta al objeto.
+    if (!marked && result) await this.jobs.discardResult(result.objectKey);
   }
 }
