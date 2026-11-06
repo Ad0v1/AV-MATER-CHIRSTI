@@ -446,7 +446,7 @@ type UsersEventMap = {
 - Multipart: el archivo va en el campo `file`; `type` y, en el commit, `sha256`. Un campo de más o mal formado responde 400 `VALIDATION_ERROR`.
 - Tipos (`type`): `students`, `teachers`, `guardians`. Formatos (`format`): `xlsx`, `csv`.
 - **Sin estado entre llamadas.** No hay token ni caché: la confirmación vuelve a subir el archivo y se compara su SHA-256 con el de la vista previa.
-- Ningún mensaje repite el valor de una celda, un correo o un nombre. Los mensajes son fijos y en español.
+- Ningún mensaje repite el valor de una celda, un DNI o un nombre. Los mensajes son fijos y en español.
 
 ### Endpoints
 
@@ -454,32 +454,37 @@ type UsersEventMap = {
 | --- | --- | --- | --- |
 | `GET /users/import/template` | Query `type`, `format` (estricta) | 200 archivo, con `Content-Disposition: attachment; filename="plantilla-<type>.<format>"` y `Cache-Control: no-store` | 400; 401; 403 |
 | `POST /users/import/preview` | multipart `file`, `type` | 200 `ImportReport` | 400; 401; 403; 409; 413; 415; 429 |
-| `POST /users/import/commit` | multipart `file`, `type`, `sha256` (64 hexadecimales) | 201 `ImportCommitResult` | 400; 401; 403; 409; 413; 415; 422; 429 |
+| `POST /users/import/commit` | multipart `file`, `type`, `sha256` (64 hexadecimales) | 201 `ImportCommitResult` (con la hoja de credenciales) | 400; 401; 403; 409; 413; 415; 422; 429 |
 
 **Ruta puente de la web (F5, D-037).** La pantalla de importación no llama a la API desde el navegador. Usa el Route Handler de `apps/web` `/admin/usuarios/importar/archivo/{plantilla|preview|commit}`, que reenvía a estos endpoints solo con la cookie `aula_sid`: `plantilla` acepta GET y `preview` y `commit` aceptan POST con el mismo `file`, `type` y `sha256`. La ruta responde 403 si el `Origin` no es del mismo host, 413 si `Content-Length` falta o supera 1 MiB + 64 KiB, 415 si el cuerpo no es multipart y 400 si `type` o `format` no están en la lista blanca. El resto de códigos son los de la API. No guarda ni registra el archivo ni su nombre.
 
 ### Plantillas
 
-Los encabezados pueden ir en cualquier orden. Se normalizan: sin espacios en los extremos, en minúsculas, sin tildes, y los espacios pasan a `_`. Una columna obligatoria que falta, una desconocida o una repetida responde 400. Las filas vacías se ignoran y el número de fila es el físico (encabezado = fila 1).
+> **Cambio de la Fase D (D-058, D-059).** El usuario ya no se identifica por correo sino por DNI. Cada cuenta nueva recibe un código de usuario y una contraseña inicial aleatoria (`mustChangePassword`), y la confirmación devuelve la hoja de credenciales.
+
+Los encabezados pueden ir en cualquier orden. Se normalizan: sin espacios en los extremos, en minúsculas, sin tildes, y los espacios pasan a `_`. Una columna obligatoria que falta, una desconocida o una repetida responde 400. Las filas vacías se ignoran y el número de fila es el físico (encabezado = fila 1). El DNI son 8 dígitos; en Excel hay que dar formato de texto a la columna (la plantilla ya lo trae) para no perder los ceros iniciales.
 
 | Tipo | Columnas | Reglas |
 | --- | --- | --- |
-| `students` | `correo`, `nombre_completo`, `grado`, `seccion` | `grado` es un entero de 1 a 5. `seccion` es de 1 a 8 letras o dígitos (se pasa a mayúsculas) y se busca en el año activo por grado y código. La matrícula usa la fecha del servidor. |
-| `teachers` | `correo`, `nombre_completo` | Correo del dominio institucional (`INSTITUTION_EMAIL_DOMAIN`). |
-| `guardians` | `correo_apoderado`, `nombre_apoderado`, `correo_estudiante` | Una fila por par apoderado-estudiante; hasta 10 estudiantes por apoderado. El estudiante ya debe existir y no estar retirado. El apoderado queda exento de dominio (D-013). |
+| `students` | `dni`, `nombre_completo`, `grado`, `seccion`, `dni_apoderado`, `nombre_apoderado`, `dni_apoderado_2`, `nombre_apoderado_2` | `grado` es un entero de 1 a 5. `seccion` es de 1 a 8 letras o dígitos (se pasa a mayúsculas) y se busca en el año activo por grado y código. El apoderado 1 es obligatorio y queda como principal; el apoderado 2 es opcional. Si el apoderado ya existe (por DNI) se reutiliza y su nombre puede ir vacío; si es nuevo, su nombre es obligatorio en alguna de sus filas. |
+| `teachers` | `dni`, `nombre_completo` | |
+| `guardians` | `dni_apoderado`, `nombre_apoderado`, `dni_estudiante` | Una fila por par apoderado-estudiante; hasta 10 estudiantes por apoderado y hasta 2 apoderados por estudiante (contando los que ya tiene). El estudiante ya debe existir y no estar retirado. Un apoderado que ya existe se reutiliza. El primer apoderado de un estudiante sin apoderados queda como principal. |
 
 - Plantilla CSV: UTF-8 con BOM, separador `,`, fin de línea CRLF y solo la fila de encabezados. `Content-Type: text/csv; charset=utf-8`.
-- Plantilla XLSX: hoja `Datos` (encabezados en negrita, fila 1 fija y lista 1..5 en `grado` hasta la fila 1001) y hoja `Instrucciones`. Sin filas de ejemplo. `Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`.
+- Plantilla XLSX: hoja `Datos` (encabezados en negrita, fila 1 fija, columnas de DNI con formato de texto y lista 1..5 en `grado` hasta la fila 1001) y hoja `Instrucciones`. Sin filas de ejemplo. `Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`.
+- Las columnas de apoderado opcionales (`nombre_apoderado`, `dni_apoderado_2`, `nombre_apoderado_2`) pueden ir vacías; el resto son obligatorias.
 
 ### Flujo: vista previa y después confirmación
 
 1. `POST /users/import/preview` con el archivo valida el archivo y lo compara con la BD con lecturas simples. **No escribe.** Devuelve `sha256` y `canConfirm`.
 2. Si `canConfirm` es `true`, `POST /users/import/commit` con **los mismos bytes**, el mismo `type` y el `sha256` de la vista previa.
-3. En el commit, si el SHA-256 no coincide, responde 409 y hay que volver a la vista previa. Si coincide, valida el archivo otra vez y revalida la BD dentro de una transacción. Si hay cualquier error, responde 422 con `details` y no escribe nada. Si todo está bien, crea usuarios, matrículas y vínculos **todo o nada** y responde 201.
+3. En el commit, si el SHA-256 no coincide, responde 409 y hay que volver a la vista previa. Si coincide, valida el archivo otra vez y revalida la BD dentro de una transacción. Si hay cualquier error, responde 422 con `details` y no escribe nada. Si todo está bien, crea usuarios, credenciales, matrículas y vínculos **todo o nada** y responde 201 con la hoja de credenciales.
 
-- La transacción tiene un tiempo máximo de 20 s y una espera máxima de 5 s para entrar. Las escrituras van en bloques de 500.
-- Dos commits del mismo archivo en paralelo dan 201 y 409, o 422 `EMAIL_TAKEN` si el segundo ya ve el correo ocupado. Nunca se duplica un usuario.
-- La importación solo crea. Un correo que ya existe, también el de un apoderado, da `EMAIL_TAKEN`. Para vincular un estudiante a un apoderado existente se usa `POST /guardians/:id/students`.
+- La transacción tiene un tiempo máximo de 20 s y una espera máxima de 5 s para entrar. Las escrituras van en bloques de 500. Las contraseñas iniciales (aleatorias, 12 caracteres) se guardan con argon2id de parámetros reducidos (memoria 8 MiB, 2 pasadas), calculado en lotes de 50, para que 1000 cuentas quepan en los 20 s. El usuario las cambia en su primer ingreso (RF-70) y el nuevo hash usa los parámetros normales.
+- Orden de bloqueos: el año `FOR SHARE` (solo `students`), luego los usuarios existentes que se vinculan, por id.
+- Dos commits del mismo archivo en paralelo dan 201 y 409, o 422 `DNI_TAKEN` si el segundo ya ve el DNI registrado. Nunca se duplica un usuario.
+- La importación solo crea personas. Un DNI que ya existe como alumno o docente da `DNI_TAKEN`. Los apoderados son la excepción: si ya existen se reutilizan y solo se crea el vínculo.
+- El código de usuario es único en el lote y en la BD (`UserCodeService.generateMany`).
 
 ### Respuestas
 
@@ -493,7 +498,7 @@ type ImportReport = {
   errorRows: number;         // filas distintas con al menos un error
   errors: ImportRowError[];  // ordenados por fila y columna; máximo 500
   errorsTruncated: boolean;  // true si hubo más de 500 errores
-  summary: { users: number; enrollments: number; links: number }; // lo que se crearía
+  summary: { users: number; enrollments: number; links: number }; // lo que se crearía (alumnos + apoderados nuevos)
   canConfirm: boolean;       // true si no hay ningún error
 };
 
@@ -503,30 +508,40 @@ type ImportRowError = {
   code: RowErrorCode;        // ver la tabla de códigos
   message: string;           // fijo en español; nunca el valor de la celda
 };
+
+type ImportCommitResult = {
+  type: 'students' | 'teachers' | 'guardians';
+  created: { users: number; enrollments: number; links: number };
+  credentialsSheet: { filename: string; contentType: string; base64: string } | null;
+};
 ```
 
-- `ImportCommitResult` (201): `{ type, created: { users, enrollments, links } }`.
+- `credentialsSheet` es un libro Excel (hojas `Credenciales` y `Aviso`) con una fila por cuenta **nueva**: perfil, nombre, grado y sección, código de usuario y contraseña inicial. Nunca lleva el DNI. Va **solo en esta respuesta** (no se guarda en disco, en Redis ni en la bitácora; si se pierde, se restablece cada clave desde la ficha del usuario, RF-75). Es `null` si no se creó ninguna cuenta (por ejemplo, solo se vincularon apoderados que ya existían). Nombre: `credenciales-<type>-<AAAA-MM-DD>.xlsx`. La pantalla web la descarga desde la memoria del navegador.
 - En 422 el cuerpo es `{ error: { code: "BUSINESS_RULE_VIOLATION", message: "Solicitud invalida", details: ImportRowError[] }, requestId }`, con 500 errores como máximo.
 - Un mensaje de duplicado añade la primera aparición: "… (primera aparición en la fila N)".
 
-### Códigos de fila (21)
+### Códigos de fila (25)
 
 | Código | Cuándo | Mensaje |
 | --- | --- | --- |
 | `REQUIRED` | La celda obligatoria está vacía | El campo es obligatorio |
-| `INVALID_EMAIL` | El correo no es válido | El correo no es válido |
-| `EMAIL_DOMAIN` | El correo de estudiante o docente no es del dominio institucional (el de apoderado está exento, D-013) | El correo no pertenece al dominio institucional |
+| `INVALID_DNI` | El DNI no tiene 8 dígitos | El DNI debe tener 8 dígitos (si empieza con 0, da formato de texto a la columna) |
 | `INVALID_NAME` | Nombre de menos de 3 o más de 120 caracteres, con control, o que empieza por = + - @ | El nombre no es válido (3 a 120 caracteres, sin empezar por = + - @) |
 | `INVALID_GRADE` | `grado` no es un entero de 1 a 5 | El grado debe ser un número entero del 1 al 5 |
 | `INVALID_SECTION` | `seccion` no tiene de 1 a 8 letras o dígitos | La sección debe tener de 1 a 8 letras o dígitos |
 | `SECTION_NOT_FOUND` | No hay esa sección en el año activo (BD) | No existe esa sección en el año académico activo |
 | `SECTION_INACTIVE` | La sección existe pero está inactiva (BD) | La sección está inactiva |
-| `DUPLICATE_IN_FILE` | El correo se repite en el archivo | El correo está repetido en el archivo (primera aparición en la fila N) |
-| `EMAIL_TAKEN` | Ya existe un usuario con ese correo (BD); en guardians, el correo del apoderado | Ya existe un usuario con ese correo |
-| `STUDENT_NOT_FOUND` | No hay usuario con el correo del estudiante (BD) | No existe un estudiante con ese correo |
-| `NOT_STUDENT` | El usuario de ese correo no es estudiante (BD) | El usuario de ese correo no es un estudiante |
+| `DUPLICATE_IN_FILE` | El DNI de un alumno o docente se repite en el archivo | El DNI está repetido en el archivo (primera aparición en la fila N) |
+| `DNI_TAKEN` | Ya existe una persona con ese DNI (BD) | Ya existe una persona registrada con ese DNI |
+| `STUDENT_NOT_FOUND` | No hay usuario con el DNI del estudiante (BD) | No existe un estudiante con ese DNI |
+| `NOT_STUDENT` | La persona con ese DNI no es estudiante (BD) | La persona con ese DNI no es un estudiante |
 | `STUDENT_WITHDRAWN` | El estudiante está retirado (BD) | El estudiante está retirado |
-| `SAME_PERSON` | El correo del apoderado y el del estudiante son el mismo | El apoderado y el estudiante deben ser personas distintas |
+| `NOT_GUARDIAN` | El DNI del apoderado ya existe y no es un apoderado (BD) | La persona con ese DNI ya existe y no es un apoderado |
+| `GUARDIAN_WITHDRAWN` | El apoderado existente está retirado (BD) | El apoderado está retirado |
+| `GUARDIAN_NAME_REQUIRED` | El apoderado es nuevo y ninguna de sus filas trae el nombre (se informa en la columna del DNI del apoderado) | El apoderado es nuevo: escribe su nombre completo |
+| `DUPLICATE_GUARDIAN` | El apoderado 2 es el mismo que el 1 | El segundo apoderado es el mismo que el primero |
+| `MAX_GUARDIANS` | El estudiante quedaría con más de 2 apoderados (contando los de la BD) | El estudiante no puede tener más de 2 apoderados |
+| `SAME_PERSON` | El DNI del apoderado y el del estudiante son el mismo | La misma persona no puede ser estudiante y apoderado |
 | `NAME_MISMATCH` | El mismo apoderado aparece con otro nombre (primera aparición en la fila N) | El nombre del apoderado no coincide con el de su primera fila (primera aparición en la fila N) |
 | `TOO_MANY_STUDENTS` | El apoderado tiene más de 10 estudiantes en el archivo | El apoderado supera el máximo de 10 estudiantes |
 | `DUPLICATE_LINK` | Se repite el par apoderado-estudiante (primera aparición en la fila N) | El vínculo entre ese apoderado y ese estudiante está repetido (primera aparición en la fila N) |

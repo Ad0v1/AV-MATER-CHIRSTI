@@ -1,10 +1,9 @@
 import { BadRequestException } from '@nestjs/common';
 import type { UserRole, UserStatus } from '../../../generated/prisma/enums.js';
 import { sectionCode } from '../../academic/academic.dto.js';
-import { checkEmailDomain } from '../users-policy.js';
-import { emailSchema, fullNameSchema } from '../users.dto.js';
+import { fullNameSchema } from '../users.dto.js';
 import { IMPORT_MSG } from '../users.errors.js';
-import { IMPORT_COLUMNS, mapHeaders } from './import-columns.js';
+import { IMPORT_COLUMNS, OPTIONAL_CELLS, mapHeaders } from './import-columns.js';
 import {
   isEmptyRow,
   MAX_CELL_CHARS,
@@ -23,21 +22,26 @@ import {
 
 // Validación de la importación (Decisiones 2 y 3), sin BD (solo lanza los 400 del encabezado).
 // Fase 1: celdas y reglas entre filas del archivo. Fase 2: contra los datos de la BD que el
-// servicio ya consultó. Los mensajes nunca repiten el valor de la celda.
+// servicio ya consultó. Las personas se identifican por DNI (D-058, D-059). Los mensajes nunca
+// repiten el valor de la celda.
+
+/** Apoderado de una fila. `name` es el que se escribió en alguna fila del archivo, o null. */
+export type GuardianRef = { dni: string; name: string | null };
 
 export type StudentRow = {
   row: number;
-  email: string;
+  dni: string;
   fullName: string;
   gradeLevel: number;
   sectionCode: string;
+  /** De 1 a 2; el primero es el principal (RF-86). */
+  guardians: GuardianRef[];
 };
-export type TeacherRow = { row: number; email: string; fullName: string };
+export type TeacherRow = { row: number; dni: string; fullName: string };
 export type GuardianRow = {
   row: number;
-  guardianEmail: string;
-  guardianName: string;
-  studentEmail: string;
+  guardian: GuardianRef;
+  studentDni: string;
 };
 
 export type ValidRows =
@@ -50,13 +54,16 @@ export type FileCheck = { totalRows: number; valid: ValidRows; errors: ImportRow
 export type SectionInfo = { id: string; academicYearId: string; isActive: boolean };
 export type ExistingUser = { id: string; role: UserRole; status: UserStatus };
 
-/** Datos de la BD para la fase 2 (correos en minúsculas). */
+/** Datos de la BD para la fase 2. Las personas se buscan por el hash de su DNI. */
 export type DbLookups = {
-  takenEmails: Set<string>;
+  /** Hash con clave de un DNI (D-059). Se inyecta para que esta fase no dependa del cifrado. */
+  hashDni: (dni: string) => string;
+  /** Personas que ya existen, por hash de DNI. */
+  usersByDni: Map<string, ExistingUser>;
   /** Secciones del año activo por clave `${grado}|${código}` (solo students). */
   sections?: Map<string, SectionInfo>;
-  /** Usuarios existentes por correo del estudiante (solo guardians). */
-  students?: Map<string, ExistingUser>;
+  /** Apoderados vigentes de cada estudiante existente (solo guardians). */
+  activeGuardians?: Map<string, Set<string>>;
 };
 
 export const sectionKey = (gradeLevel: number, code: string): string => `${gradeLevel}|${code}`;
@@ -74,47 +81,34 @@ export function rowError(
 }
 
 const GRADE = /^[1-5]$/;
+const DNI = /^\d{8}$/;
 
-type FieldKind = 'email' | 'name' | 'grade' | 'section';
+type FieldKind = 'dni' | 'name' | 'grade' | 'section';
 type FieldResult = { ok: true; value: string } | { ok: false; code: RowErrorCode };
 type ParsedRow = { row: number; values: Record<string, string> };
 
 const COLUMN_KIND: Record<string, FieldKind> = {
-  correo: 'email',
-  correo_apoderado: 'email',
-  correo_estudiante: 'email',
+  dni: 'dni',
+  dni_apoderado: 'dni',
+  dni_apoderado_2: 'dni',
+  dni_estudiante: 'dni',
   nombre_completo: 'name',
   nombre_apoderado: 'name',
+  nombre_apoderado_2: 'name',
   grado: 'grade',
   seccion: 'section',
 };
 
-/** Rol con el que se valida el dominio de cada columna de correo (null = sin dominio). */
-const ROLE_OF_EMAIL_COLUMN: Record<ImportType, Record<string, UserRole | null>> = {
-  students: { correo: 'STUDENT' },
-  teachers: { correo: 'TEACHER' },
-  // GUARDIAN exento por D-013; el estudiante ya existe y no se revalida su dominio.
-  guardians: { correo_apoderado: 'GUARDIAN', correo_estudiante: null },
-};
-
-function readField(
-  cell: CellValue | undefined,
-  kind: FieldKind,
-  role: UserRole | null,
-  domain: string | null,
-): FieldResult {
+function readField(cell: CellValue | undefined, kind: FieldKind, optional: boolean): FieldResult {
   const value = cell ?? '';
   if (typeof value !== 'string') return { ok: false, code: value.problem };
   if (value.length > MAX_CELL_CHARS) return { ok: false, code: 'TOO_LONG' };
-  if (value.trim() === '') return { ok: false, code: 'REQUIRED' };
+  if (value.trim() === '')
+    return optional ? { ok: true, value: '' } : { ok: false, code: 'REQUIRED' };
   switch (kind) {
-    case 'email': {
-      const parsed = emailSchema.safeParse(value);
-      if (!parsed.success) return { ok: false, code: 'INVALID_EMAIL' };
-      if (role !== null && !checkEmailDomain(parsed.data, role, domain)) {
-        return { ok: false, code: 'EMAIL_DOMAIN' };
-      }
-      return { ok: true, value: parsed.data };
+    case 'dni': {
+      const trimmed = value.trim();
+      return DNI.test(trimmed) ? { ok: true, value: trimmed } : { ok: false, code: 'INVALID_DNI' };
     }
     case 'name': {
       const parsed = fullNameSchema.safeParse(value);
@@ -141,11 +135,7 @@ function readField(
  * Fase 1: encabezado (400 si no cumple la plantilla o no hay filas de datos), celdas de cada fila
  * y reglas entre filas. `valid` solo trae las filas sin errores.
  */
-export function validateFileRows(
-  type: ImportType,
-  sheet: SheetRow[],
-  domain: string | null,
-): FileCheck {
+export function validateFileRows(type: ImportType, sheet: SheetRow[]): FileCheck {
   const header = sheet[0];
   if (!header || header.row !== 1 || isEmptyRow(header.cells)) {
     throw new BadRequestException(IMPORT_MSG.missingHeader);
@@ -168,11 +158,19 @@ export function validateFileRows(
       const result = readField(
         cells[columns[column]],
         COLUMN_KIND[column],
-        ROLE_OF_EMAIL_COLUMN[type][column] ?? null,
-        domain,
+        OPTIONAL_CELLS.has(column),
       );
       if (result.ok) values[column] = result.value;
       else rowErrors.push(rowError(row, column, result.code));
+    }
+    // El nombre del segundo apoderado sin su DNI no se puede usar.
+    if (
+      type === 'students' &&
+      values.dni_apoderado_2 === '' &&
+      values.nombre_apoderado_2 !== undefined &&
+      values.nombre_apoderado_2 !== ''
+    ) {
+      rowErrors.push(rowError(row, 'dni_apoderado_2', 'REQUIRED'));
     }
     errors.push(...rowErrors);
     if (rowErrors.length === 0) parsedRows.push({ row, values });
@@ -181,87 +179,178 @@ export function validateFileRows(
   const valid =
     type === 'guardians'
       ? checkGuardianRows(parsedRows, errors)
-      : checkUniqueEmails(type, parsedRows, errors);
+      : type === 'teachers'
+        ? checkTeacherRows(parsedRows, errors)
+        : checkStudentRows(parsedRows, errors);
   return { totalRows: dataRows.length, valid, errors };
 }
 
-/** students y teachers: el correo no se repite en el archivo (DUPLICATE_IN_FILE). */
-function checkUniqueEmails(
-  type: 'students' | 'teachers',
-  rows: ParsedRow[],
-  errors: ImportRowError[],
-): ValidRows {
-  const firstByEmail = new Map<string, number>();
-  const kept: ParsedRow[] = [];
+/** Nombres de apoderado ya vistos: el mismo DNI debe llevar el mismo nombre en todas sus filas. */
+class GuardianNames {
+  private readonly byDni = new Map<string, { name: string; row: number }>();
+
+  /** Registra el nombre de la fila. Devuelve la fila del primer nombre distinto, si lo hay. */
+  note(dni: string, name: string, row: number): { conflictRow: number } | null {
+    if (name === '') return null;
+    const seen = this.byDni.get(dni);
+    if (!seen) {
+      this.byDni.set(dni, { name, row });
+      return null;
+    }
+    return seen.name === name ? null : { conflictRow: seen.row };
+  }
+
+  /** Nombre escrito en alguna fila, o null. */
+  nameOf(dni: string): string | null {
+    return this.byDni.get(dni)?.name ?? null;
+  }
+}
+
+/** teachers: el DNI no se repite en el archivo (DUPLICATE_IN_FILE). */
+function checkTeacherRows(rows: ParsedRow[], errors: ImportRowError[]): ValidRows {
+  const firstByDni = new Map<string, number>();
+  const kept: TeacherRow[] = [];
   for (const r of rows) {
-    const first = firstByEmail.get(r.values.correo);
+    const first = firstByDni.get(r.values.dni);
     if (first !== undefined) {
-      errors.push(rowError(r.row, 'correo', 'DUPLICATE_IN_FILE', first));
+      errors.push(rowError(r.row, 'dni', 'DUPLICATE_IN_FILE', first));
       continue;
     }
-    firstByEmail.set(r.values.correo, r.row);
-    kept.push(r);
+    firstByDni.set(r.values.dni, r.row);
+    kept.push({ row: r.row, dni: r.values.dni, fullName: r.values.nombre_completo });
   }
-  if (type === 'teachers') {
-    return {
-      type,
-      rows: kept.map((r) => ({
-        row: r.row,
-        email: r.values.correo,
-        fullName: r.values.nombre_completo,
-      })),
-    };
-  }
-  return {
-    type,
-    rows: kept.map((r) => ({
-      row: r.row,
-      email: r.values.correo,
-      fullName: r.values.nombre_completo,
-      gradeLevel: Number(r.values.grado),
-      sectionCode: r.values.seccion,
-    })),
-  };
+  return { type: 'teachers', rows: kept };
 }
 
 /**
- * guardians: una fila por par apoderado-estudiante. El mismo apoderado en varias filas debe tener
- * el mismo nombre (NAME_MISMATCH), sin pares repetidos (DUPLICATE_LINK) y hasta 10 estudiantes
- * (TOO_MANY_STUDENTS); apoderado y estudiante distintos (SAME_PERSON).
+ * students: el DNI del estudiante no se repite; sus apoderados son otras personas (SAME_PERSON), no
+ * se repiten en la fila (DUPLICATE_GUARDIAN) y llevan el mismo nombre en todas sus filas
+ * (NAME_MISMATCH). Un apoderado tiene hasta 10 estudiantes en el archivo (TOO_MANY_STUDENTS).
+ */
+function checkStudentRows(rows: ParsedRow[], errors: ImportRowError[]): ValidRows {
+  const studentDnis = new Set(rows.map((r) => r.values.dni));
+  const firstByDni = new Map<string, number>();
+  const names = new GuardianNames();
+  const studentsOf = new Map<string, number>();
+  const kept: StudentRow[] = [];
+
+  for (const r of rows) {
+    const v = r.values;
+    const before = errors.length;
+    const first = firstByDni.get(v.dni);
+    if (first !== undefined) {
+      errors.push(rowError(r.row, 'dni', 'DUPLICATE_IN_FILE', first));
+      continue;
+    }
+    firstByDni.set(v.dni, r.row);
+
+    const refs: Array<{ dni: string; name: string; dniColumn: string; nameColumn: string }> = [
+      {
+        dni: v.dni_apoderado,
+        name: v.nombre_apoderado,
+        dniColumn: 'dni_apoderado',
+        nameColumn: 'nombre_apoderado',
+      },
+    ];
+    if (v.dni_apoderado_2 !== '') {
+      refs.push({
+        dni: v.dni_apoderado_2,
+        name: v.nombre_apoderado_2,
+        dniColumn: 'dni_apoderado_2',
+        nameColumn: 'nombre_apoderado_2',
+      });
+    }
+    for (const ref of refs) {
+      if (ref.dni === v.dni || studentDnis.has(ref.dni)) {
+        errors.push(rowError(r.row, ref.dniColumn, 'SAME_PERSON'));
+        continue;
+      }
+      const conflict = names.note(ref.dni, ref.name, r.row);
+      if (conflict)
+        errors.push(rowError(r.row, ref.nameColumn, 'NAME_MISMATCH', conflict.conflictRow));
+      const count = (studentsOf.get(ref.dni) ?? 0) + 1;
+      if (count > MAX_STUDENTS_PER_GUARDIAN) {
+        errors.push(rowError(r.row, ref.dniColumn, 'TOO_MANY_STUDENTS'));
+      }
+      studentsOf.set(ref.dni, count);
+    }
+    if (refs.length === 2 && refs[0]!.dni === refs[1]!.dni) {
+      errors.push(rowError(r.row, 'dni_apoderado_2', 'DUPLICATE_GUARDIAN'));
+    }
+    if (errors.length > before) continue;
+
+    kept.push({
+      row: r.row,
+      dni: v.dni,
+      fullName: v.nombre_completo,
+      gradeLevel: Number(v.grado),
+      sectionCode: v.seccion,
+      guardians: refs.map((ref) => ({ dni: ref.dni, name: null })),
+    });
+  }
+  // El nombre de cada apoderado es el escrito en cualquiera de sus filas.
+  for (const row of kept) {
+    for (const g of row.guardians) g.name = names.nameOf(g.dni);
+  }
+  return { type: 'students', rows: kept };
+}
+
+/**
+ * guardians: una fila por par apoderado-estudiante. El mismo apoderado en varias filas lleva el
+ * mismo nombre (NAME_MISMATCH), sin pares repetidos (DUPLICATE_LINK) y hasta 10 estudiantes
+ * (TOO_MANY_STUDENTS); apoderado y estudiante son personas distintas (SAME_PERSON).
  */
 function checkGuardianRows(rows: ParsedRow[], errors: ImportRowError[]): ValidRows {
-  type Group = { firstRow: number; name: string; students: Map<string, number> };
-  const groups = new Map<string, Group>();
+  const names = new GuardianNames();
+  const linked = new Map<string, Map<string, number>>();
   const kept: GuardianRow[] = [];
   for (const r of rows) {
-    const guardianEmail = r.values.correo_apoderado;
-    const guardianName = r.values.nombre_apoderado;
-    const studentEmail = r.values.correo_estudiante;
-    if (guardianEmail === studentEmail) {
-      errors.push(rowError(r.row, 'correo_estudiante', 'SAME_PERSON'));
+    const guardianDni = r.values.dni_apoderado;
+    const studentDni = r.values.dni_estudiante;
+    if (guardianDni === studentDni) {
+      errors.push(rowError(r.row, 'dni_estudiante', 'SAME_PERSON'));
       continue;
     }
-    let group = groups.get(guardianEmail);
-    if (!group) {
-      group = { firstRow: r.row, name: guardianName, students: new Map() };
-      groups.set(guardianEmail, group);
-    } else if (group.name !== guardianName) {
-      errors.push(rowError(r.row, 'nombre_apoderado', 'NAME_MISMATCH', group.firstRow));
+    const conflict = names.note(guardianDni, r.values.nombre_apoderado, r.row);
+    if (conflict) {
+      errors.push(rowError(r.row, 'nombre_apoderado', 'NAME_MISMATCH', conflict.conflictRow));
       continue;
     }
-    const linkedAt = group.students.get(studentEmail);
+    let students = linked.get(guardianDni);
+    if (!students) {
+      students = new Map();
+      linked.set(guardianDni, students);
+    }
+    const linkedAt = students.get(studentDni);
     if (linkedAt !== undefined) {
-      errors.push(rowError(r.row, 'correo_estudiante', 'DUPLICATE_LINK', linkedAt));
+      errors.push(rowError(r.row, 'dni_estudiante', 'DUPLICATE_LINK', linkedAt));
       continue;
     }
-    if (group.students.size >= MAX_STUDENTS_PER_GUARDIAN) {
-      errors.push(rowError(r.row, 'correo_estudiante', 'TOO_MANY_STUDENTS'));
+    if (students.size >= MAX_STUDENTS_PER_GUARDIAN) {
+      errors.push(rowError(r.row, 'dni_estudiante', 'TOO_MANY_STUDENTS'));
       continue;
     }
-    group.students.set(studentEmail, r.row);
-    kept.push({ row: r.row, guardianEmail, guardianName, studentEmail });
+    students.set(studentDni, r.row);
+    kept.push({ row: r.row, guardian: { dni: guardianDni, name: null }, studentDni });
   }
+  for (const row of kept) row.guardian.name = names.nameOf(row.guardian.dni);
   return { type: 'guardians', rows: kept };
+}
+
+/** Apoderado de una fila contra la BD: existente (reutilizable) o nuevo (necesita nombre). */
+function checkGuardianRef(
+  row: number,
+  ref: GuardianRef,
+  column: string,
+  db: DbLookups,
+): ImportRowError[] {
+  const existing = db.usersByDni.get(db.hashDni(ref.dni));
+  if (existing) {
+    if (existing.role !== 'GUARDIAN') return [rowError(row, column, 'NOT_GUARDIAN')];
+    if (existing.status === 'WITHDRAWN') return [rowError(row, column, 'GUARDIAN_WITHDRAWN')];
+    return [];
+  }
+  return ref.name === null ? [rowError(row, column, 'GUARDIAN_NAME_REQUIRED')] : [];
 }
 
 /** Fase 2: reglas contra la BD. Vacío si todo se puede crear. */
@@ -270,50 +359,85 @@ export function checkAgainstDb(valid: ValidRows, db: DbLookups): ImportRowError[
   switch (valid.type) {
     case 'teachers':
       for (const r of valid.rows) {
-        if (db.takenEmails.has(r.email)) errors.push(rowError(r.row, 'correo', 'EMAIL_TAKEN'));
+        if (db.usersByDni.has(db.hashDni(r.dni))) errors.push(rowError(r.row, 'dni', 'DNI_TAKEN'));
       }
       break;
     case 'students':
       for (const r of valid.rows) {
-        if (db.takenEmails.has(r.email)) errors.push(rowError(r.row, 'correo', 'EMAIL_TAKEN'));
+        if (db.usersByDni.has(db.hashDni(r.dni))) errors.push(rowError(r.row, 'dni', 'DNI_TAKEN'));
         const section = db.sections?.get(sectionKey(r.gradeLevel, r.sectionCode));
         if (!section) errors.push(rowError(r.row, 'seccion', 'SECTION_NOT_FOUND'));
         else if (!section.isActive) errors.push(rowError(r.row, 'seccion', 'SECTION_INACTIVE'));
+        r.guardians.forEach((g, index) => {
+          errors.push(
+            ...checkGuardianRef(r.row, g, index === 0 ? 'dni_apoderado' : 'dni_apoderado_2', db),
+          );
+        });
       }
       break;
-    case 'guardians':
+    case 'guardians': {
+      // Apoderados que se sumarían a cada estudiante en este archivo (en orden de fila).
+      const added = new Map<string, number>();
       for (const r of valid.rows) {
-        if (db.takenEmails.has(r.guardianEmail)) {
-          errors.push(rowError(r.row, 'correo_apoderado', 'EMAIL_TAKEN'));
+        errors.push(...checkGuardianRef(r.row, r.guardian, 'dni_apoderado', db));
+        const student = db.usersByDni.get(db.hashDni(r.studentDni));
+        if (!student) {
+          errors.push(rowError(r.row, 'dni_estudiante', 'STUDENT_NOT_FOUND'));
+          continue;
         }
-        const student = db.students?.get(r.studentEmail);
-        if (!student) errors.push(rowError(r.row, 'correo_estudiante', 'STUDENT_NOT_FOUND'));
-        else if (student.role !== 'STUDENT') {
-          errors.push(rowError(r.row, 'correo_estudiante', 'NOT_STUDENT'));
-        } else if (student.status === 'WITHDRAWN') {
-          errors.push(rowError(r.row, 'correo_estudiante', 'STUDENT_WITHDRAWN'));
+        if (student.role !== 'STUDENT') {
+          errors.push(rowError(r.row, 'dni_estudiante', 'NOT_STUDENT'));
+          continue;
         }
+        if (student.status === 'WITHDRAWN') {
+          errors.push(rowError(r.row, 'dni_estudiante', 'STUDENT_WITHDRAWN'));
+          continue;
+        }
+        const guardian = db.usersByDni.get(db.hashDni(r.guardian.dni));
+        const current = db.activeGuardians?.get(student.id) ?? new Set<string>();
+        if (guardian && current.has(guardian.id)) {
+          errors.push(rowError(r.row, 'dni_estudiante', 'DUPLICATE_LINK'));
+          continue;
+        }
+        const extra = (added.get(student.id) ?? 0) + 1;
+        added.set(student.id, extra);
+        if (current.size + extra > 2)
+          errors.push(rowError(r.row, 'dni_estudiante', 'MAX_GUARDIANS'));
       }
       break;
+    }
   }
   return errors;
 }
 
 /** Lo que se crearía con las filas válidas que no tienen errores. */
-export function summarize(valid: ValidRows, errors: ImportRowError[]): ImportSummary {
+export function summarize(
+  valid: ValidRows,
+  errors: ImportRowError[],
+  db: DbLookups,
+): ImportSummary {
   const bad = new Set(errors.map((e) => e.row));
+  const isNew = (dni: string) => !db.usersByDni.has(db.hashDni(dni));
   switch (valid.type) {
     case 'teachers': {
       const users = valid.rows.filter((r) => !bad.has(r.row)).length;
       return { users, enrollments: 0, links: 0 };
     }
     case 'students': {
-      const n = valid.rows.filter((r) => !bad.has(r.row)).length;
-      return { users: n, enrollments: n, links: 0 };
+      const ok = valid.rows.filter((r) => !bad.has(r.row));
+      const newGuardians = new Set(
+        ok.flatMap((r) => r.guardians.filter((g) => isNew(g.dni)).map((g) => g.dni)),
+      );
+      return {
+        users: ok.length + newGuardians.size,
+        enrollments: ok.length,
+        links: ok.reduce((sum, r) => sum + r.guardians.length, 0),
+      };
     }
     case 'guardians': {
       const ok = valid.rows.filter((r) => !bad.has(r.row));
-      const users = new Set(ok.map((r) => r.guardianEmail)).size;
+      const users = new Set(ok.filter((r) => isNew(r.guardian.dni)).map((r) => r.guardian.dni))
+        .size;
       return { users, enrollments: 0, links: ok.length };
     }
   }
@@ -353,11 +477,14 @@ export function buildReport(input: {
 
 // --- Plan de escritura ------------------------------------------------------
 
+/** Persona nueva. El DNI viaja en claro solo hasta que el servicio lo cifra (nunca se registra). */
 export type NewUser = {
   id: string;
-  institutionalEmail: string;
+  dni: string;
   fullName: string;
   role: UserRole;
+  /** Grado y sección (solo estudiantes), para la hoja de credenciales. */
+  sectionText: string | null;
 };
 export type NewEnrollment = {
   id: string;
@@ -365,7 +492,13 @@ export type NewEnrollment = {
   sectionId: string;
   academicYearId: string;
 };
-export type NewLink = { id: string; guardianId: string; studentId: string };
+export type NewLink = {
+  id: string;
+  guardianId: string;
+  studentId: string;
+  /** Verdadero para el apoderado principal; nulo para los demás (marcador TRUE/NULL). */
+  isPrimary: true | null;
+};
 export type ImportPlan = { users: NewUser[]; enrollments: NewEnrollment[]; links: NewLink[] };
 
 /**
@@ -374,14 +507,36 @@ export type ImportPlan = { users: NewUser[]; enrollments: NewEnrollment[]; links
  */
 export function buildPlan(valid: ValidRows, db: DbLookups, newId: () => string): ImportPlan {
   const plan: ImportPlan = { users: [], enrollments: [], links: [] };
+  // Apoderados ya creados en este plan, por DNI (un apoderado con varios hijos se crea una vez).
+  const createdGuardians = new Map<string, string>();
+  const guardianId = (ref: GuardianRef): string => {
+    const existing = db.usersByDni.get(db.hashDni(ref.dni));
+    if (existing) return existing.id;
+    let id = createdGuardians.get(ref.dni);
+    if (id === undefined) {
+      if (ref.name === null) throw new Error('Plan de importación con un apoderado sin nombre');
+      id = newId();
+      createdGuardians.set(ref.dni, id);
+      plan.users.push({
+        id,
+        dni: ref.dni,
+        fullName: ref.name,
+        role: 'GUARDIAN',
+        sectionText: null,
+      });
+    }
+    return id;
+  };
+
   switch (valid.type) {
     case 'teachers':
       for (const r of valid.rows) {
         plan.users.push({
           id: newId(),
-          institutionalEmail: r.email,
+          dni: r.dni,
           fullName: r.fullName,
           role: 'TEACHER',
+          sectionText: null,
         });
       }
       break;
@@ -390,32 +545,44 @@ export function buildPlan(valid: ValidRows, db: DbLookups, newId: () => string):
         const section = db.sections?.get(sectionKey(r.gradeLevel, r.sectionCode));
         if (!section) throw new Error('Plan de importación sin sección validada');
         const id = newId();
-        plan.users.push({ id, institutionalEmail: r.email, fullName: r.fullName, role: 'STUDENT' });
+        plan.users.push({
+          id,
+          dni: r.dni,
+          fullName: r.fullName,
+          role: 'STUDENT',
+          sectionText: `${r.gradeLevel}.º ${r.sectionCode}`,
+        });
         plan.enrollments.push({
           id: newId(),
           studentId: id,
           sectionId: section.id,
           academicYearId: section.academicYearId,
         });
+        r.guardians.forEach((g, index) => {
+          plan.links.push({
+            id: newId(),
+            guardianId: guardianId(g),
+            studentId: id,
+            isPrimary: index === 0 ? true : null,
+          });
+        });
       }
       break;
     case 'guardians': {
-      const guardianIds = new Map<string, string>();
+      // El primer apoderado de un estudiante sin apoderados vigentes pasa a ser el principal.
+      const seen = new Set<string>();
       for (const r of valid.rows) {
-        let guardianId = guardianIds.get(r.guardianEmail);
-        if (guardianId === undefined) {
-          guardianId = newId();
-          guardianIds.set(r.guardianEmail, guardianId);
-          plan.users.push({
-            id: guardianId,
-            institutionalEmail: r.guardianEmail,
-            fullName: r.guardianName,
-            role: 'GUARDIAN',
-          });
-        }
-        const student = db.students?.get(r.studentEmail);
+        const student = db.usersByDni.get(db.hashDni(r.studentDni));
         if (!student) throw new Error('Plan de importación sin estudiante validado');
-        plan.links.push({ id: newId(), guardianId, studentId: student.id });
+        const hasGuardians = (db.activeGuardians?.get(student.id)?.size ?? 0) > 0;
+        const primary = !hasGuardians && !seen.has(student.id);
+        seen.add(student.id);
+        plan.links.push({
+          id: newId(),
+          guardianId: guardianId(r.guardian),
+          studentId: student.id,
+          isPrimary: primary ? true : null,
+        });
       }
       break;
     }

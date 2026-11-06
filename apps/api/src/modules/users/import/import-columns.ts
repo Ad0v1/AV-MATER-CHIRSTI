@@ -4,11 +4,31 @@ import type { CellValue, ImportType } from './import.constants.js';
 
 // Columnas de cada plantilla (Decisión 2). Los encabezados pueden ir en cualquier orden.
 
+// El usuario ya no se identifica por correo sino por DNI (D-058, D-059).
 export const IMPORT_COLUMNS = {
-  students: ['correo', 'nombre_completo', 'grado', 'seccion'],
-  teachers: ['correo', 'nombre_completo'],
-  guardians: ['correo_apoderado', 'nombre_apoderado', 'correo_estudiante'],
+  students: [
+    'dni',
+    'nombre_completo',
+    'grado',
+    'seccion',
+    'dni_apoderado',
+    'nombre_apoderado',
+    'dni_apoderado_2',
+    'nombre_apoderado_2',
+  ],
+  teachers: ['dni', 'nombre_completo'],
+  guardians: ['dni_apoderado', 'nombre_apoderado', 'dni_estudiante'],
 } as const satisfies Record<ImportType, readonly string[]>;
+
+/**
+ * Columnas cuya celda puede ir vacía. El nombre del apoderado solo hace falta si es nuevo (si ya
+ * existe, se reutiliza por su DNI); el segundo apoderado es opcional.
+ */
+export const OPTIONAL_CELLS: ReadonlySet<string> = new Set([
+  'nombre_apoderado',
+  'dni_apoderado_2',
+  'nombre_apoderado_2',
+]);
 
 export type ColumnName<T extends ImportType> = (typeof IMPORT_COLUMNS)[T][number];
 

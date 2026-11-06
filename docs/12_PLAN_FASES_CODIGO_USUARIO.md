@@ -36,7 +36,7 @@
 
 ## Fase C — Usuarios y apoderados (Dev 2)
 
-> **Estado (05/11/2026): implementada** (API, pantallas y pruebas), con dos ajustes: `institutionalEmail` pasó a opcional en esta fase (la columna se retira en la Fase F) y la marca de DNI verificado y los datos de contacto tienen su propia migración (`users_codigo_apoderados` y `users_dni_verificado`). La importación masiva (Fase D) sigue creando usuarios con correo y sin credenciales hasta que se adapte.
+> **Estado (05/11/2026): implementada** (API, pantallas y pruebas), con dos ajustes: `institutionalEmail` pasó a opcional en esta fase (la columna se retira en la Fase F) y la marca de DNI verificado y los datos de contacto tienen su propia migración (`users_codigo_apoderados` y `users_dni_verificado`).
 
 **RF:** 18, 19, 20, 69 (pantalla), 74, 83, 84, 86, 87.
 
@@ -48,6 +48,8 @@
 - **Listo cuando:** se crea un alumno solo con apoderado, un apoderado con dos hijos ve ambos, un tercer apoderado se rechaza y los datos sensibles no aparecen en la bitácora.
 
 ## Fase D — Importación y hojas de credenciales (Dev 2)
+
+> **Estado (05/11/2026): implementada** (API, pantalla y pruebas; sin commit). Plantillas por DNI con hasta 2 apoderados, código y contraseña inicial por cada cuenta nueva, y hoja Excel de credenciales devuelta una sola vez en la respuesta del commit (la pantalla la descarga desde la memoria). El PDF queda para cuando exista Gotenberg. Detalle en `03_CONTRATOS.md`, sección "Importación masiva".
 
 **RF:** 21, 76, 77.
 

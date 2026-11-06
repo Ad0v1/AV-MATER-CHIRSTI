@@ -38,9 +38,17 @@ export type ImportReport = {
   canConfirm: boolean;
 };
 
+/**
+ * Hoja de credenciales de lo recién creado (RF-76). Solo vive en la memoria de esta pantalla: la API
+ * no la guarda, así que si se cierra la pestaña sin descargarla hay que restablecer cada clave.
+ */
+export type CredentialsSheet = { filename: string; contentType: string; base64: string };
+
 export type ImportCommitResult = {
   type: ImportType;
   created: { users: number; enrollments: number; links: number };
+  /** Nulo si no se creó ninguna cuenta (p. ej. solo se vincularon apoderados que ya existían). */
+  credentialsSheet: CredentialsSheet | null;
 };
 
 export type ImportPhase =
@@ -254,16 +262,56 @@ export function parseImportReport(v: unknown): ImportReport | null {
   };
 }
 
+const XLSX_TYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+const SHEET_FILENAME = /^[A-Za-z0-9._-]{1,80}\.xlsx$/;
+const BASE64 = /^[A-Za-z0-9+/]+={0,2}$/;
+/** Tope defensivo de la hoja (≈ 1000 filas pesan unos 60 KB; 8 MiB de base64 sobra). */
+const MAX_SHEET_BASE64 = 8 * 1_048_576;
+
+function parseCredentialsSheet(v: unknown): CredentialsSheet | null {
+  if (!isRecord(v)) return null;
+  const { filename, contentType, base64 } = v;
+  if (
+    typeof filename !== 'string' ||
+    !SHEET_FILENAME.test(filename) ||
+    contentType !== XLSX_TYPE ||
+    typeof base64 !== 'string' ||
+    base64.length === 0 ||
+    base64.length > MAX_SHEET_BASE64 ||
+    !BASE64.test(base64)
+  ) {
+    return null;
+  }
+  return { filename, contentType, base64 };
+}
+
 export function parseCommitResult(v: unknown): ImportCommitResult | null {
   if (!isRecord(v) || !isImportType(v.type) || !isRecord(v.created)) return null;
   const { created } = v;
   if (!isCount(created.users) || !isCount(created.enrollments) || !isCount(created.links)) {
     return null;
   }
+  const credentialsSheet =
+    v.credentialsSheet == null ? null : parseCredentialsSheet(v.credentialsSheet);
+  // Si se crearon cuentas, la hoja es imprescindible: sin ella nadie puede entrar.
+  if (created.users > 0 && !credentialsSheet) return null;
   return {
     type: v.type,
     created: { users: created.users, enrollments: created.enrollments, links: created.links },
+    credentialsSheet,
   };
+}
+
+/** Descarga la hoja desde la memoria (el servidor no la guarda). Devuelve null si no se pudo. */
+export function sheetBlob(sheet: CredentialsSheet): Blob | null {
+  try {
+    const binary = atob(sheet.base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    return new Blob([bytes], { type: sheet.contentType });
+  } catch {
+    return null;
+  }
 }
 
 /** `details` de un 422 del commit (errores por fila con el formato de ImportRowError). */
@@ -304,6 +352,9 @@ export const TYPE_LABELS: Record<ImportType, string> = {
 export const PRIVACY_NOTICE =
   'El archivo no se guarda; los motivos no muestran datos de las celdas';
 
+export const CREDENTIALS_WARNING =
+  'La hoja trae el código y la contraseña inicial de cada cuenta nueva. No se guarda en el sistema y no se puede volver a ver: descárgala ahora y entrégala en mano. Cada persona deberá cambiar su contraseña al ingresar.';
+
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
 /** Qué se crearía o se creó, según el tipo (solo lo que aplica). */
@@ -337,7 +388,10 @@ export function previewAnnouncement(r: ImportReport): string {
 }
 
 export function commitAnnouncement(r: ImportCommitResult): string {
-  return `Importación terminada. ${createdText(r.type, r.created)}.`;
+  const sheet = r.credentialsSheet
+    ? ' Descarga la hoja de credenciales: no se vuelve a mostrar.'
+    : '';
+  return `Importación terminada. ${createdText(r.type, r.created)}.${sheet}`;
 }
 
 export const VALIDATING_MESSAGE = 'Validando el archivo…';
