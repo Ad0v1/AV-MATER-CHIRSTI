@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
 import { AuditService } from '../../common/audit/audit.service.js';
 import { PrismaService } from '../../common/prisma/prisma.service.js';
 import type { Actor } from '../academic/request-user.js';
@@ -7,6 +7,9 @@ import { BackgroundJobService } from './background-job.service.js';
 import type { JobActor, JobType, JobView } from './jobs.types.js';
 
 const logger = new Logger('JobsAudit');
+
+/** Tipos cuya descarga exige bitácora previa (datos personales, RF-63, y respaldos, RF-65). */
+const AUDIT_FIRST = new Set<JobType>(['PERSONAL_DATA_EXPORT', 'YEAR_BACKUP']);
 
 /** Nombre base del archivo descargado por tipo (sin datos personales; la extension la pone S3). */
 const BASE_NAME: Record<JobType, string> = {
@@ -37,9 +40,27 @@ export class JobDownloadService {
 
   async downloadUrl(id: string, actor: JobActor & Actor): Promise<SignedUrl> {
     const view = await this.jobs.findForActor(id, actor);
-    const url = await this.jobs.createDownloadUrl(id, actor, await this.fileName(view));
-    await this.record(actor, view);
-    return url;
+    const fileName = await this.fileName(view);
+    if (!AUDIT_FIRST.has(view.type)) {
+      const url = await this.jobs.createDownloadUrl(id, actor, fileName);
+      await this.record(actor, view);
+      return url;
+    }
+    // Datos personales y respaldos (seguridad 5g): sin rastro en la bitácora no hay URL. Se
+    // comprueba antes que el resultado esté listo, para no registrar descargas imposibles.
+    if (view.status !== 'SUCCEEDED' || !view.hasResult) {
+      return this.jobs.createDownloadUrl(id, actor, fileName); // lanza 409/410
+    }
+    try {
+      await this.write(actor, view);
+    } catch (error: unknown) {
+      this.logFailure(actor, error);
+      throw new ServiceUnavailableException({
+        code: 'AUDIT_UNAVAILABLE',
+        message: 'No se pudo registrar la descarga. Intenta más tarde.',
+      });
+    }
+    return this.jobs.createDownloadUrl(id, actor, fileName);
   }
 
   /** p. ej. respaldo-2026-3A-2026-12-20, datos-personales-2026-10-30. */
@@ -65,23 +86,31 @@ export class JobDownloadService {
   /** Despues de firmar la URL; nunca lanza (la URL ya se emitio). */
   private async record(actor: Actor, view: JobView): Promise<void> {
     try {
-      await this.audit.record({
-        actorId: actor.id,
-        ip: actor.ip,
-        module: 'jobs',
-        action: 'job.download',
-        entityType: 'BackgroundJob',
-        entityId: view.id,
-        afterState: { jobId: view.id, type: view.type },
-      });
+      await this.write(actor, view);
     } catch (error: unknown) {
-      logger.error(
-        `Fallo al registrar la bitácora: ${JSON.stringify({
-          action: 'job.download',
-          actorId: actor.id,
-          error: error instanceof Error ? error.name : typeof error,
-        })}`,
-      );
+      this.logFailure(actor, error);
     }
+  }
+
+  private write(actor: Actor, view: JobView): Promise<void> {
+    return this.audit.record({
+      actorId: actor.id,
+      ip: actor.ip,
+      module: 'jobs',
+      action: 'job.download',
+      entityType: 'BackgroundJob',
+      entityId: view.id,
+      afterState: { jobId: view.id, type: view.type },
+    });
+  }
+
+  private logFailure(actor: Actor, error: unknown): void {
+    logger.error(
+      `Fallo al registrar la bitácora: ${JSON.stringify({
+        action: 'job.download',
+        actorId: actor.id,
+        error: error instanceof Error ? error.name : typeof error,
+      })}`,
+    );
   }
 }

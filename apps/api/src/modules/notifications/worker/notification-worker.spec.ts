@@ -9,6 +9,7 @@ import type { QueueService } from '../../queue/index.js';
 import { DueSoonNotifier, jobUuid } from './event-notification.processors.js';
 import { NotificationRetentionProcessor } from './maintenance.processors.js';
 import { NotificationFanout } from './notification-fanout.service.js';
+import { MAX_RECIPIENTS_PER_EVENT } from '../notification.constants.js';
 import type { NotificationRecipients } from './notification-recipients.service.js';
 import { SendEmailProcessor } from './send-email.processor.js';
 
@@ -54,6 +55,17 @@ describe('NotificationFanout', () => {
     );
     return { fanout, prisma, enqueue, created };
   }
+
+  it('INFORME 17: recorta a MAX_RECIPIENTS_PER_EVENT destinatarios por evento', async () => {
+    const { fanout, prisma } = setup([]);
+    const ids = Array.from({ length: MAX_RECIPIENTS_PER_EVENT + 5 }, (_, i) => `u${i}`);
+    const res = await fanout.notify('ANNOUNCEMENT_PUBLISHED', uuid(9), ids);
+    expect(res.recipients).toBe(MAX_RECIPIENTS_PER_EVENT);
+    const asked = prisma.user.findMany.mock.calls.flatMap(
+      (c) => (c[0] as { where: { id: { in: string[] } } }).where.id.in,
+    );
+    expect(asked).toHaveLength(MAX_RECIPIENTS_PER_EVENT);
+  });
 
   it('crea un aviso por destinatario ACTIVE con skipDuplicates; sin correo válido → SKIPPED', async () => {
     const { fanout, prisma, created, enqueue } = setup([

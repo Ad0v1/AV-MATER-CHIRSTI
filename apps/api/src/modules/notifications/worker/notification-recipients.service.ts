@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../../common/prisma/prisma.service.js';
+import { MAX_RECIPIENTS_PER_EVENT } from '../notification.constants.js';
 
 // Destinatarios de los avisos (RF-53, U3): estudiantes con matrícula vigente y sus apoderados con
 // vínculo vigente, todos ACTIVE. Solo en el año activo y sin cerrar, y en secciones y
@@ -102,6 +103,9 @@ export class NotificationRecipients {
           : {}),
       },
       select: { studentId: true },
+      orderBy: { studentId: 'asc' },
+      // Acota la memoria; NotificationFanout aplica el tope final y deja el aviso en el log.
+      take: MAX_RECIPIENTS_PER_EVENT + 1,
     });
     return [...new Set(rows.map((r) => r.studentId))];
   }

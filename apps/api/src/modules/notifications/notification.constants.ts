@@ -15,6 +15,8 @@ export const NOTIFICATION_JOBS = {
 
 /** Correos por trabajo send-email (INFORME 5: lotes de 50 a 100). */
 export const EMAIL_BATCH = 100;
+/** Tope de destinatarios por evento (INFORME 17): por encima se corta y se registra en el log. */
+export const MAX_RECIPIENTS_PER_EVENT = 20_000;
 /** Filas por createMany / consulta IN. */
 export const INSERT_CHUNK = 500;
 

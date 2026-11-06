@@ -420,3 +420,542 @@ Devuelve APROBADO o CAMBIOS_PEDIDOS en un INFORME conciso.
 ## Expediente
 
 [.claude/tareas/20261030-dev5-administracion.md](../tareas/20261030-dev5-administracion.md)
+
+---
+
+# Actualización 07/11/2026: fases 5d y 5g
+
+## Pedido
+
+- Textos del usuario: "va, pasemos a desarrollar lo del dev 5"; después "Sí, retomar" (06/11) y "Commit y subir".
+- Rama: `features/adolfo`, sobre `0052802`.
+
+## Resultado
+
+**5d, anuncios y notificaciones (RF-32, RF-53):**
+
+- El docente publica anuncios por curso y el ADMIN para la institución o por grado. El estudiante y el apoderado los leen en `/anuncios`.
+- Campana con contador en la cabecera.
+- Avisos de tarea nueva, tarea por vencer en 24 h, nota manual y anuncio.
+- El correo se envía solo al correo de contacto verificado.
+- Retención: leídos 90 días, no leídos 180, tope de 365.
+- Límites al publicar: 5 anuncios por minuto, 20 o 50 por día, y 20 000 destinatarios por evento.
+
+**5g, administración (RF-55/56, RF-62..67):**
+
+- `/admin/bitacora`: filtros, modo soporte y datos sensibles ocultos.
+- `/admin/almacenamiento`:
+  - uso del espacio;
+  - respaldos ZIP por sección al cerrar el año;
+  - aviso de purga;
+  - exportación de los datos personales de un estudiante.
+- Purga: solo con el año cerrado, respaldos existentes en S3 y el plazo cumplido. El plazo mínimo es de 30 días.
+- Trabajos en segundo plano:
+  - `job.download` se registra en la bitácora antes de firmar la descarga;
+  - máximo 3 trabajos activos por usuario;
+  - los trabajos colgados se cierran solos.
+
+## Agentes que participaron
+
+| #     | Agente                       | Qué hizo                                                  | Estado                                |
+| ----- | ---------------------------- | --------------------------------------------------------- | ------------------------------------- |
+| 1-2   | dev5-administracion ×2       | Primer intento de 5d y 5g en paralelo                     | Cortados por timeout (dejaron un WIP) |
+| 3-4   | dev5-administracion ×2       | Reanudación                                               | Cortados (fin de sesión)              |
+| 5-6   | dev5-administracion ×2       | Terminar 5d y 5g (web y e2e)                              | LISTO                                 |
+| 7-9   | qa / seguridad / ux sobre 5d | Revisión                                                  | LISTO / APROBADO / CAMBIOS_PEDIDOS    |
+| 10-12 | qa / seguridad / ux sobre 5g | Revisión (QA arregló el fixture de grading)               | CAMBIOS_PEDIDOS / APROBADO / APROBADO |
+| 13-15 | dev5 y ux                    | Vuelta de corrección 1/2 de cada fase y re-revisión de UX | LISTO / APROBADO                      |
+| 16    | revisor-pr                   | Revisión final de 5d y 5g                                 | APROBADO                              |
+
+## Prompts usados (literales)
+
+### 1. dev5-administracion — Fase 5d anuncios y notificaciones
+
+```
+Expediente: .claude/tareas/20261030-dev5-administracion.md. Lee el INFORME 1 (contratos y U3), el INFORME 4 (cómo usar colas y jobs), el INFORME 5 (seguridad, hallazgo 1 y el punto final sobre lotes) y la Decisión 8. Rama features/adolfo, último commit 95fd504.
+
+Encargo: fase 5d (RF-32 y RF-53). En paralelo, otro agente dev5 hace la 5g en admin-audit/ y lifecycle/; no toques esas carpetas.
+
+1. RF-32, anuncios. Crea `apps/api/src/modules/announcements/` con estos contratos:
+   - `GET` y `POST /course-sections/:id/announcements`: el TEACHER asignado o un ADMIN.
+   - `POST /announcements`: el ADMIN crea anuncios con scope INSTITUTION o GRADE.
+   - `PATCH` y `DELETE /announcements/:id`: soft-delete. Solo el autor o un ADMIN.
+   - `GET /me/announcements`: para STUDENT, TEACHER y GUARDIAN. El apoderado puede pasar `?studentId` solo si ese estudiante está vinculado a él.
+   - Al publicar, emite `announcement.published.v1`.
+   - Registra los cambios en la bitácora sin el cuerpo del anuncio.
+   - Title de hasta 150 caracteres. El body es texto plano y nunca se renderiza como HTML.
+2. RF-53, notificaciones. Trabaja en `apps/api/src/modules/notifications/` (el calendario ya vive ahí).
+   - Los listeners de la API reciben estos eventos y encolan en la cola `notifications` con un jobId idempotente:
+     - `assignment.created.v1` y `assignment.updated.v1`, de Dev 3; revisa sus nombres reales;
+     - `grade.updated.v1`, solo cuando es MANUAL;
+     - `announcement.published.v1`.
+   - Los procesadores del worker resuelven los destinatarios: estudiantes con matrícula vigente y sus apoderados, según U3. Del apoderado solo se usa el correo si existe.
+   - Crean las Notification con un `dedupeKey` por destinatario y encolan los correos en lotes de 50 a 100. Usan `MailerService.sendNotice`, que manda un correo mínimo.
+   - Barrido `maintenance:due-soon`: avisa de las tareas que vencen en 24 h.
+   - Barrido diario `maintenance:notification-retention` (INFORME 5, hallazgo 1):
+     - borra las notificaciones leídas con más de 90 días;
+     - borra las no leídas con más de 180 días;
+     - nunca guarda una notificación más de 365 días;
+     - pasa a SKIPPED los correos PENDING o FAILED con más de 7 días;
+     - trabaja en lotes de 1000 y deja bitácora solo con conteos.
+   - Endpoints: `GET /me/notifications?unread&page`, `POST /me/notifications/:id/read` y `POST /me/notifications/read-all`. Una persona nunca puede ver ni marcar las notificaciones de otra.
+   - El mensaje se arma al leer, a partir de `type` y `entityId`, sin datos de otros estudiantes.
+3. Web:
+   - Anuncios del docente dentro del curso. Mira `apps/web/app/(app)/curso/[id]/` y la lista de COURSE_ROUTES.
+   - `admin/anuncios`.
+   - Vista de anuncios para el estudiante y para el apoderado.
+   - Campana con contador y lista en `(app)/layout.tsx` o en el sidebar (Dev 1; autorizado, con el cambio mínimo).
+   - Todo debe funcionar desde 360 px, cumplir WCAG AA y seguir el patrón BFF D-037.
+4. Registro:
+   - Registra los módulos en app.module.ts y los procesadores en jobs/worker.module.ts.
+   - Agrega las entradas en nav.ts y routes.ts.
+   - Esos archivos son compartidos con el agente de 5g: haz solo Edits mínimos de inserción y relee el archivo justo antes de cada cambio.
+
+Agrega unit tests y los e2e `test/announcements.e2e-spec.ts` y `test/notifications.e2e-spec.ts` contra MySQL. Puedes probar los procesadores sin Redis, espiando QueueService. Corre lint, tsc, test y build de api y web, y prettier.
+
+Entorno: `NODE_OPTIONS=--dns-result-order=ipv4first`. Si MySQL da el error 45028, calienta la conexión. No leas .env.
+
+Devuelve un INFORME conciso según el protocolo.
+```
+
+### 2. dev5-administracion — Fase 5g bitácora y ciclo de vida
+
+```
+Expediente: .claude/tareas/20261030-dev5-administracion.md. Lee los INFORMES 1, 3 (FileLifecycleService), 4 (colas y jobs) y 5 (seguridad, hallazgos 2, 3, 4 y 7), y la Decisión 8. Rama features/adolfo, último commit 95fd504.
+
+Encargo: la fase 5g, que cubre RF-55/56, RF-62, RF-63, RF-64, RF-65, RF-66 y RF-67. En paralelo, otro agente dev5 hace la 5d en announcements/ y notifications/. No toques esas carpetas.
+
+Partes de la fase:
+1. RF-62 y RF-55/56, bitácora y modo soporte. Crea `apps/api/src/modules/admin-audit/` con `GET /admin/audit-logs?actorId&action&module&from&to&page`, solo para ADMIN y de solo lectura.
+   - El modo soporte (U9) se deriva al leer: es una acción de un actor ADMIN en los módulos contents, submissions o grading. Muéstralo con una marca.
+   - Web: `admin/bitacora`, que hoy es un placeholder, con filtros, paginación y uso desde 360 px.
+2. `apps/api/src/modules/lifecycle/`:
+   - RF-63: `POST /admin/students/:id/personal-data-export` responde 202 y crea un job PERSONAL_DATA_EXPORT. El resultado es un JSON dentro de un ZIP con User, Enrollment, GuardianStudent, PolicyAcceptance, entregas (solo los metadatos) y notas con comentario y exemptionReason (U8). El ADMIN puede descargarlo (Decisión 8). Toda descarga de cualquier job deja bitácora `job.download` con jobId, tipo y actor.
+   - Endpoints de jobs para la web: `GET /admin/jobs/:id` y `POST /admin/jobs/:id/download-url`, si 5f todavía no los creó. Ponlos en jobs/ con un controlador.
+   - Límite en `BackgroundJobService.create` (hallazgo 2): como máximo 3 jobs QUEUED o RUNNING por solicitante, con 429 JOB_LIMIT. Para YEAR_BACKUP y PURGE_YEAR, si ya hay uno activo del mismo año, responde 409.
+   - RF-65: al recibir `academic-year.closed.v1` (Dev 2; revisa el nombre real), se encola un YEAR_BACKUP por año. Genera un ZIP por sección con las entregas y los materiales del año, más un índice. Crea la utilidad ZIP compartida en jobs/ con archiver y subida por stream a S3 con JobResultStorage. Ajusta su regex si hace falta, porque 5f la va a reutilizar.
+   - El barrido de RUNNING colgados (hallazgo 7) pasa a FAILED con STALLED los jobs con más de 1 h, dentro de result-expiry-sweep.
+   - RF-66, purga (U7 y hallazgo 4): el procesador PURGE_YEAR solo actúa si el año está cerrado, todos sus YEAR_BACKUP terminaron SUCCEEDED y ya pasó `InstitutionSettings.purgeAfterDays`. Usa `FileLifecycleService.purge` sobre los archivos de ese año, salvo los isReusable. Borra los ZIP anuales (U6) y las Notification del año. Deja bitácora `lifecycle.purge` con conteos. Agrega un barrido diario que encole la purga elegible.
+   - RF-67: `GET /admin/storage-usage?academicYearId`, con la suma de sizeBytes sin purgar por año, grado y curso. `GET /admin/academic-years/:id/backups` lista los respaldos con su descarga.
+   - Web: `admin/almacenamiento` con el uso, los respaldos, el aviso de que hay que descargar antes de la purga y el botón para exportar los datos de un estudiante, con el estado del job y la descarga.
+   - RF-64: no implementes nada. Solo escribe el e2e que verifica que, con el período cerrado, las entregas quedan en solo lectura.
+3. Registro: registra los módulos en app.module.ts y los procesadores en jobs/worker.module.ts, y agrega las entradas en nav.ts y routes.ts. Son archivos compartidos con el agente de 5d: haz solo Edits mínimos de inserción y relee cada archivo justo antes de editarlo.
+
+Agrega unit tests y e2e (`test/admin-audit.e2e-spec.ts` y `test/lifecycle.e2e-spec.ts`) contra MySQL y MinIO. Corre lint, tsc, test y build de api y web, y prettier.
+
+Entorno: NODE_OPTIONS=--dns-result-order=ipv4first. Si MySQL da el error 45028, calienta la conexión. No leas .env.
+
+Devuelve un INFORME conciso según el protocolo.
+```
+
+### 3. SendMessage (reanudación) — Retomar 5d tras corte
+
+```
+Tu ejecución se cortó por un timeout del stream mientras revisabas MySQL para los e2e. Sigue desde ahí: los unit tests ya pasaban.
+- Antes de nada, revisa con git status el estado de tus archivos.
+- Si MySQL no responde, caliéntalo con `docker compose exec -T mysql sh -c 'mysql --protocol=TCP -h127.0.0.1 -uaula -p"$MYSQL_PASSWORD" aula_virtual -e "SELECT 1"'`.
+- Corre los comandos largos con un timeout explícito y no esperes más de 5 min por comando.
+- El agente de 5g sigue trabajando en paralelo. Si tsc marca errores en sus archivos, ignóralos.
+- Termina los e2e, lint, tsc, build y prettier, y devuelve el INFORME.
+```
+
+### 4. SendMessage (reanudación) — Retomar 5g tras corte
+
+```
+Tu ejecución se cortó por un timeout del stream mientras corrías los tests de jobs. Sigue desde ahí.
+- Antes de nada, revisa con git status el estado de tus archivos.
+- Corre los comandos largos con un timeout explícito y no esperes más de 5 min por cada uno.
+- Los errores en archivos de 5d (announcements/ y notifications/) son del otro agente, que sigue trabajando: ignóralos.
+- Termina tus e2e, lint, tsc, build y prettier, y devuelve el INFORME.
+```
+
+### 5. dev5-administracion — Terminar 5d anuncios y notificaciones
+
+```
+Expediente: .claude/tareas/20261030-dev5-administracion.md. Lee el INFORME 1 (contratos y U3), el INFORME 5 (seguridad, hallazgo 1 y lotes) y las Decisiones 8 y 9. Rama features/adolfo, último commit con HEAD actual.
+
+Encargo: terminar la fase 5d (RF-32 y RF-53). La API ya existe a medias en `apps/api/src/modules/announcements/` y `notifications/` (con `worker/`), compila y tiene unit tests. **Primero revisa qué hay y qué falta.** No rehagas lo que ya funciona.
+
+Qué falta:
+1. **Completar la API frente a los contratos del INFORME 1.**
+   - Anuncios: por curso-sección (TEACHER asignado o ADMIN), INSTITUTION/GRADE (ADMIN), PATCH/DELETE soft y `GET /me/announcements`. El apoderado puede pasar `?studentId`, solo de un estudiante vinculado.
+   - Notificaciones: `GET /me/notifications`, marcar como leída y marcar todas.
+   - Barridos `maintenance:due-soon` y `notification-retention`: leídas 90 días, no leídas 180, tope de 365, correos 7 días.
+   - Correo: solo con `deliverableEmail()` de `jobs/mailer.service.ts`.
+   - Con el login por código de David, el apoderado está en `GuardianStudent` con `isPrimary`: avisa a todos los vínculos vigentes.
+2. **Web (BFF D-037, desde 360 px, WCAG AA, estilo de las pantallas existentes):**
+   - Anuncios del docente dentro del curso (agregar la pestaña a COURSE_ROUTES).
+   - `admin/anuncios`.
+   - Lista de anuncios para el estudiante y el apoderado.
+   - Campana con contador y lista en el layout o el sidebar de `(app)`, con un cambio mínimo (autorizado).
+   - Registrar las rutas en nav.ts y routes.ts.
+3. **E2e contra MySQL:** `test/announcements.e2e-spec.ts` y `test/notifications.e2e-spec.ts`. Los procesadores se prueban espiando QueueService, sin Redis.
+
+**Restricciones:**
+- En paralelo, otro agente dev5 termina la 5g en `admin-audit/`, `lifecycle/` y `jobs/`. No toques esas carpetas.
+- En `app.module.ts`, `nav.ts`, `routes.ts` y `worker.module.ts`, solo inserciones mínimas con Edit, y relee el archivo antes de cada cambio.
+- **Cada comando largo con `timeout 300`**, para no colgarte. Si algo tarda más, córtalo y repórtalo.
+- Entorno: `NODE_OPTIONS=--dns-result-order=ipv4first`; la base local ya tiene las migraciones de David. No leas `.env`.
+
+Corre lint, `tsc -p tsconfig.json`, test y build de api y web, tus e2e y prettier. No hagas commit. Devuelve un INFORME conciso según el protocolo.
+```
+
+### 6. dev5-administracion — Terminar 5g bitácora y ciclo de vida
+
+```
+Expediente: .claude/tareas/20261030-dev5-administracion.md. Lee los INFORMES 1, 3, 4 y 5 (seguridad: hallazgos 2, 3, 4 y 7) y las Decisiones 8 y 9. Rama features/adolfo, HEAD actual.
+
+Encargo: terminar la fase 5g (RF-55/56, RF-62..67). La API ya existe a medias en `apps/api/src/modules/admin-audit/`, `lifecycle/` y en `jobs/` (`jobs.controller`, `job-download`, `zip-archive`). Compila y tiene unit tests. **Primero revisa qué hay y qué falta.** No rehagas lo que ya funciona.
+
+Qué falta:
+1. **Completar la API.**
+   - `GET /admin/audit-logs` con filtros y la marca de modo soporte (U9).
+   - RF-63: exportación de datos personales. El ADMIN puede descargarla y queda en la bitácora como `job.download` (Decisión 8). Usa `contactEmail` y `institutionalEmail`; el segundo ahora es opcional.
+   - Límite de 3 jobs QUEUED o RUNNING por usuario, con 429 `JOB_LIMIT`. Para `YEAR_BACKUP` o `PURGE_YEAR` duplicados del mismo año, 409.
+   - RF-65: `YEAR_BACKUP` al recibir `academic-year.closed.v1`, con un ZIP por sección.
+   - Barrido de RUNNING colgados: pasan a FAILED STALLED después de 1 h.
+   - RF-66: `PURGE_YEAR`, solo con el año cerrado, los respaldos en SUCCEEDED y `purgeAfterDays` cumplido. Usa `FileLifecycleService.purge` y deja bitácora `lifecycle.purge`.
+   - RF-67: `GET /admin/storage-usage` y `GET /admin/academic-years/:id/backups`.
+2. **Web (BFF D-037, desde 360 px, WCAG AA):**
+   - `admin/bitacora` (hoy es un placeholder): filtros y paginación.
+   - `admin/almacenamiento`: uso de almacenamiento, respaldos con su descarga, aviso antes de la purga, y un botón para exportar los datos de un estudiante que muestre el estado del job y la descarga.
+3. **E2e contra MySQL y MinIO:**
+   - `test/admin-audit.e2e-spec.ts`;
+   - `test/lifecycle.e2e-spec.ts`;
+   - un caso de RF-64: con el período cerrado, la entrega es de solo lectura.
+
+**Restricciones:**
+- En paralelo, otro agente dev5 termina la 5d en `announcements/` y `notifications/`. No toques esas carpetas.
+- En `app.module.ts`, `nav.ts`, `routes.ts` y `worker.module.ts`, solo inserciones mínimas con Edit, releyendo el archivo antes de cada cambio.
+- **Cada comando largo con `timeout 300`**, para no colgarte. Si algo tarda más, córtalo y repórtalo.
+- Entorno: `NODE_OPTIONS=--dns-result-order=ipv4first`. No leas `.env`.
+
+Corre lint, `tsc -p tsconfig.json`, test y build de api y web, tus e2e y prettier. No hagas commit. Devuelve un INFORME conciso según el protocolo.
+```
+
+### 7. qa-tester — QA de 5d
+
+```
+Expediente: .claude/tareas/20261030-dev5-administracion.md. Lee los INFORMES 1, 5 y 15. Rama features/adolfo.
+
+Encargo: QA de la fase 5d (RF-32 y RF-53).
+- API: `apps/api/src/modules/announcements/` y `notifications/`, sin contar los archivos de calendario.
+- Web: `(app)/anuncios`, `(app)/admin/anuncios`, `(app)/curso/[id]/anuncios` y `(app)/_notifications`.
+
+Solo toca archivos de test. Agrega los casos límite que falten:
+- Permisos de anuncios por rol y alcance: un docente ajeno recibe 403; un estudiante o apoderado que intenta crear recibe 403; un apoderado con un `studentId` no vinculado recibe 403.
+- Título de 150 caracteres frente a 151, y body con HTML que se guarda como texto.
+- Soft delete: un anuncio borrado no aparece.
+- Notificaciones: una persona no puede leer ni marcar las de otra; `read-all` solo marca las propias; la paginación.
+- `dedupeKey`: no hay duplicados.
+- Un usuario sin correo verificado queda SKIPPED, usando `deliverableEmail`.
+- Lotes de 100.
+- Retención 90/180/365 y correos de 7 días, en sus límites exactos.
+- Due-soon 24 h, en el límite.
+
+Corre api test, los e2e de 5d, web test, lint y `tsc`. Mide la cobertura de `announcements/` y `notifications/` (meta: 90 % de líneas).
+
+**Restricciones:**
+- Otro agente sigue trabajando en `admin-audit/`, `lifecycle/` y `jobs/`: ignora sus errores.
+- Cada comando largo con `timeout 300`.
+- `NODE_OPTIONS=--dns-result-order=ipv4first`. No leas `.env`.
+
+Devuelve un INFORME conciso. Los bugs de producción van como hallazgos, sin corregirlos.
+```
+
+### 8. seguridad-cumplimiento — Seguridad de 5d
+
+```
+Expediente: .claude/tareas/20261030-dev5-administracion.md. Lee los INFORMES 1, 5 y 15. Rama features/adolfo.
+
+Encargo: auditoría de solo lectura de la fase 5d. Archivos:
+- `apps/api/src/modules/announcements/`
+- `apps/api/src/modules/notifications/` (sin el calendario)
+- `apps/api/src/modules/jobs/mailer.service.ts` (`deliverableEmail`)
+- La web: `(app)/anuncios`, `(app)/admin/anuncios`, `(app)/curso/[id]/anuncios`, `(app)/_notifications` y el cambio en `lib/api/server.ts`.
+
+Revisa:
+- **Permisos por rol y pertenencia.** El apoderado solo ve los anuncios de sus vinculados. Nadie lee ni marca notificaciones ajenas.
+- **XSS:** el body debe renderizarse como texto plano.
+- **Datos de menores:**
+  - En las notificaciones: el mensaje se arma al leer y no debe mostrar datos de otros estudiantes.
+  - En los correos: no deben llevar datos.
+  - En los payloads de la cola: no deben llevar correos.
+- **Retención (hallazgo 1 del INFORME 5).**
+- **Lotes y DoS:** anuncios INSTITUTION masivos y el rate limit de la creación.
+- **Bitácora sin el cuerpo** del anuncio.
+- **Server Actions:** que solo reenvíen `aula_sid`.
+
+INFORME conciso con severidades (CRÍTICO/ALTO/MEDIO/BAJO), archivo:línea y la corrección propuesta.
+```
+
+### 9. ux-accesibilidad — UX de anuncios y campana
+
+```
+Expediente: .claude/tareas/20261030-dev5-administracion.md. Lee el INFORME 15. Rama features/adolfo.
+
+Encargo: revisión de solo lectura de las pantallas de 5d:
+- `apps/web/app/(app)/anuncios/`
+- `(app)/admin/anuncios/page.tsx`
+- `(app)/curso/[id]/anuncios/page.tsx`
+- `(app)/_notifications/notification-bell.tsx`, junto con su uso en `(app)/layout.tsx`
+- Las entradas nuevas en `lib/nav.ts`
+
+Criterios:
+- Coherencia con shadcn/ui y con las pantallas existentes.
+- Diseño desde 360 px.
+- WCAG 2.1 AA:
+  - la campana: contador con nombre accesible, foco al abrir y cerrar el Sheet, anuncio de los no leídos;
+  - formularios con errores asociados;
+  - diálogo de retiro;
+  - objetivos táctiles de 44 px;
+  - contraste en claro y oscuro.
+- Textos en español claros.
+
+Devuelve un INFORME conciso, con APROBADO o CAMBIOS_PEDIDOS, cada hallazgo con severidad y archivo:línea, y la corrección propuesta.
+```
+
+### 10. qa-tester — QA de 5g y fixture grading
+
+```
+Expediente: .claude/tareas/20261030-dev5-administracion.md. Lee los INFORMES 1, 5 y 18 y la Decisión 11. Rama features/adolfo.
+
+Encargo: QA de la fase 5g. Solo puedes tocar archivos de test.
+- API: `admin-audit/`, `lifecycle/` y `jobs/`.
+- Web: `admin/bitacora` y `admin/almacenamiento`.
+
+1. **Arregla el fixture de `apps/api/test/grading.e2e-spec.ts:704`**, que viola `GuardianStudent_isPrimary_chk` desde el login por código de David. Revisa la migración `users_codigo_apoderados`: `isPrimary` es TRUE/NULL y solo puede haber un principal vigente por alumno.
+2. **Agrega los casos límite que falten:**
+   - Bitácora:
+     - filtros en sus bordes: rango de fechas, acción inexistente y paginación;
+     - solo ADMIN (403 para otros roles);
+     - el modo soporte se deriva bien;
+     - no se expone la IP.
+   - JOB_LIMIT:
+     - con 3 jobs activos, el 4.º da 429;
+     - un respaldo o purga duplicado del mismo año da 409;
+     - STALLED a 1 h y a 6 h, en el límite exacto.
+   - PURGE_YEAR:
+     - cada precondición U7 por separado: año abierto, respaldo FAILED, plazo no cumplido;
+     - los archivos isReusable no se purgan.
+   - RF-63:
+     - lo que no es ADMIN da 403;
+     - `job.download` queda en la bitácora;
+     - el JSON no trae datos de otros alumnos.
+   - Web: los tests de `audit.ts` y `storage.ts` en sus límites.
+3. **Corre** api test, el e2e completo (con `timeout 600`), web test, lint y `tsc`. Mide la cobertura de `admin-audit/`, `lifecycle/` y `jobs/` (meta: 90 % de líneas).
+
+**Restricciones:**
+- En paralelo, otro QA trabaja sobre `announcements/` y `notifications/`. No toques esos archivos.
+- Cada comando largo con timeout.
+- Entorno: `NODE_OPTIONS=--dns-result-order=ipv4first`. No leas `.env`.
+
+Devuelve un INFORME conciso. Los bugs de producción van como hallazgos, sin corregirlos.
+```
+
+### 11. seguridad-cumplimiento — Seguridad de 5g
+
+```
+Expediente: .claude/tareas/20261030-dev5-administracion.md. Lee los INFORMES 1, 5 y 18. Rama features/adolfo.
+
+Encargo: auditoría de solo lectura de la fase 5g. Archivos:
+- `apps/api/src/modules/admin-audit/`
+- `apps/api/src/modules/lifecycle/`
+- `jobs/` (`jobs.controller`, `job-download`, `zip-archive` y los cambios en `background-job.service`)
+- La web: `admin/bitacora` y `admin/almacenamiento`, con sus Server Actions.
+
+Revisa:
+- **Bitácora:** solo ADMIN, sin IP ni datos sensibles en pantalla, y filtros sin inyección.
+- **RF-63:**
+  - que el JSON solo traiga datos del titular;
+  - la decisión de que el ADMIN descarga (Decisión 8), con `job.download` en la bitácora;
+  - que la URL firmada dure 60 s;
+  - que la Server Action no filtre la URL a terceros y valide http/https.
+- **ZIP:**
+  - path traversal y zip slip en los nombres de las entradas;
+  - streaming y tamaño;
+  - que no entren archivos purgados ni ajenos.
+- **PURGE_YEAR:** precondiciones U7, que no borre isReusable, idempotencia y bitácora.
+- **JOB_LIMIT y 409.**
+- **Barrido STALLED:** 1 h y 6 h.
+- **Ley 29733 y menores.**
+
+Entrega un INFORME conciso con severidades (CRÍTICO/ALTO/MEDIO/BAJO), archivo:línea y la corrección.
+```
+
+### 12. ux-accesibilidad — UX de bitácora y almacenamiento
+
+```
+Expediente: .claude/tareas/20261030-dev5-administracion.md. Lee el INFORME 18. Rama features/adolfo.
+
+Encargo: revisión de solo lectura de las pantallas de la fase 5g:
+- `apps/web/app/(app)/admin/bitacora/`: filtros, tabla, paginación, insignia de modo soporte y `<details>`.
+- `apps/web/app/(app)/admin/almacenamiento/`:
+  - uso por año y grado;
+  - respaldos con su descarga;
+  - aviso de purga;
+  - exportación de datos con sondeo cada 3 s y región de estado.
+
+Criterios:
+- Coherencia con shadcn/ui y con el resto de pantallas.
+- Diseño desde 360 px; la tabla de bitácora en celular.
+- WCAG 2.1 AA:
+  - tablas accesibles;
+  - filtros etiquetados;
+  - anuncios del sondeo sin hablar en exceso;
+  - foco tras exportar y tras descargar;
+  - contraste de la insignia y del aviso de peligro en claro y oscuro;
+  - objetivos de 44 px.
+- Textos en español claros.
+
+Devuelve un INFORME conciso con APROBADO o CAMBIOS_PEDIDOS. Para cada hallazgo indica severidad, archivo:línea y la corrección propuesta.
+```
+
+### 13. SendMessage (reanudación) — Correcciones de 5d, vuelta 1
+
+```
+Correcciones de la fase 5d (vuelta 1 de 2). El detalle está en el expediente, INFORMES 16 (UX) y 17 (seguridad). Aplícalas todas en una sola pasada.
+
+**UX**
+1. **[ALTO] Contraste del contador** (`notification-bell.tsx:123`): el globo debe pasar 4,5:1 en modo claro y en oscuro. Usa tokens, por ejemplo `bg-destructive text-destructive-foreground`, o define un par que cumpla.
+2. **[ALTO] Anuncio de avisos nuevos:** agrega un `<span className="sr-only" role="status" aria-live="polite">` fuera del Sheet. Debe decir "Tienes N avisos sin leer" solo cuando el contador sube, no en la carga inicial.
+3. **Foco estable tras retirar o editar un anuncio:** el foco va a un título con `tabIndex={-1}` o a un status "Anuncio retirado" / "Anuncio actualizado".
+4. **No cerrar el AlertDialog mientras está `pending`.** Además, `aria-live` en "Retirando…".
+5. **Nav:** quita de `lib/nav.ts` el ítem "Anuncios del curso", que apunta a `demo`. Al curso se entra desde la pestaña del curso.
+6. **Destinatarios:** usa el mismo patrón de label que "Grado".
+7. **BAJO:**
+   - un `h2` sr-only "Lista de anuncios" en `/anuncios`;
+   - quita `aria-current` del `span`;
+   - en "Marcar como leído", un `aria-label` con parte del mensaje.
+
+**Seguridad**
+8. **[MEDIO] Límites al crear anuncios:**
+   - `@Throttle` de 5 por minuto por usuario para crear (deja 30/min para PATCH y DELETE);
+   - tope por autor en 24 h: 20 INSTITUTION/GRADE o 50 de curso, con 429 `ANNOUNCEMENT_LIMIT`.
+9. **[MEDIO] Tope de destinatarios por evento:** 20000, con aviso en el log, o pagina `studentsOfSections` por cursor.
+10. **[BAJO] Revalidar la pertenencia al leer avisos** de anuncio o tarea (`notifications.service.ts:160-203`). Si el destinatario ya no tiene acceso, mensaje genérico.
+11. **[BAJO]** `@UseGuards(ActiveActorGuard)` en `MeAnnouncementsController`.
+12. **[BAJO] E2e de due-soon:** aíslalo para que solo afirme sobre su propia tarea y estudiante, sin `created > 0` global.
+
+En paralelo trabajan QA, seguridad y UX sobre 5g (`admin-audit/`, `lifecycle/`, `jobs/`, `admin/bitacora`, `admin/almacenamiento`): no los toques. Los comandos con `timeout 300`.
+
+Al terminar corre lint, `tsc`, test y build de api y web, los e2e de 5d y prettier. Devuelve un INFORME conciso punto por punto.
+```
+
+### 14. SendMessage (reanudación) — Re-revisión corta de UX 5d
+
+```
+Re-revisión corta de tus hallazgos de la 5d (vuelta 1/2). dev5 los corrigió y el detalle está en el INFORME 22 del expediente.
+
+Verifica sobre todo:
+- el globo con `bg-danger`;
+- el status sr-only cuando sube el contador;
+- el foco tras retirar o editar, con `list-status.tsx` y el `h3` con `tabIndex`;
+- el diálogo bloqueado mientras está `pending`;
+- el patrón de label de "Destinatarios".
+
+Devuelve APROBADO o CAMBIOS_PEDIDOS en un INFORME breve.
+```
+
+### 15. SendMessage (reanudación) — Correcciones de 5g, vuelta 1
+
+```
+Correcciones de la fase 5g (vuelta 1 de 2). El detalle está en el expediente, INFORMES 20 (UX), 21 (seguridad) y 24 (QA). Aplícalas todas en una sola pasada.
+
+QA:
+1. [MEDIO] Bitácora: lo que `rangeError` acepta en la web, la API también debe aceptarlo. Deja el límite de la web en 399 días o ajusta `buildAuditQuery`, y quita el `.fails` de `audit.edge.test.ts`.
+2. [BAJO] `formatBytes(1048575)` debe dar "1 MB". Quita el `.fails` de `storage.edge.test.ts`.
+
+Seguridad:
+3. [MEDIO] En `failStalled`, pasar también a FAILED (`QUEUE_STALLED`) los QUEUED con más de 1 h si son exportaciones, o más de 6 h si son YEAR_BACKUP o PURGE_YEAR. Agrega su test.
+4. [MEDIO] Para PERSONAL_DATA_EXPORT y YEAR_BACKUP, registrar `job.download` en la bitácora ANTES de firmar la URL; si la bitácora falla, responder 503.
+5. [MEDIO] Mínimo de `purgeAfterDays` en 30 (`settings.dto.ts` PURGE_MIN_DAYS, el CHECK de la BD no se toca; la web de `/admin/configuracion` debe validar igual). Ajusta los tests.
+6. [MEDIO] Antes de purgar, comprobar con `HeadObject` que cada respaldo exista y pese más de 0 bytes; si no, `PURGE_NOT_ELIGIBLE`. En el respaldo, contar los archivos excluidos en `indice.csv` y en la bitácora `lifecycle.purge`.
+7. [BAJO] En producción, la Server Action de descarga solo acepta `https:`.
+8. [BAJO] `zipSegment`: prefijar `_` a nombres reservados de Windows (CON, NUL, COM1…).
+9. [BAJO] En la vista de la bitácora, redactar las claves `email`, `reason` y `comment` en `beforeState`/`afterState`, o recortarlas a 200 caracteres.
+
+UX:
+10. [MEDIO] Tabla de bitácora: debajo de `md` mostrar tarjetas, o dar al contenedor con scroll `tabIndex={0}`, `role="region"` y `aria-label`.
+11. [MEDIO] Foco tras exportar y descargar: usar `aria-disabled` con un guardia en lugar de `disabled`; enfocar el botón de descarga cuando aparezca, y tras descargar devolver el foco al botón.
+12. [MEDIO] Que los nombres accesibles empiecen por el texto visible ("Descargar ZIP del respaldo…", "Ver solo sus acciones (nombre)").
+13. [MEDIO] Fechas inválidas: `aria-invalid` y `aria-describedby` en Desde y Hasta.
+14. [BAJO] `aria-busy` mientras se prepara; anunciar el error una sola vez; aviso de purga con `role="status"` en lugar de `alert`; uso por grado como lista.
+
+En paralelo no hay otros agentes escribiendo. Usa `timeout 300` en los comandos. Al terminar corre lint, `tsc`, test y build de api y web, los e2e de 5g y prettier. Devuelve un INFORME conciso, punto por punto.
+```
+
+### 16. revisor-pr — Revisión final de 5d y 5g
+
+```
+Expediente: .claude/tareas/20261030-dev5-administracion.md (INFORMES 15 a 25, Decisiones 9 a 14). Rama features/adolfo. Los cambios de 5d y 5g están sin commit, sobre `0052802` y el reporte posterior (`git status` y `git diff`).
+
+Encargo: revisión final de 5d (RF-32, RF-53) y 5g (RF-55/56, RF-62..67), incluidas las vueltas de corrección.
+
+1. **Definición de terminado** de docs/06.
+2. **Carpetas tocadas:** solo las permitidas o compartidos autorizados (`app.module.ts`, `worker.module.ts`, `nav.ts`, `routes.ts`, `(app)/layout.tsx`, una línea en `lib/api/server.ts`, `settings.dto.ts` y el fixture de `grading.e2e`). Ignora `.claude/`, `.agents/`, `skills-lock.json`, `docs.zip` y `docs/criterios.rar`.
+3. **Verifica en el código** que estén aplicados:
+   - seguridad de 5g, puntos 4, 6, 7 y 9 del INFORME 25;
+   - UX de 5g, puntos 10 a 14;
+   - de 5d, el throttle y el tope diario, `MAX_RECIPIENTS` y `reachOf`.
+4. **Corre:**
+   - `pnpm install --frozen-lockfile`;
+   - lint, `tsc` y build de api y web, más el lint y build del worker;
+   - api test y web test;
+   - el e2e completo con `timeout 900`;
+   - `prettier --check` sobre los archivos cambiados.
+
+Entorno: `NODE_OPTIONS=--dns-result-order=ipv4first`, Docker arriba. No leas `.env`.
+
+Devuelve APROBADO o CAMBIOS_PEDIDOS en un INFORME conciso, con el mensaje de commit propuesto.
+```
+
+## Decisiones del orquestador
+
+- **Integración previa:** antes de retomar se trajo `main` del equipo (login por código de David). El correo para avisos pasó a `deliverableEmail()`. Hay reporte aparte: `20261106-integrar-main-equipo.md`.
+- **Reparto en paralelo:** 5d y 5g se trabajaron en paralelo, en carpetas distintas. Los compartidos se tocaron solo con inserciones.
+- **Una sola vuelta de corrección por fase:** se juntaron los hallazgos de QA, seguridad y UX en un mensaje por agente.
+- **Compartidos aceptados:**
+  - una línea `apiServer.delete` en `lib/api/server.ts` (Dev 1);
+  - la campana en `(app)/layout.tsx`;
+  - el fixture de `grading.e2e` (Dev 4).
+- **Plazo de purga:** mínimo de 30 días por recomendación de seguridad. D-015 sigue abierta, con 60 días por defecto.
+- **Jobs colgados:** STALLED a la 1 h, pero a las 6 h para respaldo y purga.
+- **Revisión cruzada:** la re-revisión de UX de 5d decía que quedaban 3 puntos; el orquestador comprobó con grep que ya estaban corregidos.
+- **Sin re-revisión separada en 5g:** el revisor verificó en el código los puntos de seguridad y UX.
+
+## Archivos
+
+- **API:**
+  - `apps/api/src/modules/{announcements,notifications,admin-audit,lifecycle,jobs}/`
+  - `settings/settings.dto.ts`
+  - tests e2e: `announcements`, `notifications`, `admin-audit(-edge)`, `lifecycle(-edge)`, `jobs`, `grading`
+- **Web:** `(app)/anuncios`, `(app)/admin/{anuncios,bitacora,almacenamiento,configuracion}`, `(app)/curso/[id]/anuncios`, `(app)/_notifications`, `(app)/layout.tsx`, `lib/{nav,routes}.ts`, `lib/api/server.ts`
+
+## Verificación
+
+| Comando                          | Resultado           |
+| -------------------------------- | ------------------- |
+| `pnpm install --frozen-lockfile` | ok                  |
+| api: lint, tsc, build            | ok                  |
+| api: test                        | 1041 ok             |
+| web: lint, tsc, build            | ok                  |
+| web: test                        | 445 ok              |
+| worker: lint y build             | ok                  |
+| e2e completo                     | 28 archivos, 623 ok |
+| prettier --check                 | ok                  |
+
+## Pendientes
+
+- **5f:** reportes XLSX/PDF, ZIP masivo y dashboard.
+- **Documentador:**
+  - docs/02 y docs/03 (contratos y códigos `AUDIT_UNAVAILABLE`, `QUEUE_STALLED`, `ANNOUNCEMENT_LIMIT`);
+  - docs/04 (retención);
+  - docs/05 (procedimiento ARCO);
+  - AGENTES_IA (carpetas nuevas).
+- **Pruebas manuales:** en el navegador a 360 px y con lector de pantalla.
+- **Pestaña de anuncios del curso:** falta en la barra de pestañas (Dev 2/3).
+- **Detalles BAJO del revisor:**
+  - mover `WINDOWS_RESERVED`;
+  - el reencolado diario de PURGE_YEAR cuando falta un respaldo;
+  - `redactState` solo se aplica en la web.

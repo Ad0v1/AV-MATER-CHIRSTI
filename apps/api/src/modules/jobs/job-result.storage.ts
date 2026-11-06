@@ -134,6 +134,25 @@ export class JobResultStorage {
     }
   }
 
+  /**
+   * Tamaño del resultado en S3, o null si el objeto no existe (404). Otros errores de S3 lanzan.
+   * Lo usa la purga del año para comprobar que cada respaldo sigue ahí (seguridad 5g).
+   */
+  async size(key: string): Promise<number | null> {
+    assertResultKey(key);
+    try {
+      const head = await this.s3.send(
+        new HeadObjectCommand({ Bucket: this.config.bucket, Key: key }),
+      );
+      return Number(head.ContentLength ?? 0);
+    } catch (error) {
+      const status = (error as { $metadata?: { httpStatusCode?: number } }).$metadata
+        ?.httpStatusCode;
+      if (status === 404 || (error instanceof Error && error.name === 'NotFound')) return null;
+      throw error;
+    }
+  }
+
   /** Borra el resultado. Un objeto que ya no existe no es error (S3 responde 204). */
   async delete(key: string): Promise<void> {
     assertResultKey(key);

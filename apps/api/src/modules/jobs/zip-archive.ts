@@ -28,6 +28,8 @@ export interface ZipWriter {
  * Limpia un tramo de ruta del ZIP: sin separadores, sin caracteres de control ni de Windows
  * prohibidos, sin "." o ".." (zip slip) y con un largo maximo. Nunca devuelve vacio.
  */
+const WINDOWS_RESERVED = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(\.|$)/i;
+
 export function zipSegment(value: string, fallback = 'sin-nombre'): string {
   const cleaned = Array.from(value.normalize('NFC'))
     .filter((ch) => {
@@ -41,7 +43,9 @@ export function zipSegment(value: string, fallback = 'sin-nombre'): string {
     .replace(/^\.+/, '_')
     .replace(/[. ]+$/, '');
   const cut = Array.from(cleaned).slice(0, SEGMENT_MAX).join('').trim();
-  return cut === '' ? fallback : cut;
+  if (cut === '') return fallback;
+  // Nombres reservados de Windows (CON, NUL, COM1, "aux.pdf"…): no se pueden extraer tal cual.
+  return WINDOWS_RESERVED.test(cut) ? `_${cut}` : cut;
 }
 
 /** Une tramos ya limpios con "/" (siempre relativo). */

@@ -65,6 +65,16 @@ describe.skipIf(!process.env.DATABASE_URL)('BackgroundJob (e2e, MySQL + MinIO)',
       .mockImplementation((_q, _n, _d, o) => Promise.resolve(o?.jobId ?? ''));
   });
 
+  // Limite de 3 activos por solicitante (JOB_LIMIT, seguridad 5b hallazgo 2): antes de cada prueba
+  // se cierran los trabajos que dejaron abiertos las anteriores de este archivo.
+  beforeEach(async () => {
+    if (!prisma) return;
+    await prisma.backgroundJob.updateMany({
+      where: { id: { in: jobIds }, status: { in: ['QUEUED', 'RUNNING'] } },
+      data: { status: 'FAILED', finishedAt: new Date(), errorCode: 'QA_RESET' },
+    });
+  });
+
   afterAll(async () => {
     if (!app) return;
     for (const key of keys) await results.delete(key).catch(() => undefined);

@@ -5,7 +5,8 @@ import { z } from 'zod';
 // Configuración institucional (RF-61, U11). PUT reemplaza los tres campos: la pantalla siempre
 // los envía juntos. La tabla de literales la valida el motor de Dev 4 (RN-04); aquí solo la forma.
 
-export const PURGE_MIN_DAYS = 1;
+/** Mínimo de 30 días entre el cierre y la purga (seguridad 5g): da tiempo a bajar respaldos. */
+export const PURGE_MIN_DAYS = 30;
 export const PURGE_MAX_DAYS = 3650;
 export const NAME_MIN = 3;
 export const NAME_MAX = 150;

@@ -8,6 +8,7 @@ import {
   JobError,
   JobProcessorRegistry,
   type JobProcessor,
+  JobResultStorage,
   type StartedJob,
   type TrackedJobData,
   TrackedJobRunner,
@@ -26,6 +27,8 @@ export interface PurgeCounts {
   skippedReusable: number;
   notificationsDeleted: number;
   backupsDeleted: number;
+  /** PDF del año que no entraron en los respaldos (infectados o sin confirmar). */
+  excludedFromBackup: number;
 }
 
 function chunks<T>(items: T[], size: number): T[][] {
@@ -37,7 +40,7 @@ function chunks<T>(items: T[], size: number): T[][] {
 /**
  * lifecycle:purge-year (RF-66, U6, U7; seguridad 5b, hallazgo 4). Irreversible. Antes de tocar
  * nada vuelve a comprobar las precondiciones (año cerrado, todas las secciones con respaldo
- * SUCCEEDED y closedAt + purgeAfterDays cumplido): si no se cumplen, falla sin reintentos con
+ * SUCCEEDED que sigue en S3 con más de 0 bytes y closedAt + purgeAfterDays cumplido): si no se cumplen, falla sin reintentos con
  * PURGE_NOT_ELIGIBLE. Luego, en este orden y de forma idempotente:
  *   1. FileLifecycleService.purge (Dev 3) sobre cada StoredFile del año sin purgar; los
  *      Material isReusable se saltan (RN-14, regla H). Las filas, notas y bitácora se conservan.
@@ -59,6 +62,7 @@ export class PurgeYearProcessor implements JobProcessor<TrackedJobData>, OnModul
     private readonly jobs: BackgroundJobService,
     private readonly lifecycle: LifecycleService,
     private readonly audit: AuditService,
+    private readonly results: JobResultStorage,
   ) {}
 
   onModuleInit(): void {
@@ -78,6 +82,7 @@ export class PurgeYearProcessor implements JobProcessor<TrackedJobData>, OnModul
     const status = await this.lifecycle.purgeStatusOf(academicYearId, now);
     if (!status) throw new JobError('YEAR_NOT_FOUND', false);
     if (status.state !== 'ELIGIBLE') throw new JobError('PURGE_NOT_ELIGIBLE', false);
+    await this.assertBackupsPresent(academicYearId);
 
     const counts: PurgeCounts = {
       purged: 0,
@@ -85,6 +90,7 @@ export class PurgeYearProcessor implements JobProcessor<TrackedJobData>, OnModul
       skippedReusable: 0,
       notificationsDeleted: 0,
       backupsDeleted: 0,
+      excludedFromBackup: await this.countExcluded(academicYearId),
     };
     await this.purgeFiles(academicYearId, counts);
     counts.notificationsDeleted = await this.deleteNotifications(academicYearId);
@@ -97,6 +103,33 @@ export class PurgeYearProcessor implements JobProcessor<TrackedJobData>, OnModul
       { jobId: started.id, ...counts, eligibleAt: status.eligibleAt?.toISOString() ?? null },
     );
     return counts;
+  }
+
+  /**
+   * Seguridad 5g: cada respaldo SUCCEEDED del año debe seguir en S3 con más de 0 bytes. Si falta
+   * uno, no se purga (PURGE_NOT_ELIGIBLE, sin reintentos). Los EXPIRED ya los borró un intento
+   * anterior de esta misma purga y no se comprueban.
+   */
+  private async assertBackupsPresent(academicYearId: string): Promise<void> {
+    const rows = await this.prisma.backgroundJob.findMany({
+      where: { academicYearId, type: 'YEAR_BACKUP', status: 'SUCCEEDED' },
+      select: { resultObjectKey: true },
+    });
+    for (const row of rows) {
+      const size = row.resultObjectKey ? await this.results.size(row.resultObjectKey) : null;
+      if (!size) throw new JobError('PURGE_NOT_ELIGIBLE', false);
+    }
+  }
+
+  /** Archivos del año sin purgar que el respaldo no copió (no CLEAN o no COMPLETED). */
+  private countExcluded(academicYearId: string): Promise<number> {
+    return this.prisma.storedFile.count({
+      where: {
+        purgedAt: null,
+        courseSection: { section: { academicYearId } },
+        OR: [{ scanStatus: { not: 'CLEAN' } }, { uploadStatus: { not: 'COMPLETED' } }],
+      },
+    });
   }
 
   private async purgeFiles(academicYearId: string, counts: PurgeCounts): Promise<void> {

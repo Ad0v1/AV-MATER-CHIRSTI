@@ -325,4 +325,28 @@ describe('AnnouncementsService (RF-32)', () => {
       ),
     ).toBe(403);
   });
+
+  it('INFORME 17: tope diario por autor → 429 ANNOUNCEMENT_LIMIT y no crea', async () => {
+    const { service, prisma } = setup();
+    prisma.announcement.count.mockResolvedValueOnce(50);
+    const err = await service
+      .createForCourseSection(teacher, actor, 'cs-1', { title: 'T', body: 'B' })
+      .catch((e: HttpException) => e);
+    expect((err as HttpException).getStatus()).toBe(429);
+    expect((err as HttpException).getResponse()).toMatchObject({ code: 'ANNOUNCEMENT_LIMIT' });
+    prisma.announcement.count.mockResolvedValueOnce(20);
+    expect(
+      await statusOf(
+        service.createInstitutional(admin, actor, { scope: 'INSTITUTION', title: 'T', body: 'B' }),
+      ),
+    ).toBe(429);
+    expect(prisma.announcement.create).not.toHaveBeenCalled();
+    prisma.announcement.count.mockResolvedValueOnce(19);
+    await service.createInstitutional(admin, actor, {
+      scope: 'INSTITUTION',
+      title: 'T',
+      body: 'B',
+    });
+    expect(prisma.announcement.create).toHaveBeenCalledTimes(1);
+  });
 });

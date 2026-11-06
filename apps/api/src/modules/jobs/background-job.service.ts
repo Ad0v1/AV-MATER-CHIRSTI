@@ -287,18 +287,24 @@ export class BackgroundJobService {
   }
 
   /**
-   * RUNNING colgados -> FAILED con STALLED (seguridad 5b, hallazgo 7): el worker murio a mitad
+   * RUNNING colgados -> FAILED con STALLED, y QUEUED sin arrancar -> FAILED con QUEUE_STALLED (seguridad 5b, hallazgo 7): el worker murio a mitad
    * del trabajo. Plazo por tipo en STALLED_AFTER_MS. Si el worker seguia vivo y termina despues,
    * succeed() ya no encuentra RUNNING y TrackedJobRunner borra el resultado huerfano.
    */
   async failStalled(now: Date = new Date()): Promise<number> {
     let total = 0;
     for (const [type, ms] of Object.entries(STALLED_AFTER_MS) as [JobType, number][]) {
-      const { count } = await this.prisma.backgroundJob.updateMany({
-        where: { type, status: 'RUNNING', startedAt: { lt: new Date(now.getTime() - ms) } },
+      const limit = new Date(now.getTime() - ms);
+      const running = await this.prisma.backgroundJob.updateMany({
+        where: { type, status: 'RUNNING', startedAt: { lt: limit } },
         data: { status: 'FAILED', finishedAt: now, errorCode: 'STALLED' },
       });
-      total += count;
+      // QUEUED que nunca arrancó (se perdió en Redis): libera el cupo de JOB_LIMIT (seguridad 5g).
+      const queued = await this.prisma.backgroundJob.updateMany({
+        where: { type, status: 'QUEUED', createdAt: { lt: limit } },
+        data: { status: 'FAILED', finishedAt: now, errorCode: 'QUEUE_STALLED' },
+      });
+      total += running.count + queued.count;
     }
     return total;
   }

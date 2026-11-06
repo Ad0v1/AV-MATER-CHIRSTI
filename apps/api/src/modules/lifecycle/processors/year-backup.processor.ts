@@ -72,13 +72,16 @@ interface IndexEntry {
   receivedAt?: Date;
   isLate?: boolean;
   file: FileRow;
+  /** Archivo infectado, sin confirmar o ya purgado: va al índice como EXCLUIDO, sin el PDF. */
+  excluded?: boolean;
 }
 
 /**
  * lifecycle:year-backup (RF-65, U6). Un trabajo por sección del año cerrado: ZIP con los
  * materiales, los enunciados y todas las versiones de las entregas, más indice.csv (escapado
  * contra inyección de fórmulas). Se sube a backups/ y no vence: lo borra la purga del año (U7).
- * Un objeto ausente en S3 no corta el respaldo: queda en el índice como FALTANTE.
+ * Un objeto ausente en S3 no corta el respaldo: queda en el índice como FALTANTE. Los archivos
+ * infectados, sin confirmar o purgados no se copian: quedan en el índice como EXCLUIDO.
  */
 @Injectable()
 export class YearBackupProcessor implements JobProcessor<TrackedJobData>, OnModuleInit {
@@ -124,6 +127,10 @@ export class YearBackupProcessor implements JobProcessor<TrackedJobData>, OnModu
       const lines = [toCsvLine(INDEX_HEADER)];
       for (const entry of entries) {
         const path = `${root}/${entry.path}`;
+        if (entry.excluded) {
+          lines.push(indexLine({ ...entry, path }, 'EXCLUIDO'));
+          continue;
+        }
         const state = await this.addFile(zip, path, entry.file.objectKey);
         lines.push(indexLine({ ...entry, path }, state));
       }
@@ -201,7 +208,7 @@ export class YearBackupProcessor implements JobProcessor<TrackedJobData>, OnModu
         }),
       ]);
       for (const m of materials) {
-        if (!usable(m.file)) continue;
+        if (!m.file) continue;
         const kind = m.kind === 'CLASS' ? 'Clase' : 'Lectura';
         entries.push({
           path: zipPath(course, 'Materiales', `${kind} - ${m.title} [${tag(m.id)}].pdf`),
@@ -210,10 +217,11 @@ export class YearBackupProcessor implements JobProcessor<TrackedJobData>, OnModu
           period: m.period?.label ?? '',
           title: m.title,
           file: m.file,
+          excluded: !usable(m.file),
         });
       }
       for (const a of assignments) {
-        if (!usable(a.attachmentFile)) continue;
+        if (!a.attachmentFile) continue;
         entries.push({
           path: zipPath(course, 'Tareas', `${a.title} [${tag(a.id)}]`, 'Enunciado.pdf'),
           kind: 'ENUNCIADO',
@@ -221,10 +229,10 @@ export class YearBackupProcessor implements JobProcessor<TrackedJobData>, OnModu
           period: a.period.label,
           title: a.title,
           file: a.attachmentFile,
+          excluded: !usable(a.attachmentFile),
         });
       }
       for (const v of versions) {
-        if (!usable(v.file)) continue;
         const a = v.submission.assignment;
         const student = v.submission.enrollment.student.fullName;
         entries.push({
@@ -244,6 +252,7 @@ export class YearBackupProcessor implements JobProcessor<TrackedJobData>, OnModu
           receivedAt: v.receivedAt,
           isLate: v.isLate,
           file: v.file,
+          excluded: !usable(v.file),
         });
       }
     }
@@ -265,6 +274,6 @@ function indexLine(entry: IndexEntry, state: string): string {
     entry.isLate === undefined ? '' : entry.isLate ? 'SI' : 'NO',
     entry.file.sizeBytes === null ? '' : String(entry.file.sizeBytes),
     entry.file.sha256 ?? '',
-    included ? 'INCLUIDO' : 'FALTANTE',
+    included ? 'INCLUIDO' : state === 'EXCLUIDO' ? 'EXCLUIDO' : 'FALTANTE',
   ]);
 }

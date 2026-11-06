@@ -22,7 +22,8 @@ export type SettingsInput = {
 
 export const NAME_MIN = 3;
 export const NAME_MAX = 150;
-export const PURGE_MIN = 1;
+/** Igual que PURGE_MIN_DAYS de la API (seguridad 5g). */
+export const PURGE_MIN = 30;
 export const PURGE_MAX = 3650;
 export const MAX_BANDS = 10;
 export const LITERAL_MAX = 4;

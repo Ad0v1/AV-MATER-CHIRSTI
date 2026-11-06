@@ -323,3 +323,219 @@ Pendientes: WorkerModule debe importar LiteralScaleModule (5f); branding en el l
 - Ambos agentes pueden tocar app.module.ts, worker.module.ts, nav.ts y routes.ts, solo con inserciones mínimas mediante Edit, y releyendo el archivo antes de cada cambio.
 - RF-63: el ADMIN sí descarga el PERSONAL_DATA_EXPORT, porque atiende el pedido ARCO, con bitácora job.download (seguridad, hallazgo MEDIO 3).
 - 5g crea la utilidad ZIP compartida en jobs/, que 5f va a reutilizar.
+
+### Decisión del orquestador 9 (06/11/2026)
+
+- Los agentes de 5d y 5g se cortaron por timeout (31/10). Su API quedó a medias en el WIP b8b7f2c.
+- Se trajo `main` del equipo (commits 2f296a2 y 0052802), que incluye el login por código de David.
+- Para el correo de avisos se usa `deliverableEmail()`: el correo de contacto, solo si está verificado.
+- Estado actual: el código compila y pasan 946 tests de API. Faltan las pantallas web y los e2e de 5d y 5g.
+- Se relanzan dos agentes dev5 en paralelo para terminarlos, con timeouts explícitos en sus comandos.
+
+### INFORME 15 — dev5-administracion (5d, cierre)
+
+Estado: LISTO
+
+- La API de 5d que quedó del WIP ya estaba completa: no se rehízo.
+- Se agregaron e2e (announcements y notifications, 15/15) y la web: `/anuncios`, `/admin/anuncios`, `/curso/[id]/anuncios` y la campana en `(app)/layout.tsx`.
+- Shared: `nav.ts`, `routes.ts`, `layout.tsx` y una línea `apiServer.delete` en `lib/api/server.ts` (Dev 1). Este último se acepta porque entra en la autorización de compartidos mínimos (Decisión 1).
+- Comandos: api test 946, web test 386, builds ok; web lint y tsc ok.
+- Pendiente: TS7006 en `test/lifecycle.e2e-spec.ts:287`, de 5g.
+- Hallazgos [BAJO]: la retención en e2e es global; el nav del curso apunta a DEMO_COURSE.
+
+### Decisión del orquestador 10
+
+Se lanzan qa-tester, seguridad-cumplimiento y ux-accesibilidad sobre 5d mientras 5g termina. Deben ignorar los archivos de 5g.
+
+### INFORME 16 — ux-accesibilidad (5d)
+
+Estado: CAMBIOS_PEDIDOS
+ALTO:
+
+- El globo del contador (`bg-destructive text-white`) tiene contraste de unos 2,8:1 en modo oscuro (`notification-bell.tsx:123`).
+- Falta un `role=status` sr-only fuera del Sheet que anuncie cuando suben los no leídos.
+
+MEDIO:
+
+- Foco perdido tras retirar o editar un anuncio (`announcement-actions:50`, `announcement-form:82`).
+- El diálogo se puede cerrar mientras está en `pending`.
+- `nav.ts` "Anuncios del curso" lleva a `demo`, que nunca funciona.
+- El label de Destinatarios envuelve al `select`.
+
+BAJO:
+
+- Falta un `h2` en `/anuncios`.
+- `aria-current` va sobre un `span`.
+- Hay `role=alert` vacíos siempre presentes.
+- El foco no se mueve tras navegar desde la campana.
+- "Marcar como leído" no dice de qué aviso se trata.
+
+### INFORME 17 — seguridad-cumplimiento (5d)
+
+Estado: APROBADO (0 CRÍTICO, 0 ALTO).
+
+- Verificado: permisos y pertenencia, XSS, correo mínimo, payloads solo con ids, bitácora sin título ni cuerpo y retención implementada.
+
+MEDIO:
+
+1. El límite de 30/min al crear anuncios es amplio para envíos masivos. Se pide `@Throttle` de 5/min para crear y un tope diario por autor.
+2. El fanout INSTITUTION no tiene tope de destinatarios: tope de 20000 por evento o paginar.
+
+BAJO:
+
+- Revalidar la pertenencia al leer avisos de anuncio o tarea (`notifications.service.ts:192`).
+- Falta `ActiveActorGuard` en `MeAnnouncementsController`.
+- La retención debe ir en docs/04.
+- El e2e de retención es global.
+
+### INFORME 18 — dev5-administracion (5g, cierre)
+
+Estado: LISTO
+
+- La API de 5g del WIP ya estaba completa: no se rehízo.
+- Web nueva: `admin/bitacora` (filtros, paginación, modo soporte, sin IP) y `admin/almacenamiento` (uso, respaldos con descarga, aviso de purga y exportación de datos personales con sondeo).
+- Tests:
+  - e2e `admin-audit` (6, incluye RF-64) y `lifecycle` (11);
+  - specs de `lifecycle.policy` y `admin-audit`;
+  - en `jobs.e2e` se agregó un `beforeEach` por el JOB_LIMIT.
+- Comandos: api test 954 ok; tsc 0; e2e completo 577/578; web test 380 ok; builds ok.
+- Hallazgos:
+  - [MEDIO] `grading.e2e-spec.ts:704`: el fixture viola `GuardianStudent_isPrimary_chk` tras el merge de David.
+  - [BAJO] STALLED a 1 h, salvo YEAR_BACKUP y PURGE_YEAR, que van a 6 h.
+  - [BAJO] El e2e deja 3 filas de bitácora.
+
+### Decisión del orquestador 11
+
+Se aceptan las 6 h para respaldo y purga. Se lanzan qa-tester, seguridad y ux sobre 5g. QA también arregla el fixture de grading, porque es un archivo de test.
+
+### INFORME 19 — qa-tester (5d)
+
+Estado: LISTO (sin bugs de producción)
+
+- Tests nuevos: 83, en 5 archivos.
+- Cobertura: 94,6 % de líneas.
+- Totales: API 1023 tests, web 400 tests.
+- e2e 5d: 15/15. El de due-soon es intermitente porque la BD es compartida (hallazgo BAJO).
+
+### Decisión del orquestador 12 (corrección de 5d, vuelta 1/2 de la fase)
+
+Se devuelve a dev5 (5d) en un solo mensaje:
+
+- UX: los 2 ALTO y los MEDIO, más los BAJO baratos.
+- Seguridad: los MEDIO 1 y 2 y los BAJO de código.
+- Ítem DEMO del nav: se oculta "Anuncios del curso" del menú lateral, porque se entra desde el curso.
+
+### INFORME 20 — ux-accesibilidad (5g)
+
+Estado: APROBADO (sin CRÍTICO ni ALTO).
+MEDIO:
+
+1. Tabla de bitácora con `min-w-40rem` a 360 px: pasar a tarjetas bajo `md`, o una región enfocable.
+2. Foco perdido tras exportar o descargar (`disabled` con el foco puesto).
+3. y 4. WCAG 2.5.3: el `aria-label` no contiene el texto visible ("Descargar ZIP", "Ver solo sus acciones").
+4. Fechas inválidas sin `aria-invalid` ni `describedby`.
+
+BAJO: `aria-busy`, error anunciado dos veces, aviso de purga con `role=alert` al cargar, uso por grado en texto corrido y `YearPicker` propio, columna "PDF" y `<pre>` sin foco.
+
+### INFORME 21 — seguridad-cumplimiento (5g)
+
+Estado: APROBADO (0 CRÍTICO, 0 ALTO).
+
+MEDIO:
+
+1. Un job en QUEUED que nunca se procesa queda colgado: bloquea el JOB_LIMIT y la purga. Hay que pasarlo a FAILED con `QUEUE_STALLED`.
+2. `job.download` se registra después de firmar la descarga. Para datos de menores debe registrarse antes y responder 503 si falla.
+3. `purgeAfterDays` admite un mínimo de 1 día. Subirlo a 30, decisión de D-015.
+4. U7 no verifica con HEAD que el respaldo exista en S3. Hay que contar los archivos excluidos.
+
+BAJO:
+
+- Redactar las claves sensibles en before y after.
+- Usar solo `https` en producción.
+- Rechazar nombres reservados de Windows en el ZIP y poner un `maxBytes`.
+- Hacer atómico el JOB_LIMIT.
+- Documentar el procedimiento ARCO en docs/05.
+
+### INFORME 22 — dev5-administracion (5d, corrección 1/2)
+
+Estado: LISTO. Se aplicaron los 12 puntos:
+
+- Globo del contador con `bg-danger` (6,5:1).
+- Status sr-only cuando sube el contador.
+- Foco estable en `ListStatus` y en el `h3`.
+- El diálogo no se cierra mientras está en pending.
+- Se quitó el ítem `demo` del nav.
+- Throttle de 5/min y tope diario de 20/50 con 429.
+- `MAX_RECIPIENTS_PER_EVENT` de 20000.
+- `reachOf()` revalida la pertenencia al leer.
+- `ActiveActorGuard`.
+- E2e de due-soon aislado.
+
+Comandos: API 1025 tests, e2e 5d 16/16, web 442 tests, builds ok.
+Pendiente: la barra de pestañas del curso no enlaza a anuncios (Dev 2/3).
+
+### INFORME 23 — ux-accesibilidad (re-revisión 5d)
+
+Estado: APROBADO. Los 3 BAJO/MEDIO que dio como "sigue igual" (aria-current, aria-label de "Marcar como leído", ítem demo del nav) los verificó el orquestador con grep: ya estaban corregidos. La revisión leyó líneas desactualizadas.
+
+### INFORME 24 — qa-tester (5g)
+
+Estado: CAMBIOS_PEDIDOS (2 defectos de producción).
+
+- Fixture de grading arreglado: al revocar un apoderado, `isPrimary` queda en null.
+- Tests nuevos: `admin-audit-edge` e2e (22), `lifecycle-edge` e2e (21), `lifecycle-processors.spec` (11) y 2 tests edge de web.
+- Resultados: API 1036 tests; e2e completo 28 archivos y 622 tests, todos ok; web 442 + 2 `it.fails`.
+- Cobertura de 5g: 95 %.
+- Hallazgos:
+  1. [MEDIO] La web acepta 400 días en la bitácora, pero envía hasta las 23:59 del último día, así que la API responde 400.
+  2. [BAJO] `formatBytes(1048575)` da "1024 KB".
+
+### Decisión del orquestador 13 (corrección de 5g, vuelta 1/2 de la fase)
+
+Se devuelven a dev5 (5g) en un solo mensaje:
+
+- QA: los hallazgos 1 y 2.
+- Seguridad (INFORME 21): los 4 MEDIO y los BAJO de código.
+- UX (INFORME 20): los 5 MEDIO y los BAJO baratos.
+
+`purgeAfterDays` pasa a un mínimo de 30 días (recomendación de seguridad; D-015 sigue abierta con 60 por defecto). Se avisa al usuario.
+
+### INFORME 25 — dev5-administracion (5g, corrección 1/2)
+
+Estado: LISTO. Se aplicaron los 14 puntos.
+
+- QUEUE_STALLED.
+- `job.download` se registra antes de firmar, con 503 `AUDIT_UNAVAILABLE` si falla.
+- Mínimo de purga en 30 días.
+- HeadObject de los respaldos antes de purgar, y conteo de los excluidos.
+- Descargas solo por https en producción.
+- Nombres reservados de Windows en el ZIP.
+- `redactState`.
+- Cambios de UX: región enfocable, `aria-disabled` con manejo de foco, label-in-name, `aria-invalid`, `aria-busy`, `role=status` y lista por grado.
+
+Comandos: API 1041, web 445, e2e de 5g 74/74, builds ok.
+Hallazgos: [BAJO] si falta un respaldo, la política reencola PURGE_YEAR todos los días (no borra nada).
+
+### Decisión del orquestador 14
+
+- UX ya había dicho que no hace falta una re-revisión. Seguridad aprobó con MEDIO.
+- Para ahorrar, revisor-pr revisa 5d y 5g juntas y verifica en el código los puntos 4, 6, 7, 9 (seguridad) y 10 a 14 (UX).
+- El fixture de grading ya lo arregló QA (INFORME 24), así que la nota de dev5 está desactualizada.
+
+### INFORME 26 — revisor-pr (5d + 5g)
+
+Estado: APROBADO
+
+- Comandos: install frozen ok.
+  - API: lint 0, tsc 0, build ok, test 1041.
+  - Web: tsc 0, lint 0, build ok, test 445.
+  - Worker: ok.
+  - e2e completo: 28 archivos, 623 tests ok.
+  - Prettier: ok.
+- Los puntos de seguridad y UX se verificaron en el código.
+- Hallazgos BAJO:
+  - `WINDOWS_RESERVED` está entre el JSDoc y la función.
+  - Hay una línea de JSDoc larga.
+  - PURGE_YEAR se reencola cada día si falta un respaldo.
+  - `redactState` solo se aplica en la web.
+- Pendientes: docs/02, 03, 04 y 05 y AGENTES_IA (documentador); pruebas en navegador; pestaña del curso; D-015.

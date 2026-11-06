@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation';
 import { AppSidebar } from '@/components/layout/app-sidebar';
 import { SidebarInset, SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar';
 import { requireUser } from '@/lib/session';
+import { NotificationBell } from './_notifications/notification-bell';
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -27,6 +28,10 @@ async function AuthenticatedShell({ children }: { children: React.ReactNode }) {
       <SidebarInset>
         <header className="flex h-12 items-center gap-2 border-b px-4">
           <SidebarTrigger />
+          {/* RF-53 (Dev 5): campana de avisos, cambio mínimo autorizado el 06/11/2026. */}
+          <div className="ml-auto">
+            <NotificationBell role={user.role} />
+          </div>
         </header>
         {children}
       </SidebarInset>

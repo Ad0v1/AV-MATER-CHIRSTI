@@ -2,6 +2,8 @@ import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
+  HttpException,
+  HttpStatus,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -104,6 +106,10 @@ type Audience = {
 /** updatedAt nace igual a publishedAt; más de 1 s de diferencia = editado. */
 const EDIT_TOLERANCE_MS = 1000;
 
+/** Tope de anuncios por autor en 24 h (INFORME 17): limita el volumen de avisos y correos. */
+export const ANNOUNCEMENT_DAILY_LIMIT = { institutional: 20, course: 50 } as const;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
 const activeCourseSections = (academicYearId: string) => ({
   isActive: true,
   section: { isActive: true, academicYearId },
@@ -129,6 +135,7 @@ export class AnnouncementsService {
   ): Promise<AnnouncementView> {
     await this.assertCourseManager(user, courseSectionId);
     await this.access.assertCourseSectionWritable(courseSectionId);
+    await this.assertDailyLimit(user.id, 'course');
     const cs = await this.prisma.courseSection.findUniqueOrThrow({
       where: { id: courseSectionId },
       select: { section: { select: { academicYearId: true } } },
@@ -161,6 +168,7 @@ export class AnnouncementsService {
       select: { closedAt: true },
     });
     if (year?.closedAt) throw new ConflictException(ACADEMIC_MSG.yearClosed);
+    await this.assertDailyLimit(user.id, 'institutional');
     const row = await this.prisma.announcement.create({
       data: {
         academicYearId: active.id,
@@ -276,6 +284,30 @@ export class AnnouncementsService {
   }
 
   // ------------------------------------------------------------------ apoyo
+
+  /** 429 ANNOUNCEMENT_LIMIT si el autor ya publicó el tope de su tipo en las últimas 24 h. */
+  private async assertDailyLimit(
+    authorId: string,
+    kind: keyof typeof ANNOUNCEMENT_DAILY_LIMIT,
+  ): Promise<void> {
+    const limit = ANNOUNCEMENT_DAILY_LIMIT[kind];
+    const count = await this.prisma.announcement.count({
+      where: {
+        authorId,
+        scope: kind === 'course' ? 'COURSE_SECTION' : { in: ['INSTITUTION', 'GRADE'] },
+        publishedAt: { gte: new Date(Date.now() - DAY_MS) },
+      },
+    });
+    if (count >= limit) {
+      throw new HttpException(
+        {
+          code: 'ANNOUNCEMENT_LIMIT',
+          message: `Llegaste al máximo de ${limit} anuncios en 24 horas. Inténtalo más tarde.`,
+        },
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
+  }
 
   private async afterCreate(actor: Actor, row: Row): Promise<void> {
     await recordAnnouncement(this.audit, actor, 'announcement.create', row.id, {

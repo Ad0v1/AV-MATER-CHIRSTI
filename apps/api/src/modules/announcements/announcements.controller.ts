@@ -41,6 +41,11 @@ export const ANNOUNCEMENT_WRITE_THROTTLE = {
   default: { limit: 30, ttl: 60_000, getTracker: trackByUser },
 };
 
+/** 5 publicaciones por minuto y usuario (cada una avisa a muchas personas; INFORME 17). */
+export const ANNOUNCEMENT_CREATE_THROTTLE = {
+  default: { limit: 5, ttl: 60_000, getTracker: trackByUser },
+};
+
 // RF-32: anuncios del curso. Docente asignado o ADMIN (el servicio comprueba la asignación).
 @Roles('TEACHER', 'ADMIN')
 @UseGuards(ActiveActorGuard)
@@ -58,7 +63,7 @@ export class CourseSectionAnnouncementsController {
   }
 
   @Post()
-  @Throttle(ANNOUNCEMENT_WRITE_THROTTLE)
+  @Throttle(ANNOUNCEMENT_CREATE_THROTTLE)
   create(
     @Param('id', new ZodValidationPipe(idSchema)) id: string,
     @Body(new ZodValidationPipe(courseAnnouncementSchema)) dto: CourseAnnouncementDto,
@@ -85,7 +90,7 @@ export class AnnouncementsController {
 
   @Post()
   @Roles('ADMIN')
-  @Throttle(ANNOUNCEMENT_WRITE_THROTTLE)
+  @Throttle(ANNOUNCEMENT_CREATE_THROTTLE)
   create(
     @Body(new ZodValidationPipe(adminAnnouncementSchema)) dto: AdminAnnouncementDto,
     @Req() req: RequestWithUser,
@@ -118,6 +123,7 @@ export class AnnouncementsController {
 
 // RF-32: bandeja de anuncios del usuario. ADMIN no tiene bandeja (403 por rol).
 @Roles('STUDENT', 'TEACHER', 'GUARDIAN')
+@UseGuards(ActiveActorGuard)
 @Controller('me/announcements')
 export class MeAnnouncementsController {
   constructor(private readonly announcements: AnnouncementsService) {}

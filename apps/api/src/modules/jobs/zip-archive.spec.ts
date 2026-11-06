@@ -30,6 +30,11 @@ describe('zipSegment y zipPath', () => {
     expect(zipSegment('a\u0000b\u0007c')).toBe('abc');
     expect(zipSegment('C:\\temp\\x')).toBe('C__temp_x');
     expect(zipSegment('   ')).toBe('sin-nombre');
+    // Nombres reservados de Windows (seguridad 5g).
+    expect(zipSegment('CON')).toBe('_CON');
+    expect(zipSegment('nul.pdf')).toBe('_nul.pdf');
+    expect(zipSegment('COM1')).toBe('_COM1');
+    expect(zipSegment('Consola')).toBe('Consola');
     expect(zipSegment('..')).toBe('_');
     expect(zipSegment('nombre.')).toBe('nombre');
     expect(Array.from(zipSegment('ñ'.repeat(200)))).toHaveLength(80);

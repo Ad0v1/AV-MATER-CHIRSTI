@@ -49,6 +49,7 @@ type AssignmentInfo = {
   dueAt: Date;
   deletedAt: Date | null;
   courseSectionId: string;
+  sectionId: string;
   course: string;
 };
 type GradeInfo = {
@@ -59,6 +60,9 @@ type GradeInfo = {
 type AnnouncementInfo = {
   title: string;
   deletedAt: Date | null;
+  scope: 'INSTITUTION' | 'GRADE' | 'COURSE_SECTION';
+  gradeLevel: number | null;
+  sectionId: string | null;
   courseSectionId: string | null;
   course: string | null;
 };
@@ -137,10 +141,12 @@ export class NotificationsService {
       this.grades(ids(['GRADE_PUBLISHED'])),
       this.announcements(ids(['ANNOUNCEMENT_PUBLISHED'])),
     ]);
-    const linked =
-      user.role === 'GUARDIAN' && grades.size > 0
-        ? new Set(await this.access.getLinkedStudentIds(user.id))
-        : new Set<string>();
+    const needsLinks = user.role === 'GUARDIAN' && rows.length > 0;
+    const linkedIds = needsLinks ? await this.access.getLinkedStudentIds(user.id) : [];
+    const linked = new Set(linkedIds);
+    // Pertenencia vigente (INFORME 17): secciones y grados actuales del estudiante o de los
+    // estudiantes vinculados. Si ya no corresponde, el aviso queda con un mensaje genérico.
+    const reach = await this.reachOf(user, linkedIds);
 
     return rows.map((r) => {
       const base = {
@@ -160,7 +166,9 @@ export class NotificationsService {
         case 'ASSIGNMENT_CREATED':
         case 'ASSIGNMENT_DUE_SOON': {
           const a = assignments.get(r.entityId);
-          if (!a || a.deletedAt) return gone('Una tarea ya no está disponible.');
+          if (!a || a.deletedAt || !reach.sections.has(a.sectionId)) {
+            return gone('Una tarea ya no está disponible.');
+          }
           const message =
             r.type === 'ASSIGNMENT_CREATED'
               ? `Nueva tarea en ${a.course}: «${a.title}». Vence el ${formatLima(a.dueAt)}.`
@@ -192,6 +200,13 @@ export class NotificationsService {
         case 'ANNOUNCEMENT_PUBLISHED': {
           const a = announcements.get(r.entityId);
           if (!a || a.deletedAt) return gone('Un anuncio fue retirado.');
+          const allowed =
+            a.scope === 'INSTITUTION' ||
+            (a.scope === 'GRADE' && a.gradeLevel !== null && reach.grades.has(a.gradeLevel)) ||
+            (a.scope === 'COURSE_SECTION' &&
+              a.sectionId !== null &&
+              reach.sections.has(a.sectionId));
+          if (!allowed) return gone('Hay un anuncio que ya no está disponible.');
           const where = a.course ? ` en ${a.course}` : '';
           return {
             ...base,
@@ -207,6 +222,24 @@ export class NotificationsService {
     });
   }
 
+  /** Secciones (matrícula vigente) y grados del estudiante o de sus estudiantes vinculados. */
+  private async reachOf(
+    user: AuthenticatedUser,
+    linkedIds: string[],
+  ): Promise<{ sections: Set<string>; grades: Set<number> }> {
+    const studentIds =
+      user.role === 'STUDENT' ? [user.id] : user.role === 'GUARDIAN' ? linkedIds : [];
+    if (studentIds.length === 0) return { sections: new Set(), grades: new Set() };
+    const rows = await this.prisma.enrollment.findMany({
+      where: { studentId: { in: studentIds }, isCurrent: true },
+      select: { sectionId: true, section: { select: { gradeLevel: true } } },
+    });
+    return {
+      sections: new Set(rows.map((r) => r.sectionId)),
+      grades: new Set(rows.map((r) => r.section.gradeLevel)),
+    };
+  }
+
   private async assignments(ids: string[]): Promise<Map<string, AssignmentInfo>> {
     if (ids.length === 0) return new Map();
     const rows = await this.prisma.assignment.findMany({
@@ -217,7 +250,7 @@ export class NotificationsService {
         dueAt: true,
         deletedAt: true,
         courseSectionId: true,
-        courseSection: { select: { course: { select: { name: true } } } },
+        courseSection: { select: { sectionId: true, course: { select: { name: true } } } },
       },
     });
     return new Map(
@@ -228,6 +261,7 @@ export class NotificationsService {
           dueAt: a.dueAt,
           deletedAt: a.deletedAt,
           courseSectionId: a.courseSectionId,
+          sectionId: a.courseSection.sectionId,
           course: a.courseSection.course.name,
         },
       ]),
@@ -247,7 +281,7 @@ export class NotificationsService {
             dueAt: true,
             deletedAt: true,
             courseSectionId: true,
-            courseSection: { select: { course: { select: { name: true } } } },
+            courseSection: { select: { sectionId: true, course: { select: { name: true } } } },
           },
         },
       },
@@ -263,6 +297,7 @@ export class NotificationsService {
             dueAt: g.assignment.dueAt,
             deletedAt: g.assignment.deletedAt,
             courseSectionId: g.assignment.courseSectionId,
+            sectionId: g.assignment.courseSection.sectionId,
             course: g.assignment.courseSection.course.name,
           },
         },
@@ -278,8 +313,10 @@ export class NotificationsService {
         id: true,
         title: true,
         deletedAt: true,
+        scope: true,
+        gradeLevel: true,
         courseSectionId: true,
-        courseSection: { select: { course: { select: { name: true } } } },
+        courseSection: { select: { sectionId: true, course: { select: { name: true } } } },
       },
     });
     return new Map(
@@ -288,6 +325,9 @@ export class NotificationsService {
         {
           title: a.title,
           deletedAt: a.deletedAt,
+          scope: a.scope,
+          gradeLevel: a.gradeLevel,
+          sectionId: a.courseSection?.sectionId ?? null,
           courseSectionId: a.courseSectionId,
           course: a.courseSection?.course.name ?? null,
         },

@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../../common/prisma/prisma.service.js';
 import type { NotificationType } from '../../../generated/prisma/enums.js';
 import { deliverableEmail } from '../../jobs/mailer.service.js';
@@ -8,6 +8,7 @@ import {
   dedupeKey,
   EMAIL_BATCH,
   INSERT_CHUNK,
+  MAX_RECIPIENTS_PER_EVENT,
   NOTIFICATION_JOBS,
 } from '../notification.constants.js';
 
@@ -28,6 +29,8 @@ function chunks<T>(list: T[], size: number): T[][] {
  */
 @Injectable()
 export class NotificationFanout {
+  private readonly logger = new Logger(NotificationFanout.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly queues: QueueService,
@@ -39,7 +42,14 @@ export class NotificationFanout {
     recipientIds: string[],
     variant?: string,
   ): Promise<FanoutResult> {
-    const unique = [...new Set(recipientIds)];
+    let unique = [...new Set(recipientIds)];
+    if (unique.length > MAX_RECIPIENTS_PER_EVENT) {
+      // Solo conteos en el log (RNF-09). El tope evita lotes desmedidos por un solo evento.
+      this.logger.warn(
+        `Destinatarios de ${type} recortados: ${unique.length} > ${MAX_RECIPIENTS_PER_EVENT}`,
+      );
+      unique = unique.slice(0, MAX_RECIPIENTS_PER_EVENT);
+    }
     if (unique.length === 0) return { recipients: 0, created: 0, emailJobs: 0 };
 
     const keys: string[] = [];

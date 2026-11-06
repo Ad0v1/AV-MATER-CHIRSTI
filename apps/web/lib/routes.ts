@@ -10,6 +10,9 @@ export const ROUTES = {
   misNotas: '/mis-notas',
   // RF-54 (Dev 5): estudiante, docente y apoderado. Autorizado por el usuario (30/10/2026).
   calendario: '/calendario',
+  // RF-32 (Dev 5): bandeja de anuncios y anuncios institucionales. Autorizado (06/11/2026).
+  anuncios: '/anuncios',
+  adminAnuncios: '/admin/anuncios',
   apoderado: '/apoderado',
   miPerfil: '/mi-perfil',
 } as const;
@@ -19,4 +22,6 @@ export const COURSE_ROUTES = {
   lecturas: (id: string) => `/curso/${id}/lecturas`,
   tareas: (id: string) => `/curso/${id}/tareas`,
   registro: (id: string) => `/curso/${id}/registro`,
+  // RF-32 (Dev 5): anuncios del curso (docente asignado o ADMIN).
+  anuncios: (id: string) => `/curso/${id}/anuncios`,
 } as const;
