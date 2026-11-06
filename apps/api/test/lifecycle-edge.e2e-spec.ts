@@ -444,14 +444,14 @@ describe.skipIf(!process.env.DATABASE_URL)('Ciclo de vida 5g: casos límite (e2e
     const startedAgo = (ms: number) => new Date(NOW.getTime() - ms);
 
     it('exportaciones: 1 h exacta sigue RUNNING; 1 h + 1 ms pasa a FAILED STALLED', async () => {
-      const types = ['SECTION_EXPORT', 'BULK_EXPORT', 'PERSONAL_DATA_EXPORT'] as const;
+      const types = ['SECTION_EXPORT', 'PERSONAL_DATA_EXPORT'] as const;
       const onTime: string[] = [];
       const late: string[] = [];
       for (const type of types) {
         onTime.push((await insertJob(type, 'RUNNING', { startedAt: startedAgo(HOUR) })).id);
         late.push((await insertJob(type, 'RUNNING', { startedAt: startedAgo(HOUR + 1) })).id);
       }
-      expect(await jobs.failStalled(NOW)).toBe(3);
+      expect(await jobs.failStalled(NOW)).toBe(2);
       for (const id of onTime) expect((await jobRow(id)).status).toBe('RUNNING');
       for (const id of late) {
         expect(await jobRow(id)).toMatchObject({ status: 'FAILED', errorCode: 'STALLED' });
@@ -459,6 +459,17 @@ describe.skipIf(!process.env.DATABASE_URL)('Ciclo de vida 5g: casos límite (e2e
       // Idempotente.
       expect(await jobs.failStalled(NOW)).toBe(0);
       await prisma.backgroundJob.deleteMany({ where: { id: { in: [...onTime, ...late] } } });
+    });
+
+    it('ZIP masivo: a 3 h exactas sigue RUNNING; a 3 h + 1 ms, STALLED', async () => {
+      const onTime = await insertJob('BULK_EXPORT', 'RUNNING', { startedAt: startedAgo(3 * HOUR) });
+      const late = await insertJob('BULK_EXPORT', 'RUNNING', {
+        startedAt: startedAgo(3 * HOUR + 1),
+      });
+      expect(await jobs.failStalled(NOW)).toBe(1);
+      expect((await jobRow(onTime.id)).status).toBe('RUNNING');
+      expect(await jobRow(late.id)).toMatchObject({ status: 'FAILED', errorCode: 'STALLED' });
+      await prisma.backgroundJob.deleteMany({ where: { id: { in: [onTime.id, late.id] } } });
     });
 
     it('respaldo y purga: a 1 h + 1 ms y a 6 h exactas siguen RUNNING; a 6 h + 1 ms, STALLED', async () => {
@@ -491,7 +502,9 @@ describe.skipIf(!process.env.DATABASE_URL)('Ciclo de vida 5g: casos límite (e2e
     it('un QUEUED viejo y un RUNNING de otro tipo reciente no se tocan; el STALLED no puede resucitar', async () => {
       const queued = await insertJob('BULK_EXPORT', 'QUEUED', { startedAt: startedAgo(50 * HOUR) });
       const fresh = await insertJob('BULK_EXPORT', 'RUNNING', { startedAt: startedAgo(HOUR - 1) });
-      const old = await insertJob('BULK_EXPORT', 'RUNNING', { startedAt: startedAgo(2 * HOUR) });
+      const old = await insertJob('BULK_EXPORT', 'RUNNING', {
+        startedAt: startedAgo(3 * HOUR + 1),
+      });
       expect(await jobs.failStalled(NOW)).toBe(1);
       expect((await jobRow(queued.id)).status).toBe('QUEUED');
       expect((await jobRow(fresh.id)).status).toBe('RUNNING');

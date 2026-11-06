@@ -539,3 +539,133 @@ Estado: APROBADO
   - PURGE_YEAR se reencola cada día si falta un respaldo.
   - `redactState` solo se aplica en la web.
 - Pendientes: docs/02, 03, 04 y 05 y AGENTES_IA (documentador); pruebas en navegador; pestaña del curso; D-015.
+
+### Decisión del orquestador 15 (07/11/2026)
+
+El usuario pidió "realiza el 5f". Se lanza un solo agente dev5 para RF-57..60.
+
+Ya estaba autorizado en la Decisión 1:
+
+- `exceljs`, que ya está instalado;
+- Gotenberg en `docker-compose`.
+
+Alcance:
+
+- Reportes por período.
+- El promedio anual (D-014) queda fuera.
+
+### INFORME 27 — dev5-administracion (5f)
+
+Estado: LISTO
+
+- RF-57: listado de cursos-sección con su docente.
+- RF-58: XLSX (escapado) y PDF por Gotenberg (escapado, CSP, logo en base64).
+- RF-59: ZIP con tope de 300 cursos-sección y 200 MiB.
+- RF-60: dashboard agregado del motor, sin nombres.
+- Web: `/admin/reportes`.
+- Shared: `app.module`, `worker.module`, `docker-compose` (gotenberg en 127.0.0.1:3001) e `institution-logo.storage.download`.
+- Comandos: API 1061 tests; web 452; e2e reports 10/10 con Gotenberg real; e2e completo 633; builds ok.
+- Hallazgos:
+  - [MEDIO] El dashboard es síncrono, con hasta 300 gradebooks.
+  - [BAJO] Gotenberg sin límite en las respuestas chunked.
+  - [BAJO] El throttle no se prueba en e2e.
+
+### Decisión del orquestador 16
+
+qa, seguridad y ux en paralelo sobre la 5f.
+
+### INFORME 28 — ux-accesibilidad (5f)
+
+Estado: APROBADO.
+
+MEDIO:
+
+1. Si el sondeo falla, el botón queda bloqueado para siempre (`export-button:46-65`).
+2. `focusOnMount` roba el foco aunque el usuario esté en otro control: hay que hacerlo condicional.
+
+BAJO:
+
+- `aria-label` transitorio mientras se procesa.
+- `aria-busy` en un `<p>`.
+- El aviso de recarga no se anuncia.
+- Leyenda de AD/A/B/C.
+- Año sin períodos.
+- Filtro de sección por grado.
+
+### INFORME 29 — seguridad-cumplimiento (5f)
+
+Estado: APROBADO (0 CRÍTICO y 0 ALTO).
+Verificado:
+
+- XLSX escapado y HTML escapado con CSP.
+- Sin comment ni exemptionReason.
+- Solo ADMIN.
+- Gotenberg en loopback, sin JS y con allow-list `file:///tmp`.
+- ZIP seguro.
+
+MEDIO:
+
+1. Agregar SECTION_EXPORT y BULK_EXPORT a AUDIT_FIRST.
+2. Gotenberg con respuestas chunked: leer por trozos con un tope.
+3. Dashboard síncrono de 300: bajar el tope, usar caché o throttle de 5/min.
+4. BULK en PDF puede pasar 1 h: subir STALLED de BULK a 3 h o limitar.
+5. Gotenberg sin límites: agregar `mem_limit`, `cpus`, `api-body-limit`, `max-queue-size` y `restart-after`.
+
+BAJO:
+
+- La extensión se pierde al recortar el nombre.
+- El apóstrofo es visible en el XLSX.
+- Falta un test de regresión de D-049.
+- Gotenberg en red interna en producción.
+
+### INFORME 30 — qa-tester (5f)
+
+Estado: LISTO, sin bugs de producción.
+
+- Tests nuevos: `reports-edge.spec` (40), `reports-edge.e2e` (15), `reports-throttle.e2e` (4) y 10 de web.
+- Resultados: API 1101 OK; e2e completo con 31 archivos y 652 tests OK; web 462 OK.
+- Cobertura de `reports/`: 85,9 % solo con unit; con unit más e2e se estima por encima del 90 %.
+
+### Decisión del orquestador 17 (corrección de 5f, vuelta 1/2 de la fase)
+
+Se le devuelven a dev5 (5f), en un solo mensaje:
+
+- los 5 MEDIO de seguridad y los BAJO baratos;
+- los 2 MEDIO de UX y los BAJO baratos.
+
+### INFORME 31 — dev5-administracion (5f, corrección 1/2)
+
+Estado: LISTO. Los 10 puntos están aplicados (el 7 ya lo cubría QA).
+
+- AUDIT_FIRST para los exports.
+- `readCapped` para las respuestas chunked de Gotenberg.
+- Dashboard con throttle de 5/min, `gradeLevel` y 422 `REPORT_NEEDS_GRADE_FILTER` por encima de 60.
+- STALLED de BULK en 3 h.
+- Gotenberg con límites y `read_only`, más tmpfs en `/home/gotenberg`.
+- Se conserva la extensión en el ZIP.
+- UX: desbloqueo tras error, foco condicional, leyenda, avisos.
+
+Se cambiaron 2 tests de QA para adaptarlos a las reglas nuevas.
+Comandos: API 1106 tests, web 463 tests, e2e de reports y jobs 51/51, builds ok. PDF real con logo: 200.
+
+### Decisión del orquestador 18
+
+revisor-pr final de la 5f.
+
+### INFORME 32 — revisor-pr (5f)
+
+Estado: CAMBIOS_PEDIDOS.
+
+- Los puntos 1 a 10 se verificaron en el código.
+- Lint, tsc, build y tests unitarios pasan: API 1106 y web 463.
+- [ALTO] El e2e completo falló en 2 tests de `lifecycle-edge` porque esperaban STALLED a 1 h para BULK_EXPORT, que ahora es 3 h.
+
+### Decisión del orquestador 19
+
+Era un ajuste trivial de test, así que lo aplicó el propio orquestador:
+
+- BULK_EXPORT salió del caso de 1 h y tiene un test propio con límites de 3 h y 3 h + 1 ms.
+- El job "old" ahora empieza en 3 h + 1 ms.
+- Se borró `e2e_tmp.log`, que dejó el revisor.
+
+Resultado: `pnpm test:e2e` completo da 31 archivos y 653/653 ok. Como lo demás ya estaba verificado por el revisor, la fase 5f queda APROBADA.

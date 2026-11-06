@@ -8,8 +8,16 @@ import type { JobActor, JobType, JobView } from './jobs.types.js';
 
 const logger = new Logger('JobsAudit');
 
-/** Tipos cuya descarga exige bitácora previa (datos personales, RF-63, y respaldos, RF-65). */
-const AUDIT_FIRST = new Set<JobType>(['PERSONAL_DATA_EXPORT', 'YEAR_BACKUP']);
+/**
+ * Tipos cuya descarga exige bitácora previa: datos personales (RF-63), respaldos (RF-65) y
+ * reportes de notas con nombres de estudiantes (RF-58, RF-59; seguridad 5f).
+ */
+const AUDIT_FIRST = new Set<JobType>([
+  'PERSONAL_DATA_EXPORT',
+  'YEAR_BACKUP',
+  'SECTION_EXPORT',
+  'BULK_EXPORT',
+]);
 
 /** Nombre base del archivo descargado por tipo (sin datos personales; la extension la pone S3). */
 const BASE_NAME: Record<JobType, string> = {

@@ -959,3 +959,246 @@ Devuelve APROBADO o CAMBIOS_PEDIDOS en un INFORME conciso, con el mensaje de com
   - mover `WINDOWS_RESERVED`;
   - el reencolado diario de PURGE_YEAR cuando falta un respaldo;
   - `redactState` solo se aplica en la web.
+
+---
+
+# Actualización: fase 5f, reportes (RF-57..60)
+
+## Pedido
+
+- **Textos del usuario:** "realiza el 5f", "sigue implementando 5f" y "Commit y subir".
+- **Rama:** `features/adolfo`, sobre `5edccf0`.
+
+## Resultado
+
+Pantalla `/admin/reportes`, solo para ADMIN:
+
+- **Listado de cursos-sección** con su docente y un enlace a su registro de notas (RF-57).
+- **Exportación por sección** (RF-58):
+  - **Excel:** textos escapados contra fórmulas.
+  - **PDF:** generado con Gotenberg, con HTML escapado y CSP.
+  - Ninguno de los dos lleva comentarios ni motivos de exoneración.
+- **ZIP de todas las secciones** en segundo plano (RF-59). Tope de 300 cursos-sección y 200 MiB, con 3 h antes de marcarlo como colgado.
+- **Dashboard institucional** con conteos y sin nombres (RF-60). Si hay más de 60 cursos, pide filtrar por grado.
+- **Descargas:** se registran en la bitácora antes de firmar el enlace.
+- **Gotenberg en docker-compose:**
+  - escucha solo en loopback;
+  - sin JS;
+  - con límites de memoria y CPU, `read_only` y `cap_drop` ALL.
+
+## Agentes que participaron
+
+| #   | Agente                 | Qué hizo                 | Estado                                                                        |
+| --- | ---------------------- | ------------------------ | ----------------------------------------------------------------------------- |
+| 1   | dev5-administracion    | Implementó 5f            | LISTO                                                                         |
+| 2   | qa-tester              | 69 tests nuevos          | LISTO                                                                         |
+| 3   | seguridad-cumplimiento | Auditoría                | APROBADO (5 MEDIO)                                                            |
+| 4   | ux-accesibilidad       | Revisión de la pantalla  | APROBADO (2 MEDIO)                                                            |
+| 5   | dev5-administracion    | Vuelta de corrección 1/2 | LISTO                                                                         |
+| 6   | revisor-pr             | Revisión final           | CAMBIOS_PEDIDOS: 2 tests e2e con el plazo viejo (los corrigió el orquestador) |
+
+## Prompts usados (literales)
+
+### 1. dev5-administracion — Fase 5f reportes y dashboard
+
+```
+Expediente: .claude/tareas/20261030-dev5-administracion.md. Lee los INFORMES 1, 4, 5, 18 y 25 y las Decisiones 1 y 15. Rama features/adolfo, HEAD 5edccf0.
+
+Encargo: fase 5f (RF-57..60), solo para ADMIN. Reutiliza lo que ya existe; no rehagas nada.
+
+API (`apps/api/src/modules/reports/`):
+1. **RF-57**: el ADMIN ve el registro de cualquier docente y curso-sección. Reutiliza `GradebookReadService` de grading. Agrega un listado de cursos-sección del año con su docente, filtrable por grado y sección.
+2. **RF-58**: `POST /admin/exports` con `{type: SECTION_EXPORT, courseSectionId, periodId, format: XLSX|PDF}`, que devuelve 202 `{jobId}` usando `BackgroundJobService` (JOB_LIMIT y 409 ya existen). El procesador `exports:section-export`:
+   - toma los datos de `buildGradebook` / `GradebookReadService` y la tabla literal de `LiteralScaleProvider` (WorkerModule debe importar `LiteralScaleModule`);
+   - pone en la cabecera el logo y el nombre institucional (`InstitutionSettings`), curso, docente, sección y período;
+   - **XLSX con exceljs**: toda celda de texto escapada contra fórmulas (`escapeCsvCell` o el equivalente para exceljs, D-035);
+   - **PDF con Gotenberg** por HTTP (`GOTENBERG_URL`): HTML propio con todo el texto escapado, sin JS, con timeout y sin recursos externos (el logo va embebido en base64);
+   - sube el resultado con `JobResultStorage` y lo marca con `TrackedJobRunner`.
+3. **RF-59**: `BULK_EXPORT` (por año y período, con formato) genera un ZIP con un archivo por sección, usando `zip-archive.ts` en streaming. Agrega un tope de secciones y de bytes.
+4. **RF-60**: `GET /admin/reports/dashboard?academicYearId&periodId` con promedios por grado y sección, distribución AD/A/B/C, estudiantes en riesgo (conteos, sin nombres en el agregado) y entregas a tiempo, tarde y NE. No recalcules: usa el motor `buildGradebook`/`summarizeAverage`.
+5. `GET /admin/jobs/:id` y la descarga ya existen (`jobs.controller`); úsalos.
+
+Infra:
+- Agrega `gotenberg/gotenberg:8` a `docker-compose.yml`, solo en la red local, en el puerto 3001 de 127.0.0.1 (autorizado).
+- Si el contenedor no levanta, el e2e del PDF debe mockear el cliente HTTP y el resto seguir.
+
+Web (`/admin/reportes`, hoy un placeholder; BFF D-037; desde 360 px; WCAG AA; mismo patrón que `admin/almacenamiento`):
+- filtros de año, período, grado y sección;
+- lista de secciones con docente, enlace a ver su registro (RF-57) y botones Excel y PDF;
+- botón "ZIP de todas las secciones";
+- estado del trabajo con sondeo y descarga, reutilizando `job-download-button` y el patrón de exportación (con foco, `aria-busy` y label-in-name);
+- dashboard con tablas accesibles; si hay gráfico, siempre con su tabla equivalente.
+
+Tests: unit (constructores XLSX y HTML, escape, agregados del dashboard) y e2e `test/reports.e2e-spec.ts` contra MySQL y MinIO (permisos 403 para quien no es ADMIN, JOB_LIMIT, XLSX que se abre con exceljs y trae las celdas esperadas, ZIP con N entradas).
+
+Restricciones:
+- No se puede usar el promedio anual (D-014).
+- No toques grading más allá de importar o exportar lo necesario.
+- Comandos con `timeout 300`; el e2e completo con `timeout 900`.
+- `NODE_OPTIONS=--dns-result-order=ipv4first`. No leas `.env`. No hagas commit.
+
+Corre lint, tsc, test y build de api, web y worker, los e2e y prettier. Devuelve un INFORME conciso según el protocolo.
+```
+
+### 2. qa-tester — QA de 5f
+
+```
+Expediente: .claude/tareas/20261030-dev5-administracion.md. Lee el INFORME 27. Rama features/adolfo.
+
+Encargo: QA de la fase 5f (`apps/api/src/modules/reports/` y la web `admin/reportes`). Solo puedes tocar archivos de test.
+
+Agrega los casos límite que falten:
+- **Logo:** PNG y JPEG reales en el XLSX y en el PDF; si el logo falla, el reporte sale sin él.
+- **Datos vacíos:** sección sin estudiantes, curso sin docente y período sin tareas.
+- **Gotenberg caído:** el job se reintenta y termina FAILED con `PDF_UNAVAILABLE`; también `PDF_TOO_LARGE` y `PDF_INVALID`.
+- **BULK:** con PDF; topes de 300 cursos-sección y 200 MiB; `NO_COURSE_SECTIONS`.
+- **Escape:** celdas que empiezan con `= + - @` y títulos con HTML/`<script>` en el XLSX y en el HTML del PDF.
+- **XLSX:** NE como "NE x.xx", EXO y celdas vacías; nunca comentario ni `exemptionReason`.
+- **Dashboard:** que coincida con la suma de los registros por sección; `REPORT_TOO_LARGE` con más de 300; sin nombres.
+- **Permisos:** 403 para quien no es ADMIN en todos los endpoints de reportes; `PERIOD_MISMATCH`, 404 y 422.
+- **Throttle:** el 429 con el limitador real, en un test aparte.
+- **Web:** tests de `reports.ts` en sus límites.
+
+Corre api test, `reports.e2e` y el e2e completo (`timeout 900`), web test, lint y tsc. Mide la cobertura de `reports/` (meta 90 % de líneas).
+
+`NODE_OPTIONS=--dns-result-order=ipv4first`; Gotenberg ya está en docker-compose. No leas `.env`.
+
+Devuelve un INFORME conciso. Los bugs de producción van como hallazgos, sin corregirlos.
+```
+
+### 3. seguridad-cumplimiento — Seguridad de 5f
+
+```
+Expediente: .claude/tareas/20261030-dev5-administracion.md. Lee los INFORMES 21 y 27. Rama features/adolfo.
+
+Encargo: auditoría de solo lectura de la fase 5f. Revisa estos archivos:
+- `apps/api/src/modules/reports/`
+- el cambio en `settings/institution-logo.storage.ts`
+- el servicio gotenberg en `docker-compose.yml`
+- la web `admin/reportes`, con sus Server Actions
+
+Qué revisar:
+- **Inyección de fórmulas en el XLSX (D-035)** y **XSS/HTML injection en el HTML del PDF**.
+- **Gotenberg:**
+  - flags;
+  - que no haga fetch de recursos externos (SSRF);
+  - que solo escuche en loopback;
+  - timeouts y límite de tamaño, incluidas las respuestas chunked.
+- **Datos de menores en las exportaciones:**
+  - qué columnas llevan;
+  - que nunca incluyan comentarios ni `exemptionReason` (D-049);
+  - que el dashboard no lleve nombres.
+- **Permisos:** solo ADMIN.
+- **Bitácora:** `reports.export.request`, y `job.download` antes de firmar en `SECTION_EXPORT`/`BULK_EXPORT`, si corresponde.
+- **DoS:**
+  - dashboard síncrono de hasta 300 gradebooks;
+  - topes del ZIP;
+  - throttle;
+  - JOB_LIMIT.
+- **Rutas dentro del ZIP**, con nombres de curso y sección maliciosos.
+
+Entrega un INFORME conciso con severidades (CRÍTICO/ALTO/MEDIO/BAJO), archivo:línea y la corrección propuesta.
+```
+
+### 4. ux-accesibilidad — UX de admin/reportes
+
+```
+Expediente: .claude/tareas/20261030-dev5-administracion.md. Lee el INFORME 27 y, como referencia de lo ya corregido en la 5g, el INFORME 20. Rama features/adolfo.
+
+Encargo: revisión de solo lectura de `apps/web/app/(app)/admin/reportes/` y de sus componentes (export-button, filtros, lista de secciones y dashboard).
+
+Criterios:
+- Coherencia con shadcn/ui y con `admin/almacenamiento`.
+- Diseño desde 360 px: tablas en una región enfocable o en tarjetas.
+- WCAG 2.1 AA:
+  - label-in-name en los botones Excel, PDF y ZIP;
+  - `aria-disabled` y `aria-busy`;
+  - foco cuando aparece la descarga;
+  - sondeo que no hable de más;
+  - tablas del dashboard accesibles (caption y scope);
+  - filtros con etiqueta y error asociado;
+  - contraste en claro y oscuro;
+  - objetivos de 44 px.
+- Textos en español claros.
+
+Devuelve un INFORME conciso con APROBADO o CAMBIOS_PEDIDOS. Cada hallazgo con severidad, archivo:línea y la corrección propuesta.
+```
+
+### 5. SendMessage (reanudación) — Correcciones de 5f, vuelta 1
+
+```
+Correcciones de la fase 5f (vuelta 1 de 2). El detalle está en los INFORMES 28 (UX) y 29 (seguridad) del expediente. QA no encontró bugs y agregó tests: no los rompas. Hazlo todo en una sola pasada.
+
+Seguridad:
+1. [MEDIO] Agregar SECTION_EXPORT y BULK_EXPORT a `AUDIT_FIRST` en `job-download.service.ts`. Ajusta su test.
+2. [MEDIO] `gotenberg.client.ts`: leer `response.body` por trozos con un contador y abortar con `PDF_TOO_LARGE` al pasar `MAX_PDF_BYTES`. Un `content-length` ausente o NaN cuenta como "no declarado". Agrega un test con una respuesta chunked grande.
+3. [MEDIO] Dashboard: throttle de 5/min. Si el año tiene más de 60 cursos-sección y no hay filtro de grado, responde 422 `REPORT_NEEDS_GRADE_FILTER`; la web debe pedir el grado. El tope de 300 se queda como está.
+4. [MEDIO] `STALLED_AFTER_MS.BULK_EXPORT` en 3 h. Revisa que el `lockDuration` y el timeout de BullMQ del worker no lo corten antes.
+5. [MEDIO] `docker-compose.yml`, servicio gotenberg: `mem_limit` de 1g, `cpus` de 1.0, `--api-body-limit=10MB`, `--chromium-max-queue-size=10`, `--chromium-restart-after=50`, `cap_drop: [ALL]` y `read_only` con tmpfs en /tmp, si Gotenberg arranca así. Después verifica con un PDF real que el logo `data:` sigue saliendo.
+6. [BAJO] En el ZIP, recorta el nombre base y luego agrega la extensión, para que `.xlsx` o `.pdf` nunca se pierdan.
+7. [BAJO] Test de regresión de D-049: si entra un comentario o un motivo de exoneración de ejemplo, no debe aparecer en el XLSX ni en el HTML (agrégalo si QA no lo cubrió ya).
+
+UX:
+8. [MEDIO] `export-button.tsx`: si falla el sondeo, desbloquea el botón y deja reintentar.
+9. [MEDIO] `focusOnMount` solo si el foco sigue en el botón de exportar o en `body`; si no, solo `announce`.
+10. [BAJO]
+    - quita `aria-busy` del `<p>`;
+    - anuncia "Recarga la página…" cuando se detiene el sondeo;
+    - agrega una leyenda de AD, A, B y C;
+    - muestra un mensaje si el año no tiene períodos;
+    - pon un texto de ayuda cuando los filtros no devuelven nada.
+
+Al terminar corre, con `timeout`, lint, tsc, test y build de api, web y worker; los e2e de reports (los tres) y prettier. Si cambias docker-compose, recrea el contenedor de Gotenberg y prueba un PDF real. Devuelve un INFORME conciso punto por punto.
+```
+
+### 6. revisor-pr — Revisión final de 5f
+
+```
+Expediente: .claude/tareas/20261030-dev5-administracion.md (INFORMES 27 a 31 y Decisiones 15 a 18). Rama features/adolfo. Los cambios están sin commit sobre `5edccf0` (usa `git status` y `git diff`).
+
+Encargo: revisión final de la fase 5f (RF-57..60) con su vuelta de corrección.
+
+1. **Definición de terminado** de docs/06.
+2. **Carpetas y archivos compartidos autorizados:** `reports/`, `jobs/`, `app.module.ts`, `worker.module.ts`, `institution-logo.storage.ts`, `docker-compose.yml` y la web en `admin/reportes`. Ignora `.claude/`, `.agents/`, `skills-lock.json`, `docs.zip` y `docs/criterios.rar`.
+3. **Verifica en el código** que estén aplicados los puntos 1 a 10 del INFORME 31. Revisa también los 2 tests de QA que se cambiaron y la configuración de Gotenberg.
+4. **Corre:**
+   - `pnpm install --frozen-lockfile`;
+   - lint, tsc y build de api, web y worker;
+   - api test y web test;
+   - el e2e completo con `timeout 900` (Gotenberg está levantado);
+   - `prettier --check` sobre los archivos cambiados.
+
+`NODE_OPTIONS=--dns-result-order=ipv4first`. No leas `.env`.
+
+Devuelve APROBADO o CAMBIOS_PEDIDOS en un INFORME conciso, con un mensaje de commit propuesto.
+```
+
+## Decisiones del orquestador
+
+- Un solo agente dev5 y luego una sola vuelta de corrección con todos los hallazgos.
+- El orquestador ajustó él mismo 2 tests de `lifecycle-edge.e2e-spec.ts`: esperaban 1 h y el STALLED de BULK_EXPORT pasó a 3 h. BULK_EXPORT ahora tiene su propio test de límite. Como el revisor ya había verificado todo lo demás, la fase se dio por aprobada con el e2e en verde.
+- Se borró `e2e_tmp.log`, que dejó el revisor.
+
+## Archivos
+
+- **API:** `apps/api/src/modules/reports/` (nuevo), `jobs/{background-job,job-download}.service.ts`, `settings/institution-logo.storage.ts`, `app.module.ts` y `jobs/worker.module.ts`.
+- **Tests:** `reports*.spec.ts`, `test/reports*.e2e-spec.ts`, `test/lifecycle-edge.e2e-spec.ts` y `job-download.service.spec.ts`.
+- **Web:** `apps/web/app/(app)/admin/reportes/`.
+- **Infra:** `docker-compose.yml` (gotenberg).
+
+## Verificación
+
+| Comando                                              | Resultado               |
+| ---------------------------------------------------- | ----------------------- |
+| install frozen, lint, tsc y build (api, web, worker) | ok                      |
+| api test                                             | 1106 ok                 |
+| web test                                             | 463 ok                  |
+| e2e completo                                         | 31 archivos, 653/653 ok |
+| PDF real con logo vía Gotenberg                      | 200, logo embebido      |
+
+## Pendientes
+
+- **Documentador:** actualizar docs/03 con los endpoints `/admin/reports/*` y `/admin/exports`, los códigos (`REPORT_NEEDS_GRADE_FILTER`, `PDF_*`, `BULK_TOO_LARGE`, `AUDIT_UNAVAILABLE`) y la bitácora previa a la descarga.
+- **Pruebas manuales:** en el navegador, a 360 px y con lector de pantalla. Revisar a ojo los Excel y PDF generados.
+- **D-014 (promedio anual):** sigue fuera.
+- **Gotenberg en producción:** solo en la red interna.

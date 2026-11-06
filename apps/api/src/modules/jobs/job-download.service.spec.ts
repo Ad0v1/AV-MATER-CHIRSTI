@@ -43,7 +43,7 @@ function setup(type: JobType, over: Partial<JobView> = {}, auditFails = false) {
 }
 
 describe('JobDownloadService (seguridad 5g, hallazgo 4)', () => {
-  it.each(['PERSONAL_DATA_EXPORT', 'YEAR_BACKUP'] as const)(
+  it.each(['PERSONAL_DATA_EXPORT', 'YEAR_BACKUP', 'SECTION_EXPORT', 'BULK_EXPORT'] as const)(
     '%s: bitácora antes de firmar; si falla, 503 y sin URL',
     async (type) => {
       const ok = setup(type);
@@ -65,7 +65,7 @@ describe('JobDownloadService (seguridad 5g, hallazgo 4)', () => {
   });
 
   it('otros tipos: firma primero y una bitácora caída no corta la descarga', async () => {
-    const s = setup('BULK_EXPORT', {}, true);
+    const s = setup('PURGE_YEAR', {}, true);
     await expect(s.service.downloadUrl('job-1', actor)).resolves.toMatchObject({
       url: 'https://s3/x',
     });

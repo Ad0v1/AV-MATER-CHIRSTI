@@ -85,6 +85,39 @@ services:
       timeout: 3s
       retries: 5
 
+  # Dev 5 (RF-58, U4), autorizado por el usuario: HTML -> PDF de los reportes. Solo en 127.0.0.1
+  # (3001). Chromium sin JavaScript y solo con archivos locales del propio formulario: el HTML
+  # viene escapado y sin recursos externos (el logo va embebido en base64).
+  gotenberg:
+    image: gotenberg/gotenberg:8
+    restart: unless-stopped
+    command:
+      - gotenberg
+      - --chromium-disable-javascript=true
+      - --chromium-allow-list=^file:///tmp/.*
+      - --api-timeout=60s
+      - --libreoffice-disable-routes=true
+      - --webhook-disable=true
+      - --api-body-limit=10MB
+      - --chromium-max-queue-size=10
+      - --chromium-restart-after=50
+    # Endurecido (seguridad 5f): sin capacidades y raíz de solo lectura. Chromium necesita escribir
+    # en /tmp y en su HOME (/home/gotenberg): ambos van en memoria (tmpfs).
+    mem_limit: 1g
+    cpus: 1.0
+    cap_drop: [ALL]
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /home/gotenberg
+    ports:
+      - '127.0.0.1:${GOTENBERG_PORT:-3001}:3000'
+    healthcheck:
+      test: ['CMD', 'curl', '-fsS', 'http://127.0.0.1:3000/health']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
 volumes:
   mysql_data:
   redis_data:

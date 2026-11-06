@@ -38,7 +38,8 @@ export const MAX_ACTIVE_JOBS_PER_REQUESTER = 3;
  */
 export const STALLED_AFTER_MS: Record<JobType, number> = {
   SECTION_EXPORT: HOUR_MS,
-  BULK_EXPORT: HOUR_MS,
+  // Un ZIP de hasta 300 cursos-sección en PDF (seguridad 5f).
+  BULK_EXPORT: 3 * HOUR_MS,
   PERSONAL_DATA_EXPORT: HOUR_MS,
   YEAR_BACKUP: 6 * HOUR_MS,
   PURGE_YEAR: 6 * HOUR_MS,

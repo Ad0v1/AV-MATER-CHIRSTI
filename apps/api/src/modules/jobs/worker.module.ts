@@ -6,6 +6,8 @@ import { FilesModule } from '../files/files.module.js';
 import { GradingModule } from '../grading/grading.module.js';
 import { NotificationsWorkerModule } from '../notifications/notifications-worker.module.js';
 import { LifecycleWorkerModule } from '../lifecycle/lifecycle-worker.module.js';
+import { ReportsWorkerModule } from '../reports/reports-worker.module.js';
+import { LiteralScaleModule } from '../settings/literal-scale.provider.js';
 import { JobsModule } from './jobs.module.js';
 import { IntentSweepProcessor } from './processors/intent-sweep.processor.js';
 import { MailCheckProcessor } from './processors/mail-check.processor.js';
@@ -26,6 +28,8 @@ import { workerHostProviders } from './worker.host.js';
     FilesModule,
     NotificationsWorkerModule,
     LifecycleWorkerModule,
+    LiteralScaleModule,
+    ReportsWorkerModule,
   ],
   providers: [
     NeSweepProcessor,
