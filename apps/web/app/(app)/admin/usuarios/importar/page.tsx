@@ -5,6 +5,8 @@ import { PageHeader, PageShell } from '../../_shared/components/page-bits';
 import { USERS_PATH } from '../_lib/users';
 import { ImportScreen } from './_components/import-screen';
 
+export const metadata = { title: 'Importar usuarios' };
+
 export default function Page() {
   return (
     <PageShell>

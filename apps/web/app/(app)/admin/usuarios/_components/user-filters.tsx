@@ -13,6 +13,8 @@ import { TOUCH } from '../../_shared/components/styles';
 import { sectionLabel } from '../../_shared/lib/format';
 import type { SectionOption } from '../_lib/types';
 import {
+  CREDENTIAL_LABELS,
+  CREDENTIAL_STATUSES,
   ROLES,
   ROLE_LABELS,
   STATUSES,
@@ -43,6 +45,8 @@ export function UserFilters({
   const hasFilters =
     filters.role !== undefined ||
     filters.status !== undefined ||
+    filters.credentials !== undefined ||
+    filters.emailVerified !== undefined ||
     filters.gradeLevel !== undefined ||
     filters.sectionId !== undefined;
 
@@ -71,6 +75,26 @@ export function UserFilters({
           options={[
             { value: '', label: 'Todos los estados' },
             ...STATUSES.map((s) => ({ value: s, label: STATUS_LABELS[s] })),
+          ]}
+        />
+        <SelectField
+          name="credentials"
+          label="Contraseña"
+          defaultValue={filters.credentials ?? ''}
+          hint="Quién aún no cambió la contraseña inicial."
+          options={[
+            { value: '', label: 'Todas' },
+            ...CREDENTIAL_STATUSES.map((c) => ({ value: c, label: CREDENTIAL_LABELS[c] })),
+          ]}
+        />
+        <SelectField
+          name="emailVerified"
+          label="Correo"
+          defaultValue={filters.emailVerified ?? ''}
+          options={[
+            { value: '', label: 'Todos' },
+            { value: 'true', label: 'Verificado' },
+            { value: 'false', label: 'Sin verificar' },
           ]}
         />
         {isStudent ? (

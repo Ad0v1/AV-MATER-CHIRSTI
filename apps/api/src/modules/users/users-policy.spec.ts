@@ -150,4 +150,30 @@ describe('users-policy', () => {
       });
     });
   });
+
+  describe('filtros de credenciales (RF-87)', () => {
+    it('NONE busca usuarios sin contraseña', () => {
+      expect(buildUserSearchWhere({ credentials: 'NONE' }, null)).toEqual({
+        localCredential: { is: null },
+      });
+    });
+
+    it('PENDING y READY separan a quien aún no cambió la contraseña inicial', () => {
+      expect(buildUserSearchWhere({ credentials: 'PENDING' }, null)).toEqual({
+        localCredential: { is: { mustChangePassword: true } },
+      });
+      expect(buildUserSearchWhere({ credentials: 'READY' }, null)).toEqual({
+        localCredential: { is: { mustChangePassword: false } },
+      });
+    });
+
+    it('emailVerified filtra por correo verificado o sin verificar', () => {
+      expect(buildUserSearchWhere({ emailVerified: 'true' }, null)).toEqual({
+        emailVerifiedAt: { not: null },
+      });
+      expect(buildUserSearchWhere({ emailVerified: 'false' }, null)).toEqual({
+        emailVerifiedAt: null,
+      });
+    });
+  });
 });

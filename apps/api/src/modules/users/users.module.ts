@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { AcademicModule } from '../academic/academic.module.js';
+import { CredentialsModule } from '../auth/credentials.module.js';
 import { ActiveActorGuard } from './active-actor.guard.js';
 import { EnrollmentsService } from './enrollments.service.js';
 import { GuardianLinksController } from './guardian-links.controller.js';
@@ -19,7 +20,7 @@ import { UsersService } from './users.service.js';
 // (F4: RF-21) y promoción en bloque (F6: RF-16, RN-15). Solo ADMIN.
 // PrismaModule y AuditModule son globales; AcademicModule aporta AcademicAccessService y los eventos.
 @Module({
-  imports: [AcademicModule],
+  imports: [AcademicModule, CredentialsModule],
   controllers: [
     // Antes que UsersController: /users/import/* no debe caer en las rutas /users/:id.
     UserImportController,

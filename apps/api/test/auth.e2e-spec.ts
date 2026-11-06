@@ -30,7 +30,14 @@ describe('Sesion (e2e)', () => {
       .get('/api/v1/auth/me')
       .set('Cookie', `${SESSION_COOKIE}=${token}`)
       .expect(200)
-      .expect({ id: 'u1', role: 'TEACHER', mustAcceptPolicy: true });
+      .expect({
+        id: 'u1',
+        role: 'TEACHER',
+        mustAcceptPolicy: true,
+        mustChangePassword: false,
+        mustVerifyEmail: false,
+        mustCompleteContact: false,
+      });
   });
 
   it('GET /auth/me rechaza un token inventado', () => {

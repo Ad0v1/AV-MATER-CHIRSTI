@@ -14,6 +14,8 @@ import { FOCUS_HEADING, focusIds } from '../_lib/focus';
 import { cn } from '@/lib/utils';
 import type { CourseView, List } from '../_lib/types';
 
+export const metadata = { title: 'Catálogo de cursos' };
+
 export default function Page() {
   return (
     <PageShell>

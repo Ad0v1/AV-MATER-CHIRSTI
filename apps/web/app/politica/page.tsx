@@ -1,10 +1,10 @@
 import { Suspense } from 'react';
 import { redirect } from 'next/navigation';
-import { AcceptPolicyButton } from '@/components/auth/accept-policy-button';
+import { AcceptPolicyForm } from '@/components/auth/accept-policy-form';
 import { HOME_BY_ROLE } from '@/lib/roles';
 import { requireUser } from '@/lib/session';
 
-export const metadata = { title: 'Política y términos · Aula Virtual' };
+export const metadata = { title: 'Política y términos' };
 
 export default function PolicyPage() {
   return (
@@ -29,6 +29,10 @@ export default function PolicyPage() {
 // Lee la sesion (dato de la peticion), por eso va dentro de Suspense.
 async function PolicyAction() {
   const user = await requireUser();
-  if (!user.mustAcceptPolicy) redirect(HOME_BY_ROLE[user.role]);
-  return <AcceptPolicyButton role={user.role} />;
+  if (user.mustChangePassword) redirect('/cambiar-clave');
+  if (!user.mustAcceptPolicy) {
+    redirect(user.mustVerifyEmail ? '/verificar-correo' : HOME_BY_ROLE[user.role]);
+  }
+  // Después de la política sigue el correo, si falta; el layout de la app lo comprueba.
+  return <AcceptPolicyForm role={user.role} nextPath={HOME_BY_ROLE[user.role]} />;
 }

@@ -1,10 +1,13 @@
 import { ConflictException, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import type { AuditService } from '../../common/audit/audit.service.js';
+import type { SessionService } from '../../common/session/session.service.js';
+import type { LoginAttemptsService } from '../auth/login-attempts.service.js';
 import type { AcademicAccessService } from '../academic/academic-access.service.js';
 import { AcademicEventPublisher } from '../academic/academic-events.js';
 import {
   actor,
   enrollmentRow,
+  makeIssuer,
   makePrisma,
   prismaError,
   userRow,
@@ -20,6 +23,10 @@ describe('UsersService', () => {
   let published: string[];
   let order: string[];
   let service: UsersService;
+  let issuer: ReturnType<typeof makeIssuer>['issuer'];
+  let asIssuer: ReturnType<typeof makeIssuer>['asIssuer'];
+  let sessions: { revokeAll: ReturnType<typeof vi.fn> };
+  let attempts: { isLocked: ReturnType<typeof vi.fn>; unlock: ReturnType<typeof vi.fn> };
 
   beforeEach(() => {
     db = makePrisma();
@@ -39,11 +46,20 @@ describe('UsersService', () => {
     const access = {
       getActiveYear: vi.fn().mockResolvedValue({ id: YEAR_2026, year: 2026 }),
     } as unknown as AcademicAccessService;
+    ({ issuer, asIssuer } = makeIssuer());
+    sessions = { revokeAll: vi.fn().mockResolvedValue(undefined) };
+    attempts = {
+      isLocked: vi.fn().mockResolvedValue(false),
+      unlock: vi.fn().mockResolvedValue(undefined),
+    };
     service = new UsersService(
       db.asService,
       audit as unknown as AuditService,
       access,
       events,
+      asIssuer,
+      sessions as unknown as SessionService,
+      attempts as unknown as LoginAttemptsService,
       'colegio.example',
     );
   });
@@ -53,7 +69,18 @@ describe('UsersService', () => {
       db.raw.searchIds = ['e1'];
       db.prisma.user.count.mockResolvedValue(1);
       db.prisma.user.findMany.mockResolvedValue([
-        { id: 'e1', institutionalEmail: 'e1@x', fullName: 'E', role: 'STUDENT', status: 'ACTIVE' },
+        {
+          id: 'e1',
+          code: '2600000000',
+          institutionalEmail: 'e1@x',
+          contactEmail: null,
+          emailVerifiedAt: null,
+          dniVerifiedAt: null,
+          fullName: 'E',
+          role: 'STUDENT',
+          status: 'ACTIVE',
+          localCredential: { mustChangePassword: true },
+        },
       ]);
       db.prisma.enrollment.findMany.mockResolvedValue([
         { studentId: 'e1', section: { id: 's3a', gradeLevel: 3, code: 'A' } },
@@ -62,7 +89,7 @@ describe('UsersService', () => {
       const page = await service.list({ q: '%_', page: 2, pageSize: 10 });
 
       const search = db.rawCalls.find((c) => c.sql.includes('LOCATE'));
-      expect(search?.values).toEqual(['%_', '%_', SEARCH_IDS_LIMIT]);
+      expect(search?.values).toEqual(['%_', '%_', '%_', '%_', SEARCH_IDS_LIMIT]);
       expect(search?.sql).toMatch(/ORDER BY id LIMIT \?$/);
       expect(SEARCH_IDS_LIMIT).toBe(5000);
       expect(db.prisma.user.findMany).toHaveBeenCalledWith(
@@ -77,11 +104,17 @@ describe('UsersService', () => {
         items: [
           {
             id: 'e1',
+            code: '2600000000',
             institutionalEmail: 'e1@x',
+            contactEmail: null,
+            emailVerified: false,
+            dniVerified: false,
             fullName: 'E',
             role: 'STUDENT',
             status: 'ACTIVE',
             currentSection: { id: 's3a', gradeLevel: 3, code: 'A' },
+            credentialStatus: 'PENDING',
+            locked: false,
           },
         ],
         total: 1,
@@ -351,39 +384,135 @@ describe('UsersService', () => {
   });
 
   describe('createTeacher (RF-19)', () => {
-    it('crea TEACHER y registra solo rol y estado', async () => {
-      db.prisma.user.findUnique.mockResolvedValue(null);
-      db.prisma.user.create.mockResolvedValue(userRow('t9', 'TEACHER'));
-      const view = await service.createTeacher(
-        { institutionalEmail: 't9@colegio.example', fullName: 'Docente Nuevo' },
-        actor,
-      );
-      expect(view.role).toBe('TEACHER');
-      expect(db.prisma.user.create).toHaveBeenCalledWith({
-        data: {
-          institutionalEmail: 't9@colegio.example',
-          fullName: 'Docente Nuevo',
-          role: 'TEACHER',
-        },
+    const dto = { fullName: 'Docente Nuevo', dni: '45678901', dniConfirm: '45678901' };
+
+    it('crea TEACHER con sus credenciales y registra solo rol y estado', async () => {
+      issuer.createUser.mockResolvedValueOnce({
+        user: userRow('t9', 'TEACHER'),
+        credentials: { code: '2600000009', initialPassword: 'Clave-Inicial-9' },
       });
+      const result = await service.createTeacher(dto, actor);
+      expect(result.user.role).toBe('TEACHER');
+      expect(result.credentials).toEqual({
+        code: '2600000009',
+        initialPassword: 'Clave-Inicial-9',
+      });
+      expect(issuer.createUser).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ role: 'TEACHER', dni: '45678901', fullName: 'Docente Nuevo' }),
+      );
       expect(audit.record.mock.calls[0][0]).toMatchObject({
         action: 'users.user.create',
         afterState: { role: 'TEACHER', status: 'ACTIVE' },
       });
-      expect(JSON.stringify(audit.record.mock.calls[0][0])).not.toContain('@');
+      const text = JSON.stringify(audit.record.mock.calls);
+      for (const secret of ['45678901', '2600000009', 'Clave-Inicial-9']) {
+        expect(text).not.toContain(secret);
+      }
     });
 
-    it('422 dominio y 409 correo repetido', async () => {
+    it('con correo del colegio: 422 dominio y 409 correo repetido', async () => {
       await expect(
-        service.createTeacher({ institutionalEmail: 'x@otro.example', fullName: 'Doc' }, actor),
+        service.createTeacher({ ...dto, institutionalEmail: 'x@otro.example' }, actor),
       ).rejects.toBeInstanceOf(UnprocessableEntityException);
       db.prisma.user.findUnique.mockResolvedValue({ id: 'otro' });
       await expect(
-        service.createTeacher(
-          { institutionalEmail: 'docente01@colegio.example', fullName: 'Doc' },
-          actor,
-        ),
+        service.createTeacher({ ...dto, institutionalEmail: 'docente01@colegio.example' }, actor),
       ).rejects.toBeInstanceOf(ConflictException);
+    });
+
+    it('P2002 en la carrera → 409', async () => {
+      issuer.createUser.mockRejectedValueOnce(prismaError('P2002'));
+      await expect(service.createTeacher(dto, actor)).rejects.toBeInstanceOf(ConflictException);
+    });
+  });
+
+  describe('resetPassword (RF-74)', () => {
+    beforeEach(() => {
+      db.raw.users.set('est1', { id: 'est1', role: 'STUDENT', status: 'ACTIVE' });
+      db.prisma.user.findUniqueOrThrow.mockResolvedValue({
+        ...userRow('est1', 'STUDENT'),
+        code: '2600000001',
+      });
+    });
+
+    it('emite una contraseña temporal, cierra las sesiones y levanta el bloqueo', async () => {
+      issuer.reissue.mockResolvedValueOnce({
+        code: '2600000001',
+        initialPassword: 'Clave-Temporal-7',
+        previousCode: '2600000001',
+      });
+      const result = await service.resetPassword('est1', actor);
+      expect(result.credentials).toEqual({
+        code: '2600000001',
+        initialPassword: 'Clave-Temporal-7',
+      });
+      expect(sessions.revokeAll).toHaveBeenCalledWith('est1');
+      expect(attempts.unlock).toHaveBeenCalledWith('2600000001');
+      expect(audit.record.mock.calls[0][0]).toMatchObject({
+        action: 'users.user.reset_password',
+        entityId: 'est1',
+      });
+      expect(JSON.stringify(audit.record.mock.calls)).not.toContain('Clave-Temporal-7');
+    });
+
+    it('404 si el usuario no existe', async () => {
+      await expect(service.resetPassword('zz', actor)).rejects.toBeInstanceOf(NotFoundException);
+      expect(sessions.revokeAll).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('correctDni (RF-84)', () => {
+    const dto = {
+      dni: '99999999',
+      dniConfirm: '99999999',
+      reason: 'Error de digitación al registrar',
+    };
+
+    beforeEach(() => {
+      db.raw.users.set('est1', { id: 'est1', role: 'STUDENT', status: 'ACTIVE' });
+      db.prisma.user.findUniqueOrThrow.mockResolvedValue({
+        ...userRow('est1', 'STUDENT'),
+        code: '2600000002',
+        dniHash: 'hash-45678901',
+      });
+    });
+
+    it('genera código nuevo, cierra sesiones y deja el código anterior en la bitácora', async () => {
+      issuer.reissue.mockResolvedValueOnce({
+        code: '2600000002',
+        initialPassword: 'Clave-Temporal-7',
+        previousCode: '2600000001',
+      });
+      const result = await service.correctDni('est1', dto, actor);
+      expect(issuer.reissue).toHaveBeenCalledWith(expect.anything(), 'est1', { newCode: true });
+      expect(db.prisma.user.update).toHaveBeenCalledWith({
+        where: { id: 'est1' },
+        data: { dniEncrypted: 'enc-99999999', dniHash: 'hash-99999999', dniVerifiedAt: null },
+      });
+      expect(result.credentials.code).toBe('2600000002');
+      expect(sessions.revokeAll).toHaveBeenCalledWith('est1');
+      expect(attempts.unlock).toHaveBeenCalledWith('2600000001');
+      expect(audit.record.mock.calls[0][0]).toMatchObject({
+        action: 'users.user.correct_dni',
+        beforeState: { code: '2600000001' },
+        afterState: { code: '2600000002', reason: dto.reason },
+      });
+      expect(JSON.stringify(audit.record.mock.calls)).not.toContain('99999999');
+    });
+
+    it('409 si el DNI nuevo es igual al actual', async () => {
+      await expect(
+        service.correctDni('est1', { ...dto, dni: '45678901', dniConfirm: '45678901' }, actor),
+      ).rejects.toBeInstanceOf(ConflictException);
+      expect(sessions.revokeAll).not.toHaveBeenCalled();
+    });
+
+    it('409 si el DNI ya lo tiene otra persona', async () => {
+      issuer.assertDniFree.mockRejectedValueOnce(new ConflictException('DNI'));
+      await expect(service.correctDni('est1', dto, actor)).rejects.toBeInstanceOf(
+        ConflictException,
+      );
     });
   });
 });

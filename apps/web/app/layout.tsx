@@ -14,7 +14,10 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: 'Aula Virtual',
+  title: {
+    default: 'Aula Virtual - Mater Christi',
+    template: '%s | Aula Virtual - Mater Christi',
+  },
   description: 'Aula Virtual Institucional',
 };
 

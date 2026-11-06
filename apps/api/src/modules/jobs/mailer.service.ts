@@ -27,6 +27,9 @@ export function isSafeEmail(value: string): boolean {
   return value.length <= 191 && EMAIL.test(value);
 }
 
+/** Remitente si SMTP_FROM no esta definido (solo en local; en produccion es obligatorio). */
+export const DEFAULT_SMTP_FROM = 'Aula Virtual <no-responder@aula.local>';
+
 /** Direccion de SMTP_FROM, sea "Nombre <dir>" o solo "dir". */
 export function fromAddress(from: string): string {
   const match = /<([^>]+)>\s*$/.exec(from);
@@ -58,7 +61,7 @@ export class MailerService {
     if (!isSafeEmail(to)) throw new Error('Destinatario de correo invalido');
     const { subject, text } = buildMinimalMail(kind, this.env.WEB_ORIGIN);
     await this.transport.sendMail({
-      from: this.env.SMTP_FROM,
+      from: this.env.SMTP_FROM ?? DEFAULT_SMTP_FROM,
       to,
       subject,
       text,
@@ -68,12 +71,15 @@ export class MailerService {
   }
 }
 
-export function createMailTransport(env: Pick<Env, 'SMTP_HOST' | 'SMTP_PORT'>): Transporter {
+export function createMailTransport(
+  env: Pick<Env, 'SMTP_HOST' | 'SMTP_PORT' | 'SMTP_SECURE' | 'SMTP_USER' | 'SMTP_PASS'>,
+): Transporter {
   return nodemailer.createTransport({
-    host: env.SMTP_HOST,
+    host: env.SMTP_HOST ?? '127.0.0.1',
     port: env.SMTP_PORT,
-    // 465 = TLS implicito; en otros puertos nodemailer usa STARTTLS si el servidor lo ofrece.
-    secure: env.SMTP_PORT === 465,
+    // 465 o SMTP_SECURE = TLS implicito; si no, nodemailer usa STARTTLS si el servidor lo ofrece.
+    secure: env.SMTP_SECURE || env.SMTP_PORT === 465,
+    auth: env.SMTP_USER && env.SMTP_PASS ? { user: env.SMTP_USER, pass: env.SMTP_PASS } : undefined,
     connectionTimeout: 10_000,
     greetingTimeout: 10_000,
     socketTimeout: 20_000,

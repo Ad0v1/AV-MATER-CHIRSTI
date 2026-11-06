@@ -60,7 +60,7 @@ describe('MailerService (U3)', () => {
     expect(fromAddress('Aula <no@aula.local>')).toBe('no@aula.local');
     expect(fromAddress('no@aula.local')).toBe('no@aula.local');
     expect(isSafeEmail('a.b+c@colegio.edu.pe')).toBe(true);
-    const t = createMailTransport({ SMTP_HOST: '127.0.0.1', SMTP_PORT: 1025 });
+    const t = createMailTransport({ SMTP_HOST: '127.0.0.1', SMTP_PORT: 1025, SMTP_SECURE: false });
     expect(t.options).toMatchObject({ host: '127.0.0.1', port: 1025, secure: false });
     t.close();
   });

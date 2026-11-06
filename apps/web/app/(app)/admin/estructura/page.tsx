@@ -24,6 +24,8 @@ import { listYears } from './_lib/data';
 import { formatInstant, yearStatus } from './_lib/format';
 import type { List, YearSummary } from './_lib/types';
 
+export const metadata = { title: 'Estructura académica' };
+
 export default function Page() {
   return (
     <PageShell>

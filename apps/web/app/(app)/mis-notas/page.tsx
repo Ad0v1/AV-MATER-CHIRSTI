@@ -21,6 +21,8 @@ async function Content() {
   return <StudentGrades view={view} />;
 }
 
+export const metadata = { title: 'Mis notas' };
+
 export default function Page() {
   return (
     <div className="mx-auto w-full max-w-4xl p-4 md:p-8">

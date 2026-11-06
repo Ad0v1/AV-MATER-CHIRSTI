@@ -23,6 +23,13 @@ export class RedisSessionStore extends SessionStore implements OnModuleDestroy {
     return (await this.redis.set(key, value, 'EX', ttlSeconds, 'NX')) === 'OK';
   }
 
+  async incr(key: string, ttlSeconds: number): Promise<number> {
+    const value = await this.redis.incr(key);
+    // Solo la primera vez: la ventana no se alarga con cada intento.
+    if (value === 1) await this.redis.expire(key, ttlSeconds);
+    return value;
+  }
+
   get(key: string): Promise<string | null> {
     return this.redis.get(key);
   }

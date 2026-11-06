@@ -1,6 +1,6 @@
 import { Inject, Injectable, type OnModuleInit } from '@nestjs/common';
 import { ENV, type Env } from '../../../config/config.module.js';
-import { fromAddress, MailerService } from '../mailer.service.js';
+import { DEFAULT_SMTP_FROM, fromAddress, MailerService } from '../mailer.service.js';
 import { JobProcessorRegistry, type JobProcessor } from '../processor.registry.js';
 
 /**
@@ -23,7 +23,10 @@ export class MailCheckProcessor implements JobProcessor, OnModuleInit {
   }
 
   async handle(): Promise<{ sent: true }> {
-    await this.mailer.sendNotice(fromAddress(this.env.SMTP_FROM), 'MAIL_CHECK');
+    await this.mailer.sendNotice(
+      fromAddress(this.env.SMTP_FROM ?? DEFAULT_SMTP_FROM),
+      'MAIL_CHECK',
+    );
     return { sent: true };
   }
 }

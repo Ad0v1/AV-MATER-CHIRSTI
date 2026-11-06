@@ -1,7 +1,9 @@
 // Seed de la estructura academica y usuarios ficticios (Dev 2, F1). Idempotente:
 // upsert por clave natural y matriculas solo si el estudiante no tiene ninguna en ese año.
-// No crea LocalCredential ni AuditLog (el seed no es una accion de un usuario).
+// Asigna un codigo de usuario a cada usuario (RF-68). Las contrasenas se crean aparte
+// (credentials.ts, solo el administrador) y no se crea AuditLog (el seed no es una accion de un usuario).
 import type { PrismaClient } from '../../apps/api/src/generated/prisma/client.js';
+import { generateUserCode } from '../../apps/api/src/modules/auth/user-code.js';
 import {
   ALL_USERS,
   COURSES,
@@ -14,15 +16,30 @@ import {
   teacherFor,
 } from './fixtures.js';
 
+// Sortea un codigo de usuario que no exista todavia.
+async function freeUserCode(prisma: PrismaClient): Promise<string> {
+  for (let i = 0; i < 10; i++) {
+    const code = generateUserCode();
+    if (!(await prisma.user.findUnique({ where: { code }, select: { id: true } }))) return code;
+  }
+  throw new Error('No se pudo generar un codigo de usuario libre');
+}
+
 export async function seedAcademic(prisma: PrismaClient): Promise<void> {
-  // 1. Usuarios (clave natural: institutionalEmail). Se restablecen nombre, rol y estado.
+  // 1. Usuarios (clave natural: institutionalEmail). Se restablecen nombre, rol y estado; el codigo
+  //    se asigna una sola vez y no cambia al repetir el seed (RN-16).
   const userIds = new Map<string, string>();
   for (const u of ALL_USERS) {
     const data = { fullName: u.fullName, role: u.role, status: u.status };
+    const existing = await prisma.user.findUnique({
+      where: { institutionalEmail: u.institutionalEmail },
+      select: { code: true },
+    });
+    const code = existing?.code ?? (await freeUserCode(prisma));
     const row = await prisma.user.upsert({
       where: { institutionalEmail: u.institutionalEmail },
-      create: { institutionalEmail: u.institutionalEmail, ...data },
-      update: data,
+      create: { institutionalEmail: u.institutionalEmail, code, ...data },
+      update: { ...data, code },
       select: { id: true },
     });
     userIds.set(u.key, row.id);
