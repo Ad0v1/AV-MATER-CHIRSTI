@@ -127,7 +127,7 @@ describe.skipIf(!process.env.DATABASE_URL)('Configuración institucional 5c (e2e
     const sessions = app.get(SessionService);
     for (const key of ['admin', 'docente03', 'estudiante01', 'estudiante05', 'apoderado01']) {
       const user = await prisma.user.findUniqueOrThrow({
-        where: { institutionalEmail: `${key}@colegio.example` },
+        where: { email: `${key}@colegio.example` },
       });
       ids.set(key, user.id);
       cookies.set(key, await sessions.create({ id: user.id, role: user.role as Role }));

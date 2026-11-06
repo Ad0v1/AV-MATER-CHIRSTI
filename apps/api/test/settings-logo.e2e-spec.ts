@@ -78,7 +78,7 @@ describe.skipIf(!process.env.DATABASE_URL)('Logo institucional, casos límite (e
     const sessions = app.get(SessionService);
     for (const key of ['admin', 'docente03', 'estudiante01', 'apoderado01']) {
       const user = await prisma.user.findUniqueOrThrow({
-        where: { institutionalEmail: `${key}@colegio.example` },
+        where: { email: `${key}@colegio.example` },
       });
       cookies.set(key, await sessions.create({ id: user.id, role: user.role as Role }));
     }

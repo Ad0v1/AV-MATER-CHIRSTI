@@ -3,7 +3,7 @@ import type { Transporter } from 'nodemailer';
 import { ENV, type Env } from '../../config/config.module.js';
 import { QueueModule } from '../queue/index.js';
 import { BackgroundJobService } from './background-job.service.js';
-import { resultStorageProviders } from './job-result.storage.js';
+import { JobResultStorage, resultStorageProviders } from './job-result.storage.js';
 import { createMailTransport, MAIL_TRANSPORT, MailerService } from './mailer.service.js';
 import { JobProcessorRegistry } from './processor.registry.js';
 import { TrackedJobRunner } from './tracked-job.runner.js';
@@ -23,6 +23,7 @@ import { TrackedJobRunner } from './tracked-job.runner.js';
   ],
   exports: [
     BackgroundJobService,
+    JobResultStorage,
     TrackedJobRunner,
     JobProcessorRegistry,
     MailerService,

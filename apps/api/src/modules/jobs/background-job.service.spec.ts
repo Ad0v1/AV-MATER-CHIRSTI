@@ -41,6 +41,7 @@ function setup() {
       Promise.resolve([] as Array<{ id: string; resultObjectKey: string | null }>),
     ),
     updateMany: vi.fn(() => Promise.resolve({ count: 1 })),
+    count: vi.fn(() => Promise.resolve(0)),
   };
   const prisma = { backgroundJob: db } as unknown as PrismaService;
   const queues = { enqueue: vi.fn(() => Promise.resolve(ID)) };
@@ -261,5 +262,25 @@ describe('BackgroundJobService transiciones (CHECK BackgroundJob_status_chk)', (
       where: { id: 'j1', status: 'SUCCEEDED' },
       data: { status: 'EXPIRED', resultObjectKey: null, resultBytes: null },
     });
+  });
+});
+
+describe('BackgroundJobService.failStalled (seguridad 5g, hallazgo 3)', () => {
+  it('RUNNING -> STALLED y QUEUED sin arrancar -> QUEUE_STALLED, con 1 h u 6 h según el tipo', async () => {
+    const s = setup();
+    const now = new Date('2026-11-06T12:00:00.000Z');
+    expect(await s.service.failStalled(now)).toBe(10); // 5 tipos x 2 estados x count 1
+    const calls = s.db.updateMany.mock.calls as unknown as Array<
+      [{ where: Record<string, unknown>; data: Record<string, unknown> }]
+    >;
+    const queued = calls.filter(([a]) => a.where.status === 'QUEUED');
+    expect(queued).toHaveLength(5);
+    for (const [a] of queued)
+      expect(a.data).toMatchObject({ status: 'FAILED', errorCode: 'QUEUE_STALLED' });
+    const lt = (type: string) =>
+      (queued.find(([a]) => a.where.type === type)![0].where.createdAt as { lt: Date }).lt;
+    expect(lt('PERSONAL_DATA_EXPORT')).toEqual(new Date('2026-11-06T11:00:00.000Z'));
+    expect(lt('YEAR_BACKUP')).toEqual(new Date('2026-11-06T06:00:00.000Z'));
+    expect(lt('PURGE_YEAR')).toEqual(new Date('2026-11-06T06:00:00.000Z'));
   });
 });

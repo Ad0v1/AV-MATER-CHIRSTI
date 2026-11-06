@@ -6,6 +6,7 @@ import {
   FileText,
   GraduationCap,
   HardDrive,
+  Megaphone,
   Notebook,
   School,
   UserRound,
@@ -35,7 +36,11 @@ const courseItems = (withRegistro: boolean): NavItem[] => [
 // Calendario de plazos (RF-54, Dev 5): autorizado por el usuario el 30/10/2026.
 const agenda: NavGroup = {
   label: 'Agenda',
-  items: [{ label: 'Calendario', href: ROUTES.calendario, icon: CalendarDays }],
+  items: [
+    { label: 'Calendario', href: ROUTES.calendario, icon: CalendarDays },
+    // RF-32 (Dev 5): bandeja de anuncios (autorizado 06/11/2026).
+    { label: 'Anuncios', href: ROUTES.anuncios, icon: Megaphone },
+  ],
 };
 
 // El menu es solo ayuda de navegacion: el backend valida rol y pertenencia (RNF-02).
@@ -51,6 +56,7 @@ const BASE_NAV: Record<Role, NavGroup[]> = {
       items: [
         { label: 'Estructura académica', href: ROUTES.adminEstructura, icon: GraduationCap },
         { label: 'Usuarios', href: ROUTES.adminUsuarios, icon: Users },
+        { label: 'Anuncios', href: ROUTES.adminAnuncios, icon: Megaphone },
         { label: 'Reportes', href: ROUTES.adminReportes, icon: BarChart3 },
         { label: 'Configuración', href: ROUTES.adminConfiguracion, icon: Settings },
         { label: 'Bitácora', href: ROUTES.adminBitacora, icon: ScrollText },

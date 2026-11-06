@@ -13,9 +13,12 @@ import { loadStorageConfig } from '../storage/storage.config.js';
 import { buildContentDisposition } from '../storage/object-key.util.js';
 import type { SignedUrl, StorageConfig } from '../storage/index.js';
 
-// Resultados de los trabajos (XLSX, PDF, ZIP, JSON) en el bucket privado, prefijo exports/.
-// StorageService de Dev 3 solo acepta claves .pdf de materiales y entregas, asi que los
-// resultados usan este adaptador con la misma configuracion S3 y la misma vigencia de URL (60 s).
+// Resultados de los trabajos (XLSX, PDF, ZIP, JSON) en el bucket privado. StorageService de Dev 3
+// solo acepta claves .pdf de materiales y entregas, asi que los resultados usan este adaptador con
+// la misma configuracion S3 y la misma vigencia de URL (60 s). Prefijos:
+//   - exports/: exportaciones que vencen a los EXPORT_TTL_DAYS (U6); admite regla de bucket.
+//   - backups/: respaldos anuales (RF-65) que se conservan hasta la purga del año (U6, U7).
+//     Fuera de exports/ para que una regla de vencimiento del bucket no los borre antes.
 
 export const RESULT_FORMATS = {
   xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
@@ -25,8 +28,11 @@ export const RESULT_FORMATS = {
 } as const;
 export type ResultFormat = keyof typeof RESULT_FORMATS;
 
+export const RESULT_PREFIXES = ['exports', 'backups'] as const;
+export type ResultPrefix = (typeof RESULT_PREFIXES)[number];
+
 const RESULT_KEY =
-  /^exports\/\d{4}\/(0[1-9]|1[0-2])\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.(xlsx|pdf|zip|json)$/;
+  /^(exports|backups)\/\d{4}\/(0[1-9]|1[0-2])\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.(xlsx|pdf|zip|json)$/;
 
 export const RESULT_S3 = Symbol('RESULT_S3');
 export const RESULT_STORAGE_CONFIG = Symbol('RESULT_STORAGE_CONFIG');
@@ -35,14 +41,15 @@ export function isResultKey(key: string): boolean {
   return RESULT_KEY.test(key);
 }
 
-/** exports/{año}/{mes}/{uuid}.{ext}. Nunca lleva nombres ni datos del contenido. */
+/** {prefijo}/{año}/{mes}/{uuid}.{ext}. Nunca lleva nombres ni datos del contenido. */
 export function buildResultKey(
   format: ResultFormat,
   now: Date = new Date(),
   id: string = randomUUID(),
+  prefix: ResultPrefix = 'exports',
 ): string {
   const month = String(now.getUTCMonth() + 1).padStart(2, '0');
-  return `exports/${now.getUTCFullYear()}/${month}/${id.toLowerCase()}.${format}`;
+  return `${prefix}/${now.getUTCFullYear()}/${month}/${id.toLowerCase()}.${format}`;
 }
 
 function formatOf(key: string): ResultFormat {
@@ -124,6 +131,25 @@ export class JobResultStorage {
         code: 'STORAGE_UNAVAILABLE',
         message: 'El almacenamiento no está disponible. Intenta más tarde.',
       });
+    }
+  }
+
+  /**
+   * Tamaño del resultado en S3, o null si el objeto no existe (404). Otros errores de S3 lanzan.
+   * Lo usa la purga del año para comprobar que cada respaldo sigue ahí (seguridad 5g).
+   */
+  async size(key: string): Promise<number | null> {
+    assertResultKey(key);
+    try {
+      const head = await this.s3.send(
+        new HeadObjectCommand({ Bucket: this.config.bucket, Key: key }),
+      );
+      return Number(head.ContentLength ?? 0);
+    } catch (error) {
+      const status = (error as { $metadata?: { httpStatusCode?: number } }).$metadata
+        ?.httpStatusCode;
+      if (status === 404 || (error instanceof Error && error.name === 'NotFound')) return null;
+      throw error;
     }
   }
 
