@@ -23,23 +23,31 @@ const COMMON_INSTRUCTIONS = [
   'Primero sube el archivo para la vista previa; si no hay errores, confírmalo.',
 ];
 
+const DNI_NOTE =
+  'dni: 8 dígitos. Si empieza con 0, la columna debe tener formato de texto (la plantilla ya lo trae).';
+
 const INSTRUCTIONS: Record<ImportType, string[]> = {
   students: [
-    'correo: correo institucional del estudiante.',
-    'nombre_completo: nombres y apellidos (3 a 120 caracteres).',
+    DNI_NOTE,
+    'nombre_completo: nombres y apellidos del estudiante (3 a 120 caracteres).',
     'grado: número del 1 al 5.',
     'seccion: código de la sección del año activo (1 a 8 letras o dígitos, p. ej. A).',
+    'dni_apoderado: DNI del apoderado. Todo estudiante tiene al menos uno. Si el apoderado ya existe (por ejemplo, el de un hermano), se vincula sin crear otra cuenta.',
+    'nombre_apoderado: nombres y apellidos del apoderado. Solo hace falta si es nuevo.',
+    'dni_apoderado_2 y nombre_apoderado_2: segundo apoderado (opcional). Un estudiante admite hasta 2 apoderados; el primero es el principal.',
     'Cada estudiante queda matriculado en la sección indicada del año académico activo.',
+    'Al confirmar se descarga una hoja con el código y la contraseña inicial de cada cuenta nueva. Se muestra una sola vez.',
   ],
   teachers: [
-    'correo: correo institucional del docente.',
+    DNI_NOTE,
     'nombre_completo: nombres y apellidos (3 a 120 caracteres).',
+    'Al confirmar se descarga una hoja con el código y la contraseña inicial de cada docente. Se muestra una sola vez.',
   ],
   guardians: [
-    'correo_apoderado: correo del apoderado.',
-    'nombre_apoderado: nombres y apellidos del apoderado (igual en todas sus filas).',
-    'correo_estudiante: correo de un estudiante que ya existe en el aula virtual.',
-    'Una fila por cada estudiante del apoderado (hasta 10).',
+    'dni_apoderado: DNI del apoderado. Si ya existe, se reutiliza.',
+    'nombre_apoderado: nombres y apellidos. Solo hace falta si el apoderado es nuevo (igual en todas sus filas).',
+    'dni_estudiante: DNI de un estudiante que ya existe en el aula virtual.',
+    'Una fila por cada estudiante del apoderado (hasta 10). Un estudiante admite hasta 2 apoderados.',
   ],
 };
 
@@ -61,6 +69,10 @@ export async function buildXlsxTemplate(type: ImportType): Promise<ImportTemplat
   const data = workbook.addWorksheet('Datos');
   const columns = IMPORT_COLUMNS[type];
   data.columns = columns.map((name) => ({ header: name, key: name, width: 32 }));
+  // Los DNI son texto: Excel quita el cero inicial de un número.
+  columns.forEach((name, index) => {
+    if (name.startsWith('dni')) data.getColumn(index + 1).numFmt = '@';
+  });
   data.getRow(1).font = { bold: true };
   data.views = [{ state: 'frozen', ySplit: 1 }];
 

@@ -40,7 +40,7 @@ export class MemoryMailSender extends MailSender {
 
 export type FakeUser = {
   id: string;
-  institutionalEmail: string;
+  email: string;
   code: string | null;
   dniEncrypted: string | null;
   contactEmail: string | null;
@@ -67,18 +67,14 @@ export class FakePrisma {
   lastAcceptance: { onBehalfOfWards?: boolean } | null = null;
 
   user = {
-    findUnique: ({
-      where,
-    }: {
-      where: { id?: string; code?: string; institutionalEmail?: string };
-    }) =>
+    findUnique: ({ where }: { where: { id?: string; code?: string; email?: string } }) =>
       Promise.resolve(
         this.users.find((u) =>
           where.id
             ? u.id === where.id
             : where.code
               ? u.code === where.code
-              : u.institutionalEmail === where.institutionalEmail,
+              : u.email === where.email,
         ) ?? null,
       ),
     update: ({
@@ -99,7 +95,38 @@ export class FakePrisma {
     },
   };
 
+  recoveryCodes: Array<{ userId: string; codeHash: string; usedAt: Date | null }> = [];
+
+  recoveryCode = {
+    deleteMany: ({ where }: { where: { userId: string } }) => {
+      this.recoveryCodes = this.recoveryCodes.filter((r) => r.userId !== where.userId);
+      return Promise.resolve({ count: 0 });
+    },
+    createMany: ({ data }: { data: Array<{ userId: string; codeHash: string }> }) => {
+      this.recoveryCodes.push(...data.map((d) => ({ ...d, usedAt: null })));
+      return Promise.resolve({ count: data.length });
+    },
+    updateMany: ({ where }: { where: { userId: string; codeHash: string; usedAt: null } }) => {
+      const hit = this.recoveryCodes.filter(
+        (r) => r.userId === where.userId && r.codeHash === where.codeHash && !r.usedAt,
+      );
+      for (const r of hit) r.usedAt = new Date();
+      return Promise.resolve({ count: hit.length });
+    },
+    count: ({ where }: { where: { userId: string; usedAt: null } }) =>
+      Promise.resolve(
+        this.recoveryCodes.filter((r) => r.userId === where.userId && !r.usedAt).length,
+      ),
+  };
+
+  // Sin aislamiento: basta para probar la logica; la transaccion real se prueba contra MySQL.
+  $transaction<T>(callback: (tx: this) => Promise<T>): Promise<T> {
+    return callback(this);
+  }
+
   localCredential = {
+    findUnique: ({ where }: { where: { userId: string } }) =>
+      Promise.resolve(this.users.find((u) => u.id === where.userId)?.localCredential ?? null),
     update: ({
       where,
       data,

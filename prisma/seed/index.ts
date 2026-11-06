@@ -13,7 +13,7 @@ async function main(): Promise<void> {
   // Todas las comprobaciones van antes de crear el cliente de Prisma.
   const url = assertLocalDatabase();
   // Defensa: ningun dato del seed puede salir del dominio ficticio.
-  const outside = ALL_USERS.filter((u) => !u.institutionalEmail.endsWith(`@${SEED_EMAIL_DOMAIN}`));
+  const outside = ALL_USERS.filter((u) => !u.email.endsWith(`@${SEED_EMAIL_DOMAIN}`));
   if (outside.length > 0) {
     throw new Error(`Correos fuera de @${SEED_EMAIL_DOMAIN}: ${outside.length}`);
   }

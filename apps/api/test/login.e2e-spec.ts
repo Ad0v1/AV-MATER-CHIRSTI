@@ -28,7 +28,7 @@ async function addUser(
   const totp = t.app.get(TotpService);
   t.prisma.users.push({
     id: 'user-1',
-    institutionalEmail: 'admin@colegio.edu.pe',
+    email: 'admin@colegio.edu.pe',
     code: CODE,
     dniEncrypted: t.app.get(DniService).encrypt(DNI),
     contactEmail: 'usuario@correo.pe',
@@ -73,6 +73,7 @@ describe('Login por codigo de usuario (e2e)', () => {
       mustAcceptPolicy: true,
       mustChangePassword: false,
       mustVerifyEmail: false,
+      mustEnableTwoFactor: true,
       mustCompleteContact: false,
     });
     const cookie = String(res.headers['set-cookie']);
@@ -100,6 +101,7 @@ describe('Login por codigo de usuario (e2e)', () => {
         mustAcceptPolicy: true,
         mustChangePassword: false,
         mustVerifyEmail: false,
+        mustEnableTwoFactor: true,
         mustCompleteContact: false,
       });
   });
@@ -226,7 +228,7 @@ describe('Login por codigo de usuario (e2e)', () => {
       .post('/api/v1/auth/2fa/enable')
       .set('Cookie', cookie)
       .send({ code: generateSync({ secret: setup.body.secret }) })
-      .expect(204);
+      .expect(200);
 
     const stored = t.prisma.users[0]!.localCredential!.totpSecretEncrypted!;
     expect(stored).not.toContain(setup.body.secret);

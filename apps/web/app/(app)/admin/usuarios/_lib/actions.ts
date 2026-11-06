@@ -352,6 +352,22 @@ export async function resetPasswordAction(
   };
 }
 
+// RF-85: reinicia el 2FA de otro administrador que perdió su teléfono y sus códigos. Sus sesiones
+// se cierran y en su próximo ingreso debe activarlo de nuevo.
+export async function resetTwoFactorAction(
+  userId: string,
+  _prev: ActionState,
+  _fd: FormData,
+): Promise<ActionState> {
+  void _prev; // useActionState exige la firma (estado, formulario) aunque no se usen
+  void _fd;
+  if (!isUuid(userId)) return invalid(BAD_ID);
+  return run(
+    () => apiServer.post<void>(`/auth/users/${enc(userId)}/2fa/reset`, {}),
+    () => 'Verificación en dos pasos reiniciada. Deberá activarla de nuevo al ingresar.',
+  );
+}
+
 export async function correctDniAction(
   userId: string,
   _prev: ActionState,

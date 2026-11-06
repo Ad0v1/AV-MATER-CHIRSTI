@@ -8,7 +8,6 @@ import { GuardianLinksService } from './guardian-links.service.js';
 import { GuardiansController } from './guardians.controller.js';
 import { UserImportController } from './import/user-import.controller.js';
 import { UserImportService } from './import/user-import.service.js';
-import { institutionDomainProvider } from './institution-domain.js';
 import { PromotionController } from './promotion/promotion.controller.js';
 import { PromotionService } from './promotion/promotion.service.js';
 import { StudentsController } from './students.controller.js';
@@ -38,7 +37,6 @@ import { UsersService } from './users.service.js';
     UserImportService,
     PromotionService,
     ActiveActorGuard,
-    institutionDomainProvider,
   ],
 })
 export class UsersModule {}

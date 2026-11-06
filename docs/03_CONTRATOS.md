@@ -338,13 +338,13 @@ type AcademicEventMap = {
 - Ids UUID (400 si no lo son). Marcadores TRUE/NULL (`isCurrent`, `isActive`) se exponen como `boolean`.
 - Errores con el mismo formato del módulo académico: 400 `VALIDATION_ERROR` (con `details`), 401, 403 `FORBIDDEN`, 404 `NOT_FOUND`, 409 `CONFLICT`, 422 `BUSINESS_RULE_VIOLATION`. Un bloqueo mutuo de MySQL (deadlock, 1213) se responde 409 "El registro cambió o está en uso; vuelve a intentarlo".
 - Correo: se guarda en minúsculas y sin espacios, máximo 191 caracteres, único (409). Nombre: 3..120 caracteres, espacios colapsados, sin caracteres de control y **sin empezar por `=`, `+`, `-` ni `@`** (desde la importación de RF-21, PROPUESTA; ver "Importación masiva (Dev 2, RF-21)").
-- Dominio: si la variable `INSTITUTION_EMAIL_DOMAIN` está definida, los correos de STUDENT, TEACHER y ADMIN deben pertenecer a ese dominio (422). GUARDIAN queda exento hasta D-013. Sin la variable no se valida el dominio y se registra un aviso en el log.
+- Dominio: desde la Fase F ya no se valida el dominio del correo del colegio (`email`) y la variable `INSTITUTION_EMAIL_DOMAIN` se retiró; el correo verificado de cada persona es `contactEmail` (RF-80).
 - El rol de un usuario no cambia (D-012).
 
 ### Vistas
 
-- `UserView`: `{ id, institutionalEmail, fullName, role, status, createdAt, updatedAt }`.
-- `UserListItem` (solo en `GET /users`): `{ id, institutionalEmail, fullName, role, status, currentSection }`, donde `currentSection` es `{ id, gradeLevel, code }` o `null` (sección de la matrícula vigente del año).
+- `UserView`: `{ id, email, fullName, role, status, createdAt, updatedAt }`.
+- `UserListItem` (solo en `GET /users`): `{ id, email, fullName, role, status, currentSection }`, donde `currentSection` es `{ id, gradeLevel, code }` o `null` (sección de la matrícula vigente del año).
 - `EnrollmentView`: `{ id, academicYear: { id, year }, section: { id, gradeLevel, code }, isCurrent, effectiveFrom, effectiveTo, endReason }`.
 - `GuardianLinkView`: `{ id, guardian: { id, fullName, status }, student: { id, fullName, status }, isActive, createdAt, revokedAt }`.
 
@@ -360,15 +360,15 @@ type AcademicEventMap = {
 | --- | --- | --- | --- |
 | `GET /users` | Query: `q?`, `role?`, `status?`, `gradeLevel?`, `sectionId?`, `academicYearId?`, `page?`, `pageSize?` | 200 `{ items: UserListItem[], total, page, pageSize }` | 400 |
 | `GET /users/:id` | — | 200 `UserView` + `currentEnrollment` (STUDENT: `EnrollmentView` o `null`, año activo) + `guardians` (STUDENT: `GuardianLinkView[]` vigentes) o `students` (GUARDIAN: vigentes) | 400; 404 |
-| `PATCH /users/:id` | `{ fullName?, institutionalEmail? }` (al menos uno) | 200 `UserView`. Sin cambios, 200 sin bitácora | 400; 404; 409 correo en uso; 422 dominio |
+| `PATCH /users/:id` | `{ fullName?, email? }` (al menos uno) | 200 `UserView`. Sin cambios, 200 sin bitácora | 400; 404; 409 correo en uso; 422 dominio |
 | `PUT /users/:id/status` | `{ status: ACTIVE \| INACTIVE \| WITHDRAWN, reason?: 1..500 }` | 200 `{ user: UserView, closedEnrollments: EnrollmentView[] }`. Mismo estado: 200 con `closedEnrollments: []`, sin bitácora | 400; 404; 409 sobre sí mismo o último ADMIN activo |
-| `POST /students` | `{ institutionalEmail, fullName, sectionId }` | 201 `{ user: UserView, enrollment: EnrollmentView }` | 400; 404 sección; 409 correo, sin año activo, año cerrado, sección inactiva; 422 sección de otro año, dominio |
+| `POST /students` | `{ email, fullName, sectionId }` | 201 `{ user: UserView, enrollment: EnrollmentView }` | 400; 404 sección; 409 correo, sin año activo, año cerrado, sección inactiva; 422 sección de otro año, dominio |
 | `POST /students/:id/enrollments` | `{ sectionId }` | 201 `EnrollmentView` | 400; 404 estudiante o sección; 409 ya tiene matrícula vigente en el año, sin año activo, año cerrado, sección inactiva; 422 no es STUDENT, está WITHDRAWN o la sección es de otro año |
 | `POST /students/:id/transfer` | `{ sectionId, reason?: 1..500 }` | 200 `{ closed: EnrollmentView, current: EnrollmentView }` | 400; 404; 409 sin matrícula vigente en el año, sin año activo, año cerrado, sección inactiva, concurrencia; 422 no es STUDENT, está WITHDRAWN, misma sección, otro grado o sección de otro año |
 | `GET /students/:id/enrollments` | Query: `academicYearId?` | 200 `{ items: EnrollmentView[], total }`, por `effectiveFrom` | 400; 404; 422 no es STUDENT |
 | `GET /students/:id/guardians` | Query: `includeRevoked?` (`true` o `false`, por defecto `false`) | 200 `{ items: GuardianLinkView[], total }` | 400; 404; 422 no es STUDENT |
-| `POST /teachers` | `{ institutionalEmail, fullName }` | 201 `UserView` (role TEACHER) | 400; 409 correo; 422 dominio |
-| `POST /guardians` | `{ institutionalEmail, fullName, studentIds }` (uuid, 1..10, sin repetir) | 201 `{ user: UserView, links: GuardianLinkView[] }`, en una transacción | 400; 409 correo; 422 algún estudiante no existe, no es STUDENT o está WITHDRAWN |
+| `POST /teachers` | `{ email, fullName }` | 201 `UserView` (role TEACHER) | 400; 409 correo; 422 dominio |
+| `POST /guardians` | `{ email, fullName, studentIds }` (uuid, 1..10, sin repetir) | 201 `{ user: UserView, links: GuardianLinkView[] }`, en una transacción | 400; 409 correo; 422 algún estudiante no existe, no es STUDENT o está WITHDRAWN |
 | `GET /guardians/:id/students` | Query: `includeRevoked?` | 200 `{ items: GuardianLinkView[], total }` | 400; 404; 422 no es GUARDIAN |
 | `POST /guardians/:id/students` | `{ studentId }` | 201 `GuardianLinkView` | 400; 404 apoderado o estudiante; 409 vínculo vigente duplicado; 422 no es GUARDIAN, apoderado WITHDRAWN, estudiante no es STUDENT o está WITHDRAWN, mismo id |
 | `POST /guardian-links/:id/revoke` | `{ reason }` (obligatorio, 10..500) | 200 `GuardianLinkView` (`isActive: false`, `revokedAt`) | 400; 404; 409 ya revocado |
@@ -446,7 +446,7 @@ type UsersEventMap = {
 - Multipart: el archivo va en el campo `file`; `type` y, en el commit, `sha256`. Un campo de más o mal formado responde 400 `VALIDATION_ERROR`.
 - Tipos (`type`): `students`, `teachers`, `guardians`. Formatos (`format`): `xlsx`, `csv`.
 - **Sin estado entre llamadas.** No hay token ni caché: la confirmación vuelve a subir el archivo y se compara su SHA-256 con el de la vista previa.
-- Ningún mensaje repite el valor de una celda, un correo o un nombre. Los mensajes son fijos y en español.
+- Ningún mensaje repite el valor de una celda, un DNI o un nombre. Los mensajes son fijos y en español.
 
 ### Endpoints
 
@@ -454,32 +454,37 @@ type UsersEventMap = {
 | --- | --- | --- | --- |
 | `GET /users/import/template` | Query `type`, `format` (estricta) | 200 archivo, con `Content-Disposition: attachment; filename="plantilla-<type>.<format>"` y `Cache-Control: no-store` | 400; 401; 403 |
 | `POST /users/import/preview` | multipart `file`, `type` | 200 `ImportReport` | 400; 401; 403; 409; 413; 415; 429 |
-| `POST /users/import/commit` | multipart `file`, `type`, `sha256` (64 hexadecimales) | 201 `ImportCommitResult` | 400; 401; 403; 409; 413; 415; 422; 429 |
+| `POST /users/import/commit` | multipart `file`, `type`, `sha256` (64 hexadecimales) | 201 `ImportCommitResult` (con la hoja de credenciales) | 400; 401; 403; 409; 413; 415; 422; 429 |
 
 **Ruta puente de la web (F5, D-037).** La pantalla de importación no llama a la API desde el navegador. Usa el Route Handler de `apps/web` `/admin/usuarios/importar/archivo/{plantilla|preview|commit}`, que reenvía a estos endpoints solo con la cookie `aula_sid`: `plantilla` acepta GET y `preview` y `commit` aceptan POST con el mismo `file`, `type` y `sha256`. La ruta responde 403 si el `Origin` no es del mismo host, 413 si `Content-Length` falta o supera 1 MiB + 64 KiB, 415 si el cuerpo no es multipart y 400 si `type` o `format` no están en la lista blanca. El resto de códigos son los de la API. No guarda ni registra el archivo ni su nombre.
 
 ### Plantillas
 
-Los encabezados pueden ir en cualquier orden. Se normalizan: sin espacios en los extremos, en minúsculas, sin tildes, y los espacios pasan a `_`. Una columna obligatoria que falta, una desconocida o una repetida responde 400. Las filas vacías se ignoran y el número de fila es el físico (encabezado = fila 1).
+> **Cambio de la Fase D (D-058, D-059).** El usuario ya no se identifica por correo sino por DNI. Cada cuenta nueva recibe un código de usuario y una contraseña inicial aleatoria (`mustChangePassword`), y la confirmación devuelve la hoja de credenciales.
+
+Los encabezados pueden ir en cualquier orden. Se normalizan: sin espacios en los extremos, en minúsculas, sin tildes, y los espacios pasan a `_`. Una columna obligatoria que falta, una desconocida o una repetida responde 400. Las filas vacías se ignoran y el número de fila es el físico (encabezado = fila 1). El DNI son 8 dígitos; en Excel hay que dar formato de texto a la columna (la plantilla ya lo trae) para no perder los ceros iniciales.
 
 | Tipo | Columnas | Reglas |
 | --- | --- | --- |
-| `students` | `correo`, `nombre_completo`, `grado`, `seccion` | `grado` es un entero de 1 a 5. `seccion` es de 1 a 8 letras o dígitos (se pasa a mayúsculas) y se busca en el año activo por grado y código. La matrícula usa la fecha del servidor. |
-| `teachers` | `correo`, `nombre_completo` | Correo del dominio institucional (`INSTITUTION_EMAIL_DOMAIN`). |
-| `guardians` | `correo_apoderado`, `nombre_apoderado`, `correo_estudiante` | Una fila por par apoderado-estudiante; hasta 10 estudiantes por apoderado. El estudiante ya debe existir y no estar retirado. El apoderado queda exento de dominio (D-013). |
+| `students` | `dni`, `nombre_completo`, `grado`, `seccion`, `dni_apoderado`, `nombre_apoderado`, `dni_apoderado_2`, `nombre_apoderado_2` | `grado` es un entero de 1 a 5. `seccion` es de 1 a 8 letras o dígitos (se pasa a mayúsculas) y se busca en el año activo por grado y código. El apoderado 1 es obligatorio y queda como principal; el apoderado 2 es opcional. Si el apoderado ya existe (por DNI) se reutiliza y su nombre puede ir vacío; si es nuevo, su nombre es obligatorio en alguna de sus filas. |
+| `teachers` | `dni`, `nombre_completo` | |
+| `guardians` | `dni_apoderado`, `nombre_apoderado`, `dni_estudiante` | Una fila por par apoderado-estudiante; hasta 10 estudiantes por apoderado y hasta 2 apoderados por estudiante (contando los que ya tiene). El estudiante ya debe existir y no estar retirado. Un apoderado que ya existe se reutiliza. El primer apoderado de un estudiante sin apoderados queda como principal. |
 
 - Plantilla CSV: UTF-8 con BOM, separador `,`, fin de línea CRLF y solo la fila de encabezados. `Content-Type: text/csv; charset=utf-8`.
-- Plantilla XLSX: hoja `Datos` (encabezados en negrita, fila 1 fija y lista 1..5 en `grado` hasta la fila 1001) y hoja `Instrucciones`. Sin filas de ejemplo. `Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`.
+- Plantilla XLSX: hoja `Datos` (encabezados en negrita, fila 1 fija, columnas de DNI con formato de texto y lista 1..5 en `grado` hasta la fila 1001) y hoja `Instrucciones`. Sin filas de ejemplo. `Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`.
+- Las columnas de apoderado opcionales (`nombre_apoderado`, `dni_apoderado_2`, `nombre_apoderado_2`) pueden ir vacías; el resto son obligatorias.
 
 ### Flujo: vista previa y después confirmación
 
 1. `POST /users/import/preview` con el archivo valida el archivo y lo compara con la BD con lecturas simples. **No escribe.** Devuelve `sha256` y `canConfirm`.
 2. Si `canConfirm` es `true`, `POST /users/import/commit` con **los mismos bytes**, el mismo `type` y el `sha256` de la vista previa.
-3. En el commit, si el SHA-256 no coincide, responde 409 y hay que volver a la vista previa. Si coincide, valida el archivo otra vez y revalida la BD dentro de una transacción. Si hay cualquier error, responde 422 con `details` y no escribe nada. Si todo está bien, crea usuarios, matrículas y vínculos **todo o nada** y responde 201.
+3. En el commit, si el SHA-256 no coincide, responde 409 y hay que volver a la vista previa. Si coincide, valida el archivo otra vez y revalida la BD dentro de una transacción. Si hay cualquier error, responde 422 con `details` y no escribe nada. Si todo está bien, crea usuarios, credenciales, matrículas y vínculos **todo o nada** y responde 201 con la hoja de credenciales.
 
-- La transacción tiene un tiempo máximo de 20 s y una espera máxima de 5 s para entrar. Las escrituras van en bloques de 500.
-- Dos commits del mismo archivo en paralelo dan 201 y 409, o 422 `EMAIL_TAKEN` si el segundo ya ve el correo ocupado. Nunca se duplica un usuario.
-- La importación solo crea. Un correo que ya existe, también el de un apoderado, da `EMAIL_TAKEN`. Para vincular un estudiante a un apoderado existente se usa `POST /guardians/:id/students`.
+- La transacción tiene un tiempo máximo de 20 s y una espera máxima de 5 s para entrar. Las escrituras van en bloques de 500. Las contraseñas iniciales (aleatorias, 12 caracteres) se guardan con argon2id de parámetros reducidos (memoria 8 MiB, 2 pasadas), calculado en lotes de 50, para que 1000 cuentas quepan en los 20 s. El usuario las cambia en su primer ingreso (RF-70) y el nuevo hash usa los parámetros normales.
+- Orden de bloqueos: el año `FOR SHARE` (solo `students`), luego los usuarios existentes que se vinculan, por id.
+- Dos commits del mismo archivo en paralelo dan 201 y 409, o 422 `DNI_TAKEN` si el segundo ya ve el DNI registrado. Nunca se duplica un usuario.
+- La importación solo crea personas. Un DNI que ya existe como alumno o docente da `DNI_TAKEN`. Los apoderados son la excepción: si ya existen se reutilizan y solo se crea el vínculo.
+- El código de usuario es único en el lote y en la BD (`UserCodeService.generateMany`).
 
 ### Respuestas
 
@@ -493,7 +498,7 @@ type ImportReport = {
   errorRows: number;         // filas distintas con al menos un error
   errors: ImportRowError[];  // ordenados por fila y columna; máximo 500
   errorsTruncated: boolean;  // true si hubo más de 500 errores
-  summary: { users: number; enrollments: number; links: number }; // lo que se crearía
+  summary: { users: number; enrollments: number; links: number }; // lo que se crearía (alumnos + apoderados nuevos)
   canConfirm: boolean;       // true si no hay ningún error
 };
 
@@ -503,30 +508,40 @@ type ImportRowError = {
   code: RowErrorCode;        // ver la tabla de códigos
   message: string;           // fijo en español; nunca el valor de la celda
 };
+
+type ImportCommitResult = {
+  type: 'students' | 'teachers' | 'guardians';
+  created: { users: number; enrollments: number; links: number };
+  credentialsSheet: { filename: string; contentType: string; base64: string } | null;
+};
 ```
 
-- `ImportCommitResult` (201): `{ type, created: { users, enrollments, links } }`.
+- `credentialsSheet` es un libro Excel (hojas `Credenciales` y `Aviso`) con una fila por cuenta **nueva**: perfil, nombre, grado y sección, código de usuario y contraseña inicial. Nunca lleva el DNI. Va **solo en esta respuesta** (no se guarda en disco, en Redis ni en la bitácora; si se pierde, se restablece cada clave desde la ficha del usuario, RF-75). Es `null` si no se creó ninguna cuenta (por ejemplo, solo se vincularon apoderados que ya existían). Nombre: `credenciales-<type>-<AAAA-MM-DD>.xlsx`. La pantalla web la descarga desde la memoria del navegador.
 - En 422 el cuerpo es `{ error: { code: "BUSINESS_RULE_VIOLATION", message: "Solicitud invalida", details: ImportRowError[] }, requestId }`, con 500 errores como máximo.
 - Un mensaje de duplicado añade la primera aparición: "… (primera aparición en la fila N)".
 
-### Códigos de fila (21)
+### Códigos de fila (25)
 
 | Código | Cuándo | Mensaje |
 | --- | --- | --- |
 | `REQUIRED` | La celda obligatoria está vacía | El campo es obligatorio |
-| `INVALID_EMAIL` | El correo no es válido | El correo no es válido |
-| `EMAIL_DOMAIN` | El correo de estudiante o docente no es del dominio institucional (el de apoderado está exento, D-013) | El correo no pertenece al dominio institucional |
+| `INVALID_DNI` | El DNI no tiene 8 dígitos | El DNI debe tener 8 dígitos (si empieza con 0, da formato de texto a la columna) |
 | `INVALID_NAME` | Nombre de menos de 3 o más de 120 caracteres, con control, o que empieza por = + - @ | El nombre no es válido (3 a 120 caracteres, sin empezar por = + - @) |
 | `INVALID_GRADE` | `grado` no es un entero de 1 a 5 | El grado debe ser un número entero del 1 al 5 |
 | `INVALID_SECTION` | `seccion` no tiene de 1 a 8 letras o dígitos | La sección debe tener de 1 a 8 letras o dígitos |
 | `SECTION_NOT_FOUND` | No hay esa sección en el año activo (BD) | No existe esa sección en el año académico activo |
 | `SECTION_INACTIVE` | La sección existe pero está inactiva (BD) | La sección está inactiva |
-| `DUPLICATE_IN_FILE` | El correo se repite en el archivo | El correo está repetido en el archivo (primera aparición en la fila N) |
-| `EMAIL_TAKEN` | Ya existe un usuario con ese correo (BD); en guardians, el correo del apoderado | Ya existe un usuario con ese correo |
-| `STUDENT_NOT_FOUND` | No hay usuario con el correo del estudiante (BD) | No existe un estudiante con ese correo |
-| `NOT_STUDENT` | El usuario de ese correo no es estudiante (BD) | El usuario de ese correo no es un estudiante |
+| `DUPLICATE_IN_FILE` | El DNI de un alumno o docente se repite en el archivo | El DNI está repetido en el archivo (primera aparición en la fila N) |
+| `DNI_TAKEN` | Ya existe una persona con ese DNI (BD) | Ya existe una persona registrada con ese DNI |
+| `STUDENT_NOT_FOUND` | No hay usuario con el DNI del estudiante (BD) | No existe un estudiante con ese DNI |
+| `NOT_STUDENT` | La persona con ese DNI no es estudiante (BD) | La persona con ese DNI no es un estudiante |
 | `STUDENT_WITHDRAWN` | El estudiante está retirado (BD) | El estudiante está retirado |
-| `SAME_PERSON` | El correo del apoderado y el del estudiante son el mismo | El apoderado y el estudiante deben ser personas distintas |
+| `NOT_GUARDIAN` | El DNI del apoderado ya existe y no es un apoderado (BD) | La persona con ese DNI ya existe y no es un apoderado |
+| `GUARDIAN_WITHDRAWN` | El apoderado existente está retirado (BD) | El apoderado está retirado |
+| `GUARDIAN_NAME_REQUIRED` | El apoderado es nuevo y ninguna de sus filas trae el nombre (se informa en la columna del DNI del apoderado) | El apoderado es nuevo: escribe su nombre completo |
+| `DUPLICATE_GUARDIAN` | El apoderado 2 es el mismo que el 1 | El segundo apoderado es el mismo que el primero |
+| `MAX_GUARDIANS` | El estudiante quedaría con más de 2 apoderados (contando los de la BD) | El estudiante no puede tener más de 2 apoderados |
+| `SAME_PERSON` | El DNI del apoderado y el del estudiante son el mismo | La misma persona no puede ser estudiante y apoderado |
 | `NAME_MISMATCH` | El mismo apoderado aparece con otro nombre (primera aparición en la fila N) | El nombre del apoderado no coincide con el de su primera fila (primera aparición en la fila N) |
 | `TOO_MANY_STUDENTS` | El apoderado tiene más de 10 estudiantes en el archivo | El apoderado supera el máximo de 10 estudiantes |
 | `DUPLICATE_LINK` | Se repite el par apoderado-estudiante (primera aparición en la fila N) | El vínculo entre ese apoderado y ese estudiante está repetido (primera aparición en la fila N) |
@@ -753,15 +768,15 @@ Efecto, todo o nada (si cualquier error, no se escribe nada):
 
 ### Sesión y pasos del primer ingreso
 
-- La sesión viaja en la cookie `aula_sid`. `POST /auth/login`, `GET /auth/me` y los cambios de estado devuelven `{ id, role, mustAcceptPolicy, mustChangePassword, mustVerifyEmail }`.
-- Mientras `mustChangePassword` sea verdadero, la API responde **403 `PASSWORD_CHANGE_REQUIRED`** a todo salvo `me`, `logout` y `password`. Con `mustVerifyEmail`, responde **403 `EMAIL_VERIFICATION_REQUIRED`** a todo salvo esas rutas, `policy/accept` y `email/*` (RN-18). Orden: contraseña, política, correo.
+- La sesión viaja en la cookie `aula_sid`. `POST /auth/login`, `GET /auth/me` y los cambios de estado devuelven `{ id, role, mustAcceptPolicy, mustChangePassword, mustVerifyEmail, mustEnableTwoFactor, mustCompleteContact }`.
+- Mientras `mustChangePassword` sea verdadero, la API responde **403 `PASSWORD_CHANGE_REQUIRED`** a todo salvo `me`, `logout` y `password`. Con `mustVerifyEmail`, responde **403 `EMAIL_VERIFICATION_REQUIRED`** a todo salvo esas rutas, `policy/accept` y `email/*` (RN-18). Con `mustEnableTwoFactor` (solo el ADMIN sin 2FA, RF-85), responde **403 `TWO_FACTOR_REQUIRED`** a todo salvo `me`, `logout`, `password`, `policy/accept`, `email/*` y `2fa/*`. Orden: contraseña, política, correo, 2FA y, para el apoderado, datos de contacto.
 - Cambiar la contraseña, verificar el correo o recuperar la contraseña cierran todas las sesiones anteriores del usuario (RF-78) y, cuando corresponde, abren una nueva.
 
 ### Endpoints
 
 | Método y ruta | Rol | Cuerpo | Respuesta | Límite |
 | --- | --- | --- | --- | --- |
-| `POST /auth/login` | público | `{ code, password, totp? }` (`code`: 10 dígitos) | 200 con la sesión; 401 genérico (código mal escrito, inexistente, bloqueado o clave errada); 403 cuenta inactiva | 5/min por IP; 5 fallos seguidos por cuenta bloquean 15 min |
+| `POST /auth/login` | público | `{ code, password, totp? \| recoveryCode? }` (`code`: 10 dígitos; `totp`: 6 dígitos; `recoveryCode`: `XXXXX-XXXXX`, no ambos) | 200 con la sesión; 401 genérico (código mal escrito, inexistente, bloqueado o clave errada); 401 `TOTP_REQUIRED`, `TOTP_INVALID` o `RECOVERY_CODE_INVALID` si la cuenta tiene 2FA; 403 cuenta inactiva | 5/min por IP; 5 fallos seguidos por cuenta bloquean 15 min |
 | `GET /auth/me` | sesión | — | 200 con la sesión | — |
 | `POST /auth/password` | sesión | `{ currentPassword, newPassword }` | 204 y cookie nueva; 400 `INVALID_CURRENT_PASSWORD` o lista de problemas de la política | 5/min |
 | `POST /auth/policy/accept` | sesión | `{ privacy: true, terms: true, onBehalfOfWards? }` (el apoderado debe enviar `onBehalfOfWards: true`) | 204; 400 | — |
@@ -770,21 +785,27 @@ Efecto, todo o nada (si cualquier error, no se escribe nada):
 | `POST /auth/recover/request` | público | `{ code }` (código de usuario) | 204 siempre, exista o no el usuario | 3/min |
 | `POST /auth/recover/confirm` | público | `{ code, emailCode, newPassword }` | 204; 400 `INVALID_RECOVERY` (mismo error para todo fallo del código) o lista de problemas de la política | 5/min |
 | `POST /auth/users/:id/email/manual-verification` | ADMIN | `{ email, reason }` (motivo de 10 a 500 caracteres) | 204; 404 | — |
-| `POST /auth/2fa/setup`, `POST /auth/2fa/enable`, `POST /auth/logout` | ver docs/11 | sin cambios | — | — |
+| `POST /auth/2fa/setup` | ADMIN | — | 201 `{ secret, otpauthUrl }` (el secreto queda pendiente 10 min); 409 si el 2FA ya está activo | 5/min |
+| `POST /auth/2fa/enable` | ADMIN | `{ code }` (6 dígitos de la app) | 200 `{ recoveryCodes: string[10] }` **una sola vez**, cookie nueva y cierre de las demás sesiones; 400 | 5/min |
+| `GET /auth/2fa/status` | ADMIN | — | 200 `{ enabled, recoveryCodesLeft }` | — |
+| `POST /auth/2fa/recovery-codes` | ADMIN | `{ code }` (6 dígitos vigentes de la app) | 200 `{ recoveryCodes }` (juego nuevo; el anterior deja de valer); 400 | 5/min |
+| `POST /auth/users/:id/2fa/reset` | ADMIN | — | 204; borra el secreto y los códigos del usuario y cierra sus sesiones; 400 si es el propio; 404 | — |
+| `POST /auth/logout` | sesión | — | 204 | — |
 
 ### Reglas
 
 - **Código de usuario:** 10 dígitos; `AA` (año de alta, hora de Lima) + 7 aleatorios + dígito de control Luhn. Un código con el dígito de control mal responde igual que uno inexistente y no cuenta como intento.
 - **Códigos de un solo uso (correo y recuperación):** 6 dígitos, vigentes 5 minutos, 5 intentos (al quinto fallo el código se invalida), guardados con hash en Redis.
 - **Política de contraseñas:** 8 a 128 caracteres; no puede ser común, repetir un carácter ni contener el código de usuario o el DNI; el cambio debe ser distinto de la actual.
-- **Bitácora:** `auth.login`, `auth.login_failed`, `auth.account_locked`, `auth.login_blocked`, `auth.password_changed`, `auth.password_change_failed`, `auth.password_recovered`, `auth.recovery_requested`, `auth.email_code_sent`, `auth.email_verified`, `auth.email_verified_manually` y `auth.policy_accepted`. Nunca llevan contraseñas, códigos, correos ni DNI; el motivo de la verificación manual es texto libre y no debe contener datos personales.
+- **2FA del administrador (RF-85, D-064):** obligatorio desde el primer ingreso. Los códigos de recuperación son 10 por juego, de 10 caracteres (`XXXXX-XXXXX`, sin 0/O/1/I/L, 49 bits), de un solo uso, guardados solo como HMAC-SHA-256 con la clave `TOTP_ENCRYPTION_KEY` (tabla `RecoveryCode`). Un código de recuperación inválido cuenta como intento fallido para el bloqueo. Quien perdió su teléfono y sus códigos lo resuelve con el reinicio de otro administrador.
+- **Bitácora:** `auth.2fa_enabled`, `auth.2fa_recovery_used` (solo cuántos quedan), `auth.2fa_recovery_regenerated`, `auth.2fa_reset`, `auth.login`, `auth.login_failed`, `auth.account_locked`, `auth.login_blocked`, `auth.password_changed`, `auth.password_change_failed`, `auth.password_recovered`, `auth.recovery_requested`, `auth.email_code_sent`, `auth.email_verified`, `auth.email_verified_manually` y `auth.policy_accepted`. Nunca llevan contraseñas, códigos, correos ni DNI; el motivo de la verificación manual es texto libre y no debe contener datos personales.
 - **Variables de entorno nuevas:** `PII_ENCRYPTION_KEY`, `LOGIN_MAX_FAILED_ATTEMPTS`, `LOGIN_LOCK_SECONDS`, `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS` y `SMTP_FROM`. En producción son obligatorias la clave y las credenciales SMTP.
 
 ### Cambios de la Fase C en la API de usuarios (RF-18 a RF-20, RF-69, RF-74, RF-83, RF-84, RF-86, RF-87)
 
 > **Estado: PROPUESTA** (05/11/2026). Reemplaza lo anterior de "API de usuarios" donde se contradiga. Decisiones D-058 a D-063.
 
-- **Altas sin correo.** `POST /students`, `/teachers` y `/guardians` ya no piden el correo del colegio (`institutionalEmail` es opcional). Piden `dni` y `dniConfirm` (8 dígitos, escritos dos veces) y aceptan `dniVerified` (marca de "comparado con el documento"). El usuario nuevo recibe su código, su DNI cifrado y una contraseña inicial aleatoria que debe cambiar.
+- **Altas sin correo.** `POST /students`, `/teachers` y `/guardians` ya no piden el correo del colegio (`email` es opcional). Piden `dni` y `dniConfirm` (8 dígitos, escritos dos veces) y aceptan `dniVerified` (marca de "comparado con el documento"). El usuario nuevo recibe su código, su DNI cifrado y una contraseña inicial aleatoria que debe cambiar.
 - **`POST /students`:** además `guardians` (1 a 2): cada uno `{ dni, dniConfirm, fullName?, dniVerified? }`. El primero es el principal. Si ya existe un apoderado con ese DNI (por ejemplo, el de un hermano) se reutiliza y no hace falta su nombre; si es nuevo, `fullName` es obligatorio (422). Responde `{ user, credentials, enrollment, guardians: [{ user, link, created, credentials? }] }`. Los DNI del alumno y de sus apoderados deben ser distintos.
 - **`POST /teachers`:** responde `{ user, credentials }`. **`POST /guardians`:** responde `{ user, credentials, links }`; si el DNI ya existe responde 409 (se vincula con `POST /guardians/:id/students`).
 - **`credentials`** es `{ code, initialPassword }` y viaja solo en esa respuesta: no se guarda, no se registra y `GET /users/:id` no la devuelve.

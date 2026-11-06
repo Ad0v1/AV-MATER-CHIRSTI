@@ -74,7 +74,7 @@ describe.skipIf(!process.env.DATABASE_URL)('Clonar estructura RF-15 (e2e, MySQL)
     await prisma.academicYear.deleteMany({ where: { id: { in: yearIds } } });
     await prisma.course.deleteMany({ where: { name: { startsWith: COURSE_PREFIX } } });
     await prisma.user.deleteMany({
-      where: { institutionalEmail: { startsWith: USER_PREFIX } },
+      where: { email: { startsWith: USER_PREFIX } },
     });
   };
 
@@ -112,7 +112,7 @@ describe.skipIf(!process.env.DATABASE_URL)('Clonar estructura RF-15 (e2e, MySQL)
 
     for (const key of ['admin', 'docente01', 'docente02', 'estudiante01', 'apoderado01']) {
       const user = await prisma.user.findUniqueOrThrow({
-        where: { institutionalEmail: `${key}@colegio.example` },
+        where: { email: `${key}@colegio.example` },
       });
       ids.set(key, user.id);
       cookies.set(key, await sessions.create({ id: user.id, role: user.role }));
@@ -120,7 +120,7 @@ describe.skipIf(!process.env.DATABASE_URL)('Clonar estructura RF-15 (e2e, MySQL)
     // Usuarios QA: un ADMIN inactivo (ActiveActorGuard) y un docente inactivo (copyTeachers).
     const inactiveAdmin = await prisma.user.create({
       data: {
-        institutionalEmail: `${USER_PREFIX}admin@colegio.example`,
+        email: `${USER_PREFIX}admin@colegio.example`,
         fullName: 'QA Admin Inactivo',
         role: 'ADMIN',
         status: 'INACTIVE',
@@ -129,7 +129,7 @@ describe.skipIf(!process.env.DATABASE_URL)('Clonar estructura RF-15 (e2e, MySQL)
     cookies.set('adminInactivo', await sessions.create({ id: inactiveAdmin.id, role: 'ADMIN' }));
     const inactiveTeacher = await prisma.user.create({
       data: {
-        institutionalEmail: `${USER_PREFIX}docente@colegio.example`,
+        email: `${USER_PREFIX}docente@colegio.example`,
         fullName: 'QA Docente Inactivo',
         role: 'TEACHER',
         status: 'INACTIVE',
@@ -359,7 +359,7 @@ describe.skipIf(!process.env.DATABASE_URL)('Clonar estructura RF-15 (e2e, MySQL)
       const course = await prisma.course.create({ data: { name: `${COURSE_PREFIX}Rol` } });
       const exTeacher = await prisma.user.create({
         data: {
-          institutionalEmail: `${USER_PREFIX}exdocente@colegio.example`,
+          email: `${USER_PREFIX}exdocente@colegio.example`,
           fullName: 'QA Ex Docente',
           role: 'TEACHER',
           status: 'ACTIVE',

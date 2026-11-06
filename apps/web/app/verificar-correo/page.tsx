@@ -24,7 +24,13 @@ async function VerifyEmailContent() {
   if (user.mustChangePassword) redirect('/cambiar-clave');
   if (user.mustAcceptPolicy) redirect('/politica');
   if (!user.mustVerifyEmail) {
-    redirect(user.mustCompleteContact ? '/mi-perfil' : HOME_BY_ROLE[user.role]);
+    redirect(
+      user.mustEnableTwoFactor
+        ? '/activar-2fa'
+        : user.mustCompleteContact
+          ? '/mi-perfil'
+          : HOME_BY_ROLE[user.role],
+    );
   }
 
   return (

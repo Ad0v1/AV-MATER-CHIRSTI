@@ -84,9 +84,9 @@ export type ListUsersQuery = z.output<typeof listUsersQuerySchema>;
 export const updateUserSchema = z
   .strictObject({
     fullName: fullNameSchema.optional(),
-    institutionalEmail: emailSchema.optional(),
+    email: emailSchema.optional(),
   })
-  .refine((v) => v.fullName !== undefined || v.institutionalEmail !== undefined, {
+  .refine((v) => v.fullName !== undefined || v.email !== undefined, {
     message: 'Debes enviar al menos un campo',
   });
 export type UpdateUserDto = z.output<typeof updateUserSchema>;
@@ -109,7 +109,7 @@ const guardianRefSchema = z
 
 export const createStudentSchema = z
   .strictObject({
-    institutionalEmail: emailSchema.optional(),
+    email: emailSchema.optional(),
     fullName: fullNameSchema,
     sectionId: idSchema,
     ...dniFields,
@@ -144,7 +144,7 @@ export type ListEnrollmentsQuery = z.output<typeof listEnrollmentsQuerySchema>;
 
 export const createTeacherSchema = z
   .strictObject({
-    institutionalEmail: emailSchema.optional(),
+    email: emailSchema.optional(),
     fullName: fullNameSchema,
     ...dniFields,
   })
@@ -153,7 +153,7 @@ export type CreateTeacherDto = z.output<typeof createTeacherSchema>;
 
 export const createGuardianSchema = z
   .strictObject({
-    institutionalEmail: emailSchema.optional(),
+    email: emailSchema.optional(),
     fullName: fullNameSchema,
     ...dniFields,
     studentIds: z

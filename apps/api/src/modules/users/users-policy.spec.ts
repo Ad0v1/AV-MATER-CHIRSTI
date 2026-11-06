@@ -1,10 +1,7 @@
-import { ConflictException, UnprocessableEntityException } from '@nestjs/common';
-import { parseInstitutionDomain } from './institution-domain.js';
+import { ConflictException } from '@nestjs/common';
 import {
-  assertEmailDomain,
   assertStatusChangeAllowed,
   buildUserSearchWhere,
-  checkEmailDomain,
   closeInstant,
   normalizeEmail,
 } from './users-policy.js';
@@ -12,38 +9,6 @@ import {
 describe('users-policy', () => {
   it('normalizeEmail quita espacios y pasa a minúsculas', () => {
     expect(normalizeEmail('  Ana.Perez@Colegio.EXAMPLE ')).toBe('ana.perez@colegio.example');
-  });
-
-  describe('checkEmailDomain (Decisión 4.3)', () => {
-    it('sin dominio configurado no valida', () => {
-      expect(checkEmailDomain('x@otro.example', 'STUDENT', null)).toBe(true);
-    });
-
-    it('exige el dominio exacto para STUDENT, TEACHER y ADMIN', () => {
-      for (const role of ['STUDENT', 'TEACHER', 'ADMIN'] as const) {
-        expect(checkEmailDomain('a@colegio.example', role, 'colegio.example')).toBe(true);
-        expect(checkEmailDomain('a@otro.example', role, 'colegio.example')).toBe(false);
-        // Un subdominio o un sufijo parecido no cuentan.
-        expect(checkEmailDomain('a@xcolegio.example', role, 'colegio.example')).toBe(false);
-      }
-    });
-
-    it('GUARDIAN está exento hasta D-013', () => {
-      expect(checkEmailDomain('papa@gmail.example', 'GUARDIAN', 'colegio.example')).toBe(true);
-    });
-
-    it('assertEmailDomain responde 422', () => {
-      expect(() => assertEmailDomain('a@otro.example', 'TEACHER', 'colegio.example')).toThrow(
-        UnprocessableEntityException,
-      );
-    });
-
-    it('parseInstitutionDomain normaliza la variable y devuelve null si falta', () => {
-      expect(parseInstitutionDomain(' @Colegio.Example ')).toBe('colegio.example');
-      expect(parseInstitutionDomain('')).toBeNull();
-      expect(parseInstitutionDomain('   ')).toBeNull();
-      expect(parseInstitutionDomain(undefined)).toBeNull();
-    });
   });
 
   describe('closeInstant (Decisión 4.5)', () => {

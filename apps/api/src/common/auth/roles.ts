@@ -9,6 +9,8 @@ export type AuthenticatedUser = {
   // Solo vienen en true: pasos del primer ingreso que la sesion aun no cumplio (RF-71, RN-18).
   mustChangePassword?: true;
   mustVerifyEmail?: true;
+  // Administrador que aun no activa el 2FA (RF-85).
+  mustEnableTwoFactor?: true;
   // Apoderado que aun no registro su telefono (RF-83).
   mustCompleteContact?: true;
 };

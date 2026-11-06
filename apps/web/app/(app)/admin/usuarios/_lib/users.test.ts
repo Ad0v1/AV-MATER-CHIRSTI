@@ -285,7 +285,7 @@ describe('normalizeEmail', () => {
 describe('userPathLabel', () => {
   it('traduce los campos de la API', () => {
     expect(userPathLabel('fullName')).toBe('Nombre');
-    expect(userPathLabel('institutionalEmail')).toBe('Correo');
+    expect(userPathLabel('email')).toBe('Correo');
     expect(userPathLabel('studentIds.3')).toBe('Estudiantes');
     expect(userPathLabel('otro')).toBeUndefined();
     expect(userPathLabel('')).toBeUndefined();
@@ -446,7 +446,7 @@ describe('toStudentChoice', () => {
     const item: UserListItem = {
       id: uuid(1),
       code: '2600000001',
-      institutionalEmail: null,
+      email: null,
       contactEmail: null,
       emailVerified: false,
       dniVerified: false,

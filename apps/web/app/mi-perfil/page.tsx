@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { Suspense } from 'react';
 import { redirect } from 'next/navigation';
 import { ProfileForm } from '@/components/auth/profile-form';
+import { TwoFactorPanel } from '@/components/auth/two-factor-panel';
 import { apiServer } from '@/lib/api/server';
 import { HOME_BY_ROLE, ROLE_LABELS } from '@/lib/roles';
 import { requireUser } from '@/lib/session';
@@ -36,6 +37,7 @@ async function ProfileContent() {
   if (user.mustChangePassword) redirect('/cambiar-clave');
   if (user.mustAcceptPolicy) redirect('/politica');
   if (user.mustVerifyEmail) redirect('/verificar-correo');
+  if (user.mustEnableTwoFactor) redirect('/activar-2fa');
 
   let profile: Profile;
   try {
@@ -81,6 +83,7 @@ async function ProfileContent() {
         pending={user.mustCompleteContact}
         homePath={home}
       />
+      {user.role === 'ADMIN' && !user.mustCompleteContact ? <TwoFactorSection /> : null}
       {!user.mustCompleteContact && (
         <p className="mt-6 border-t border-line pt-4 text-sm">
           <Link href={home} className="text-brand underline-offset-2 hover:underline">
@@ -94,4 +97,16 @@ async function ProfileContent() {
       )}
     </>
   );
+}
+
+// Solo el administrador: estado de su 2FA y códigos de recuperación (RF-85).
+async function TwoFactorSection() {
+  let left = 0;
+  try {
+    left = (await apiServer.get<{ recoveryCodesLeft: number }>('/auth/2fa/status'))
+      .recoveryCodesLeft;
+  } catch {
+    return null;
+  }
+  return <TwoFactorPanel recoveryCodesLeft={left} />;
 }
