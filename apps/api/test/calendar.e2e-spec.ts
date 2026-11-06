@@ -99,7 +99,7 @@ describe.skipIf(!process.env.DATABASE_URL)('Calendario 5e (e2e, MySQL)', () => {
       'apoderado02',
     ]) {
       const user = await prisma.user.findUniqueOrThrow({
-        where: { institutionalEmail: `${key}@colegio.example` },
+        where: { email: `${key}@colegio.example` },
       });
       ids.set(key, user.id);
     }

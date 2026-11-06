@@ -10,7 +10,7 @@ const req = { user: { id: 'adm1', role: 'ADMIN' }, ip: '127.0.0.1' } as unknown 
 const SHA = 'A'.repeat(64);
 
 const file = () => {
-  const buffer = Buffer.from('correo,nombre_completo\nana@colegio.example,Ana Pérez\n');
+  const buffer = Buffer.from('dni,nombre_completo\n12345678,Ana Pérez\n');
   return { originalname: 'x.csv', size: buffer.length, buffer };
 };
 

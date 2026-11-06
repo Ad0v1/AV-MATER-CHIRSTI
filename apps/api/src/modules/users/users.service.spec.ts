@@ -1,4 +1,4 @@
-import { ConflictException, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
+import { ConflictException, NotFoundException } from '@nestjs/common';
 import type { AuditService } from '../../common/audit/audit.service.js';
 import type { SessionService } from '../../common/session/session.service.js';
 import type { LoginAttemptsService } from '../auth/login-attempts.service.js';
@@ -60,7 +60,6 @@ describe('UsersService', () => {
       asIssuer,
       sessions as unknown as SessionService,
       attempts as unknown as LoginAttemptsService,
-      'colegio.example',
     );
   });
 
@@ -72,7 +71,7 @@ describe('UsersService', () => {
         {
           id: 'e1',
           code: '2600000000',
-          institutionalEmail: 'e1@x',
+          email: 'e1@x',
           contactEmail: null,
           emailVerifiedAt: null,
           dniVerifiedAt: null,
@@ -105,7 +104,7 @@ describe('UsersService', () => {
           {
             id: 'e1',
             code: '2600000000',
-            institutionalEmail: 'e1@x',
+            email: 'e1@x',
             contactEmail: null,
             emailVerified: false,
             dniVerified: false,
@@ -153,11 +152,11 @@ describe('UsersService', () => {
       db.prisma.user.update.mockResolvedValue({
         ...userRow('t1', 'TEACHER'),
         fullName: 'Nuevo Nombre',
-        institutionalEmail: 'nuevo@colegio.example',
+        email: 'nuevo@colegio.example',
       });
       await service.update(
         't1',
-        { fullName: 'Nuevo Nombre', institutionalEmail: 'nuevo@colegio.example' },
+        { fullName: 'Nuevo Nombre', email: 'nuevo@colegio.example' },
         actor,
       );
       const event = audit.record.mock.calls[0][0];
@@ -166,22 +165,16 @@ describe('UsersService', () => {
         action: 'users.user.update',
         entityType: 'User',
         entityId: 't1',
-        afterState: { changedFields: ['fullName', 'institutionalEmail'] },
+        afterState: { changedFields: ['fullName', 'email'] },
       });
       expect(JSON.stringify(event)).not.toContain('nuevo@');
       expect(JSON.stringify(event)).not.toContain('Nuevo Nombre');
     });
 
-    it('422 si el correo nuevo no es del dominio institucional', async () => {
-      await expect(
-        service.update('t1', { institutionalEmail: 'x@otro.example' }, actor),
-      ).rejects.toBeInstanceOf(UnprocessableEntityException);
-    });
-
     it('409 si el correo ya es de otro usuario (también por P2002)', async () => {
       db.prisma.user.findUnique.mockResolvedValueOnce({ id: 'otro' });
       await expect(
-        service.update('t1', { institutionalEmail: 'admin@colegio.example' }, actor),
+        service.update('t1', { email: 'admin@colegio.example' }, actor),
       ).rejects.toBeInstanceOf(ConflictException);
 
       db.prisma.user.findUnique
@@ -189,7 +182,7 @@ describe('UsersService', () => {
         .mockResolvedValueOnce(null);
       db.prisma.user.update.mockRejectedValue(prismaError('P2002'));
       await expect(
-        service.update('t1', { institutionalEmail: 'carrera@colegio.example' }, actor),
+        service.update('t1', { email: 'carrera@colegio.example' }, actor),
       ).rejects.toBeInstanceOf(ConflictException);
     });
 
@@ -411,13 +404,10 @@ describe('UsersService', () => {
       }
     });
 
-    it('con correo del colegio: 422 dominio y 409 correo repetido', async () => {
-      await expect(
-        service.createTeacher({ ...dto, institutionalEmail: 'x@otro.example' }, actor),
-      ).rejects.toBeInstanceOf(UnprocessableEntityException);
+    it('con correo del colegio: 409 correo repetido', async () => {
       db.prisma.user.findUnique.mockResolvedValue({ id: 'otro' });
       await expect(
-        service.createTeacher({ ...dto, institutionalEmail: 'docente01@colegio.example' }, actor),
+        service.createTeacher({ ...dto, email: 'docente01@colegio.example' }, actor),
       ).rejects.toBeInstanceOf(ConflictException);
     });
 

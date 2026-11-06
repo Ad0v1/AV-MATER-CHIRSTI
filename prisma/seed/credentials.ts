@@ -13,7 +13,7 @@ import { ADMIN } from './fixtures.js';
 // Si el administrador ya tiene clave y no se pide otra, no se toca (el seed es idempotente).
 export async function seedAdminCredential(prisma: PrismaClient): Promise<void> {
   const admin = await prisma.user.findUnique({
-    where: { institutionalEmail: ADMIN.institutionalEmail },
+    where: { email: ADMIN.email },
     select: { id: true, code: true, localCredential: { select: { userId: true } } },
   });
   if (!admin?.code) throw new Error('El administrador del seed no tiene codigo de usuario.');
@@ -23,7 +23,7 @@ export async function seedAdminCredential(prisma: PrismaClient): Promise<void> {
   await prisma.user.update({
     where: { id: admin.id },
     data: {
-      contactEmail: ADMIN.institutionalEmail,
+      contactEmail: ADMIN.email,
       contactEmailIsGuardian: false,
       emailVerifiedAt: new Date(),
     },

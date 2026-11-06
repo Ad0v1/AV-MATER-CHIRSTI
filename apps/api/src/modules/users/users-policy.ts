@@ -1,27 +1,11 @@
 // Reglas puras del módulo users (sin BD), probadas en users-policy.spec.ts.
-import { ConflictException, UnprocessableEntityException } from '@nestjs/common';
+import { ConflictException } from '@nestjs/common';
 import type { Prisma } from '../../generated/prisma/client.js';
 import type { UserRole, UserStatus } from '../../generated/prisma/enums.js';
 import { USERS_MSG } from './users.errors.js';
 
 /** Correo normalizado: sin espacios en los extremos y en minúsculas (Decisión 4.3). */
 export const normalizeEmail = (email: string): string => email.trim().toLowerCase();
-
-/**
- * true si el correo pertenece al dominio institucional. Sin dominio configurado (null) no se
- * valida. GUARDIAN está exento hasta D-013 (su identidad puede ser externa).
- */
-export function checkEmailDomain(email: string, role: UserRole, domain: string | null): boolean {
-  if (domain === null || role === 'GUARDIAN') return true;
-  return normalizeEmail(email).endsWith(`@${domain.trim().toLowerCase()}`);
-}
-
-/** 422 si el correo no cumple el dominio institucional para ese rol. */
-export function assertEmailDomain(email: string, role: UserRole, domain: string | null): void {
-  if (!checkEmailDomain(email, role, domain)) {
-    throw new UnprocessableEntityException(USERS_MSG.emailDomain);
-  }
-}
 
 /**
  * Instante de cierre de una matrícula o vínculo (Decisión 4.5): la hora del servidor, pero nunca

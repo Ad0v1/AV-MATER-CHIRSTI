@@ -1,6 +1,5 @@
 import {
   ConflictException,
-  Inject,
   Injectable,
   NotFoundException,
   UnprocessableEntityException,
@@ -14,7 +13,6 @@ import {
   type IssuedCredentials,
 } from '../auth/credential-issuer.service.js';
 import type { Actor } from '../academic/request-user.js';
-import { INSTITUTION_EMAIL_DOMAIN } from './institution-domain.js';
 import {
   linkInclude,
   toGuardianLinkView,
@@ -24,7 +22,7 @@ import {
 } from './user-views.js';
 import { recordUsers } from './users-audit.js';
 import { lockUsersForUpdate, type LockedUser } from './users-locks.js';
-import { assertEmailDomain, closeInstant } from './users-policy.js';
+import { closeInstant } from './users-policy.js';
 import { assertEmailFree } from './users-queries.js';
 import type {
   CreateGuardianDto,
@@ -76,16 +74,14 @@ export class GuardianLinksService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly issuer: CredentialIssuerService,
-    @Inject(INSTITUTION_EMAIL_DOMAIN) private readonly domain: string | null,
   ) {}
 
   // RF-20: apoderado con su codigo y su contrasena inicial, vinculado a 1 o mas alumnos, en una
   // transaccion (alumnos bloqueados). Si ya existe un apoderado con ese DNI no se crea otro:
   // se vincula con POST /guardians/:id/students (RF-86).
   async createGuardian(dto: CreateGuardianDto, actor: Actor): Promise<CreatedGuardianResult> {
-    if (dto.institutionalEmail) {
-      assertEmailDomain(dto.institutionalEmail, 'GUARDIAN', this.domain); // exento hasta D-013
-      await assertEmailFree(this.prisma, dto.institutionalEmail);
+    if (dto.email) {
+      await assertEmailFree(this.prisma, dto.email);
     }
 
     const { user, credentials, links } = await this.prisma
@@ -98,7 +94,7 @@ export class GuardianLinksService {
           role: 'GUARDIAN',
           dni: dto.dni,
           dniVerified: dto.dniVerified,
-          institutionalEmail: dto.institutionalEmail,
+          email: dto.email,
         });
         const createdLinks = [];
         for (const studentId of dto.studentIds) {

@@ -186,7 +186,7 @@ describe.skipIf(!process.env.DATABASE_URL)('Ciclo de vida 5g (e2e, MySQL + MinIO
     const sessions = app.get(SessionService);
     for (const key of ['admin', 'docente01', 'estudiante01']) {
       const user = await prisma.user.findUniqueOrThrow({
-        where: { institutionalEmail: `${key}@colegio.example` },
+        where: { email: `${key}@colegio.example` },
       });
       ids.set(key, user.id);
       cookies.set(key, await sessions.create({ id: user.id, role: user.role as Role }));
@@ -478,7 +478,7 @@ describe.skipIf(!process.env.DATABASE_URL)('Ciclo de vida 5g (e2e, MySQL + MinIO
       expect(row.params).toEqual({ studentId: student });
     });
 
-    it('el procesador arma el JSON con contactEmail e institutionalEmail (opcional)', async () => {
+    it('el procesador arma el JSON con contactEmail e email (opcional)', async () => {
       const student = ids.get('estudiante01')!;
       const user = await prisma.user.findUniqueOrThrow({ where: { id: student } });
       const data = await buildPersonalData(
@@ -489,7 +489,7 @@ describe.skipIf(!process.env.DATABASE_URL)('Ciclo de vida 5g (e2e, MySQL + MinIO
       expect(data?.usuario).toMatchObject({
         id: student,
         correoContacto: user.contactEmail,
-        correoInstitucional: user.institutionalEmail,
+        correoUsuario: user.email,
       });
       expect(Array.isArray(data?.matriculas)).toBe(true);
       expect(Array.isArray(data?.notas)).toBe(true);

@@ -74,12 +74,12 @@ describe.skipIf(!process.env.DATABASE_URL)('Promoción en bloque RF-16 (e2e, MyS
     const yearIds = qaYears.map((y) => y.id);
     await prisma.enrollment.deleteMany({ where: { academicYearId: { in: yearIds } } });
     await prisma.enrollment.deleteMany({
-      where: { student: { institutionalEmail: { startsWith: USER_PREFIX } } },
+      where: { student: { email: { startsWith: USER_PREFIX } } },
     });
     await prisma.section.deleteMany({ where: { academicYearId: { in: yearIds } } });
     await prisma.academicPeriod.deleteMany({ where: { academicYearId: { in: yearIds } } });
     await prisma.academicYear.deleteMany({ where: { id: { in: yearIds } } });
-    await prisma.user.deleteMany({ where: { institutionalEmail: { startsWith: USER_PREFIX } } });
+    await prisma.user.deleteMany({ where: { email: { startsWith: USER_PREFIX } } });
   };
 
   const y = (year: number) => years.get(year)!;
@@ -104,13 +104,13 @@ describe.skipIf(!process.env.DATABASE_URL)('Promoción en bloque RF-16 (e2e, MyS
     const sessions = app.get(SessionService);
     for (const key of ['admin', 'docente01', 'estudiante01']) {
       const user = await prisma.user.findUniqueOrThrow({
-        where: { institutionalEmail: `${key}@colegio.example` },
+        where: { email: `${key}@colegio.example` },
       });
       cookies.set(key, await sessions.create({ id: user.id, role: user.role }));
     }
     const inactiveAdmin = await prisma.user.create({
       data: {
-        institutionalEmail: `${USER_PREFIX}admin@colegio.example`,
+        email: `${USER_PREFIX}admin@colegio.example`,
         fullName: 'QA Admin Inactivo',
         role: 'ADMIN',
         status: 'INACTIVE',
@@ -168,7 +168,7 @@ describe.skipIf(!process.env.DATABASE_URL)('Promoción en bloque RF-16 (e2e, MyS
     for (const [key, name, status, sectionKey, current] of fixtures) {
       const user = await prisma.user.create({
         data: {
-          institutionalEmail: `${USER_PREFIX}${key}@colegio.example`,
+          email: `${USER_PREFIX}${key}@colegio.example`,
           fullName: `QA ${name}`,
           role: 'STUDENT',
           status,

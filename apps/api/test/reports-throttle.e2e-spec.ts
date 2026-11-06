@@ -32,7 +32,7 @@ describe.skipIf(!process.env.DATABASE_URL)('Reportes 5f: throttle real (e2e)', (
     const sessions = app.get(SessionService);
     for (const key of ['admin', 'docente01']) {
       const user = await prisma.user.findUniqueOrThrow({
-        where: { institutionalEmail: `${key}@colegio.example` },
+        where: { email: `${key}@colegio.example` },
       });
       cookies.set(key, await sessions.create({ id: user.id, role: user.role as never }));
     }

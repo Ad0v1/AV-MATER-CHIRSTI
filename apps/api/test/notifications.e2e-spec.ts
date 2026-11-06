@@ -97,7 +97,7 @@ describe.skipIf(!process.env.DATABASE_URL)('Notificaciones 5d (e2e, MySQL)', () 
     ).id;
     for (const key of ['docente03', 'estudiante01', 'estudiante11', 'apoderado01']) {
       const user = await prisma.user.findUniqueOrThrow({
-        where: { institutionalEmail: `${key}@colegio.example` },
+        where: { email: `${key}@colegio.example` },
       });
       ids.set(key, user.id);
       cookies.set(

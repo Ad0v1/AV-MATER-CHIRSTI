@@ -105,18 +105,22 @@ export const CSV_CONTENT_TYPE = 'text/csv; charset=utf-8';
 /** Códigos de error por fila (contrato con la pantalla de F5). */
 export const ROW_ERROR_CODES = [
   'REQUIRED',
-  'INVALID_EMAIL',
-  'EMAIL_DOMAIN',
+  'INVALID_DNI',
   'INVALID_NAME',
   'INVALID_GRADE',
   'INVALID_SECTION',
   'SECTION_NOT_FOUND',
   'SECTION_INACTIVE',
   'DUPLICATE_IN_FILE',
-  'EMAIL_TAKEN',
+  'DNI_TAKEN',
   'STUDENT_NOT_FOUND',
   'NOT_STUDENT',
   'STUDENT_WITHDRAWN',
+  'NOT_GUARDIAN',
+  'GUARDIAN_WITHDRAWN',
+  'GUARDIAN_NAME_REQUIRED',
+  'DUPLICATE_GUARDIAN',
+  'MAX_GUARDIANS',
   'SAME_PERSON',
   'NAME_MISMATCH',
   'TOO_MANY_STUDENTS',
@@ -131,19 +135,23 @@ export type RowErrorCode = (typeof ROW_ERROR_CODES)[number];
 /** Mensajes fijos por código: nunca repiten el valor de la celda. */
 export const ROW_ERROR_MSG: Record<RowErrorCode, string> = {
   REQUIRED: 'El campo es obligatorio',
-  INVALID_EMAIL: 'El correo no es válido',
-  EMAIL_DOMAIN: 'El correo no pertenece al dominio institucional',
+  INVALID_DNI: 'El DNI debe tener 8 dígitos (si empieza con 0, da formato de texto a la columna)',
   INVALID_NAME: 'El nombre no es válido (3 a 120 caracteres, sin empezar por = + - @)',
   INVALID_GRADE: 'El grado debe ser un número entero del 1 al 5',
   INVALID_SECTION: 'La sección debe tener de 1 a 8 letras o dígitos',
   SECTION_NOT_FOUND: 'No existe esa sección en el año académico activo',
   SECTION_INACTIVE: 'La sección está inactiva',
-  DUPLICATE_IN_FILE: 'El correo está repetido en el archivo',
-  EMAIL_TAKEN: 'Ya existe un usuario con ese correo',
-  STUDENT_NOT_FOUND: 'No existe un estudiante con ese correo',
-  NOT_STUDENT: 'El usuario de ese correo no es un estudiante',
+  DUPLICATE_IN_FILE: 'El DNI está repetido en el archivo',
+  DNI_TAKEN: 'Ya existe una persona registrada con ese DNI',
+  STUDENT_NOT_FOUND: 'No existe un estudiante con ese DNI',
+  NOT_STUDENT: 'La persona con ese DNI no es un estudiante',
   STUDENT_WITHDRAWN: 'El estudiante está retirado',
-  SAME_PERSON: 'El apoderado y el estudiante deben ser personas distintas',
+  NOT_GUARDIAN: 'La persona con ese DNI ya existe y no es un apoderado',
+  GUARDIAN_WITHDRAWN: 'El apoderado está retirado',
+  GUARDIAN_NAME_REQUIRED: 'El apoderado es nuevo: escribe su nombre completo',
+  DUPLICATE_GUARDIAN: 'El segundo apoderado es el mismo que el primero',
+  MAX_GUARDIANS: 'El estudiante no puede tener más de 2 apoderados',
+  SAME_PERSON: 'La misma persona no puede ser estudiante y apoderado',
   NAME_MISMATCH: 'El nombre del apoderado no coincide con el de su primera fila',
   TOO_MANY_STUDENTS: 'El apoderado supera el máximo de 10 estudiantes',
   DUPLICATE_LINK: 'El vínculo entre ese apoderado y ese estudiante está repetido',
@@ -176,7 +184,18 @@ export type ImportReport = {
   canConfirm: boolean;
 };
 
-export type ImportCommitResult = { type: ImportType; created: ImportSummary };
+/**
+ * Hoja de credenciales de los usuarios que se acaban de crear (RF-76). Solo existe en la respuesta
+ * del commit: el servidor no la guarda, y la contraseña inicial no se puede volver a ver.
+ */
+export type CredentialsSheet = { filename: string; contentType: string; base64: string };
+
+export type ImportCommitResult = {
+  type: ImportType;
+  created: ImportSummary;
+  /** Nulo si no se creó ningún usuario nuevo (por ejemplo, solo se vincularon apoderados). */
+  credentialsSheet: CredentialsSheet | null;
+};
 
 /** Celda leída: texto, o un problema que impide leerla (solo XLSX). */
 export type CellProblem = { problem: 'FORMULA_NOT_ALLOWED' | 'INVALID_CELL' };

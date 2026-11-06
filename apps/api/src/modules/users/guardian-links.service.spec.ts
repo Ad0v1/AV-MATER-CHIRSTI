@@ -31,12 +31,7 @@ describe('GuardianLinksService', () => {
     db = makePrisma();
     audit = { record: vi.fn().mockResolvedValue(undefined) };
     ({ issuer, asIssuer } = makeIssuer());
-    service = new GuardianLinksService(
-      db.asService,
-      audit as unknown as AuditService,
-      asIssuer,
-      'colegio.example',
-    );
+    service = new GuardianLinksService(db.asService, audit as unknown as AuditService, asIssuer);
     db.raw.users.set('apo1', { id: 'apo1', role: 'GUARDIAN', status: 'ACTIVE' });
     db.raw.users.set('est1', { id: 'est1', role: 'STUDENT', status: 'ACTIVE' });
     db.raw.users.set('est2', { id: 'est2', role: 'STUDENT', status: 'INACTIVE' });

@@ -13,6 +13,7 @@ import {
   importReducer,
   initialImportState,
   parseCommitResult,
+  sheetBlob,
   parseImportReport,
   parseRowErrors,
   previewAnnouncement,
@@ -22,6 +23,12 @@ import {
   type ImportReport,
   type ImportState,
 } from './import-machine';
+
+const SHEET = {
+  filename: 'credenciales-students-2026-11-05.xlsx',
+  contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  base64: 'aG9sYQ==',
+};
 
 const SHA = 'a'.repeat(64);
 
@@ -43,7 +50,7 @@ const badReport = report({
   validRows: 1,
   errorRows: 1,
   canConfirm: false,
-  errors: [{ row: 3, column: 'correo', code: 'INVALID_EMAIL', message: 'El correo no es válido' }],
+  errors: [{ row: 3, column: 'dni', code: 'INVALID_DNI', message: 'El DNI no es válido' }],
   summary: { users: 1, enrollments: 1, links: 0 },
 });
 
@@ -75,7 +82,11 @@ describe('importReducer', () => {
     expect(s.phase).toBe('confirmable');
     s = importReducer(s, { type: 'CONFIRM' });
     expect(s.phase).toBe('confirmando');
-    const result = { type: 'students' as const, created: { users: 2, enrollments: 2, links: 0 } };
+    const result = {
+      type: 'students' as const,
+      created: { users: 2, enrollments: 2, links: 0 },
+      credentialsSheet: SHEET,
+    };
     s = importReducer(s, { type: 'COMMIT_OK', result });
     expect(s).toMatchObject({ phase: 'hecho', result });
     expect(canValidate(s)).toBe(false);
@@ -150,7 +161,11 @@ describe('importReducer', () => {
     expect(
       importReducer(idle, {
         type: 'COMMIT_OK',
-        result: { type: 'students', created: { users: 1, enrollments: 1, links: 0 } },
+        result: {
+          type: 'students',
+          created: { users: 1, enrollments: 1, links: 0 },
+          credentialsSheet: SHEET,
+        },
       }),
     ).toBe(idle);
     expect(importReducer(idle, { type: 'COMMIT_FAILED', status: 409, message: 'x' })).toBe(idle);
@@ -173,7 +188,7 @@ describe('importReducer', () => {
   });
 
   it('422 en el commit muestra los details en la tabla', () => {
-    const details = [{ row: 2, column: 'correo', code: 'EMAIL_TAKEN', message: 'Ya existe' }];
+    const details = [{ row: 2, column: 'dni', code: 'DNI_TAKEN', message: 'Ya existe' }];
     const s = importReducer(confirming(), {
       type: 'COMMIT_FAILED',
       status: 422,
@@ -262,11 +277,11 @@ describe('parseRowErrors / commitRowErrors', () => {
       error: {
         code: 'BUSINESS_RULE_VIOLATION',
         message: 'Solicitud invalida',
-        details: [{ row: 4, column: 'correo', code: 'EMAIL_TAKEN', message: 'Ya existe' }],
+        details: [{ row: 4, column: 'dni', code: 'DNI_TAKEN', message: 'Ya existe' }],
       },
     };
     expect(commitRowErrors(body)).toEqual([
-      { row: 4, column: 'correo', code: 'EMAIL_TAKEN', message: 'Ya existe' },
+      { row: 4, column: 'dni', code: 'DNI_TAKEN', message: 'Ya existe' },
     ]);
     expect(commitRowErrors(null)).toEqual([]);
     expect(commitRowErrors({ error: 'x' })).toEqual([]);
@@ -275,11 +290,44 @@ describe('parseRowErrors / commitRowErrors', () => {
 
 describe('parseCommitResult', () => {
   it('valida la forma', () => {
-    const ok = { type: 'guardians', created: { users: 1, enrollments: 0, links: 2 } };
+    const ok = {
+      type: 'guardians',
+      created: { users: 1, enrollments: 0, links: 2 },
+      credentialsSheet: SHEET,
+    };
     expect(parseCommitResult(ok)).toEqual(ok);
     expect(parseCommitResult({ ...ok, type: 'x' })).toBeNull();
     expect(parseCommitResult({ ...ok, created: { users: 1, enrollments: 0 } })).toBeNull();
     expect(parseCommitResult(null)).toBeNull();
+  });
+
+  it('RF-76: sin cuentas nuevas la hoja es nula; con cuentas nuevas es obligatoria y valida', () => {
+    const none = { type: 'guardians', created: { users: 0, enrollments: 0, links: 1 } };
+    expect(parseCommitResult({ ...none, credentialsSheet: null })).toEqual({
+      ...none,
+      credentialsSheet: null,
+    });
+    expect(parseCommitResult(none)).toMatchObject({ credentialsSheet: null });
+    const some = { type: 'teachers', created: { users: 1, enrollments: 0, links: 0 } };
+    expect(parseCommitResult(some)).toBeNull();
+    expect(parseCommitResult({ ...some, credentialsSheet: null })).toBeNull();
+    for (const bad of [
+      { ...SHEET, filename: '../x.xlsx' },
+      { ...SHEET, filename: 'hoja.exe' },
+      { ...SHEET, contentType: 'text/html' },
+      { ...SHEET, base64: 'no es base64!' },
+      { ...SHEET, base64: '' },
+      'texto',
+    ]) {
+      expect(parseCommitResult({ ...some, credentialsSheet: bad })).toBeNull();
+    }
+  });
+
+  it('RF-76: sheetBlob decodifica la hoja desde la memoria', async () => {
+    const blob = sheetBlob(SHEET);
+    expect(blob?.type).toBe(SHEET.contentType);
+    expect(await blob?.text()).toBe('hola');
+    expect(sheetBlob({ ...SHEET, base64: '%%%' })).toBeNull();
   });
 });
 
@@ -368,7 +416,11 @@ describe('casos límite adicionales (QA 5c)', () => {
   it('RF-21: tras hecho, elegir otro archivo reinicia y RESET se permite', () => {
     const done = importReducer(confirming(), {
       type: 'COMMIT_OK',
-      result: { type: 'students', created: { users: 2, enrollments: 2, links: 0 } },
+      result: {
+        type: 'students',
+        created: { users: 2, enrollments: 2, links: 0 },
+        credentialsSheet: SHEET,
+      },
     });
     expect(importReducer(done, okFile)).toMatchObject({ phase: 'idle', result: null });
     expect(importReducer(done, { type: 'RESET' }).phase).toBe('idle');
@@ -432,8 +484,14 @@ describe('casos límite adicionales (QA 5c)', () => {
       'Validación terminada: 1 fila sin errores. Se creará 1 usuario y 1 matrícula al confirmar.',
     );
     expect(
-      commitAnnouncement({ type: 'guardians', created: { users: 2, enrollments: 0, links: 1 } }),
-    ).toBe('Importación terminada. Se crearon 2 usuarios y 1 vínculo.');
+      commitAnnouncement({
+        type: 'guardians',
+        created: { users: 2, enrollments: 0, links: 1 },
+        credentialsSheet: SHEET,
+      }),
+    ).toBe(
+      'Importación terminada. Se crearon 2 usuarios y 1 vínculo. Descarga la hoja de credenciales: no se vuelve a mostrar.',
+    );
   });
 });
 
@@ -451,13 +509,17 @@ describe('textos', () => {
     );
     expect(previewAnnouncement(badReport)).toMatch(/1 con errores/);
     expect(
-      commitAnnouncement({ type: 'teachers', created: { users: 1, enrollments: 0, links: 0 } }),
+      commitAnnouncement({
+        type: 'teachers',
+        created: { users: 1, enrollments: 0, links: 0 },
+        credentialsSheet: null,
+      }),
     ).toBe('Importación terminada. Se creó 1 usuario.');
   });
 
   it('columnLabel y templateHref', () => {
     expect(columnLabel(null)).toBe('Toda la fila');
-    expect(columnLabel('correo')).toBe('correo');
+    expect(columnLabel('dni')).toBe('dni');
     expect(templateHref('guardians', 'csv')).toBe(
       '/admin/usuarios/importar/archivo/plantilla?type=guardians&format=csv',
     );

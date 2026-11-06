@@ -20,7 +20,7 @@ export type NewLoginUser = {
   dni: string;
   // Marca "verificado contra el documento" (RF-69), la pone quien da el alta.
   dniVerified?: boolean;
-  institutionalEmail?: string;
+  email?: string;
 };
 
 // Da de alta a un usuario con su codigo, su DNI cifrado y su contrasena inicial aleatoria
@@ -59,7 +59,7 @@ export class CredentialIssuerService {
     const initialPassword = generateInitialPassword();
     const user = await tx.user.create({
       data: {
-        ...(input.institutionalEmail ? { institutionalEmail: input.institutionalEmail } : {}),
+        ...(input.email ? { email: input.email } : {}),
         fullName: input.fullName,
         role: input.role,
         code,

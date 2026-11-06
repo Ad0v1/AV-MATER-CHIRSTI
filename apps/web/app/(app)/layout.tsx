@@ -20,6 +20,7 @@ async function AuthenticatedShell({ children }: { children: React.ReactNode }) {
   if (user.mustChangePassword) redirect('/cambiar-clave');
   if (user.mustAcceptPolicy) redirect('/politica');
   if (user.mustVerifyEmail) redirect('/verificar-correo');
+  if (user.mustEnableTwoFactor) redirect('/activar-2fa');
   if (user.mustCompleteContact) redirect('/mi-perfil');
 
   return (

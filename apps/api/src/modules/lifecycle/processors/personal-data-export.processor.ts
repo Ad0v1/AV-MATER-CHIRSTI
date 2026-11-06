@@ -31,7 +31,7 @@ export async function buildPersonalData(prisma: PrismaService, studentId: string
     where: { id: studentId },
     select: {
       id: true,
-      institutionalEmail: true,
+      email: true,
       contactEmail: true,
       emailVerifiedAt: true,
       fullName: true,
@@ -124,7 +124,7 @@ export async function buildPersonalData(prisma: PrismaService, studentId: string
     generadoEn: now.toISOString(),
     usuario: {
       id: user.id,
-      correoInstitucional: user.institutionalEmail,
+      correoUsuario: user.email,
       correoContacto: user.contactEmail,
       correoVerificadoEl: user.emailVerifiedAt,
       nombreCompleto: user.fullName,

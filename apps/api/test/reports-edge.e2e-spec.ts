@@ -172,7 +172,7 @@ describe.skipIf(!process.env.DATABASE_URL)('Reportes 5f: casos límite (e2e)', (
       'apoderado01',
     ]) {
       const user = await prisma.user.findUniqueOrThrow({
-        where: { institutionalEmail: `${key}@colegio.example` },
+        where: { email: `${key}@colegio.example` },
       });
       ids.set(key, user.id);
       names.set(key, user.fullName);

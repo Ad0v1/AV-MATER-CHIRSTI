@@ -261,7 +261,7 @@ describe.skipIf(!process.env.DATABASE_URL)('Ciclo de vida 5g: casos límite (e2e
     const sessions = app.get(SessionService);
     for (const key of ['admin', 'docente01', 'estudiante01', 'apoderado01']) {
       const user = await prisma.user.findUniqueOrThrow({
-        where: { institutionalEmail: `${key}@colegio.example` },
+        where: { email: `${key}@colegio.example` },
       });
       ids.set(key, user.id);
       cookies.set(key, await sessions.create({ id: user.id, role: user.role as Role }));
@@ -859,7 +859,7 @@ describe.skipIf(!process.env.DATABASE_URL)('Ciclo de vida 5g: casos límite (e2e
       for (const forbidden of [
         other.id,
         other.fullName,
-        other.institutionalEmail,
+        other.email,
         other.contactEmail,
         other.code,
       ]) {

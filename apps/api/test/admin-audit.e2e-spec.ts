@@ -49,7 +49,7 @@ describe.skipIf(!process.env.DATABASE_URL)('Bitácora del ADMIN 5g (e2e, MySQL)'
     const sessions = app.get(SessionService);
     for (const key of ['admin', 'docente01', 'estudiante01']) {
       const user = await prisma.user.findUniqueOrThrow({
-        where: { institutionalEmail: `${key}@colegio.example` },
+        where: { email: `${key}@colegio.example` },
       });
       ids.set(key, user.id);
       cookies.set(key, await sessions.create({ id: user.id, role: user.role as Role }));

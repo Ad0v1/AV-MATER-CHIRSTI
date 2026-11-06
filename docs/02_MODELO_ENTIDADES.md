@@ -17,8 +17,9 @@
 
 | Entidad | Dueño | Campos mínimos propuestos | Reglas/relaciones de ERS |
 |---|---|---|---|
-| `User` | Dev 2, auth Dev 1 | id, institutionalEmail, name, role, status | RF-03, RF-18..23; no acceso si inactivo/retirado |
-| `LocalCredential` | Dev 1 | userId, passwordHash, totp* | RF-04; respaldo solo admin |
+| `User` | Dev 2, auth Dev 1 | id, email, name, role, status | RF-03, RF-18..23; no acceso si inactivo/retirado |
+| `LocalCredential` | Dev 1 | userId, passwordHash, totp*, mustChangePassword | Contraseña de todos los usuarios (D-058); `totp*` solo el administrador, obligatorio (RF-85) |
+| `RecoveryCode` | Dev 1 | userId, codeHash (HMAC), usedAt | 10 códigos de recuperación del 2FA del administrador, de un solo uso (D-064) |
 | `PolicyAcceptance` | Dev 1 | userId, policyVersion, acceptedAt, ip, userAgent | RF-07; ip y userAgent son evidencia del consentimiento (retención pendiente, D-023) |
 | `GuardianStudent` | Dev 2 | id (`CHAR(36)`), guardianId, studentId, isActive (TRUE o NULL), createdAt, revokedAt | RF-20, RF-52, RN-13; vínculo revocable en la fila (PROPUESTA F3, D-032); finalidad y plazo de conservación PENDIENTE INSTITUCIÓN (ver docs/04) |
 | `AcademicYear` | Dev 2 | year (único), isActive (TRUE o NULL, único), closedAt, createdAt, updatedAt | RF-09; solo uno activo (invariante 1, D-027) |

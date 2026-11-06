@@ -136,7 +136,7 @@ export type SeedStatus = 'ACTIVE' | 'INACTIVE' | 'WITHDRAWN';
 
 export interface UserFixture {
   key: string; // parte local del correo: "estudiante01"
-  institutionalEmail: string;
+  email: string;
   fullName: string;
   role: SeedRole;
   status: SeedStatus;
@@ -147,7 +147,7 @@ const user = (
   fullName: string,
   role: SeedRole,
   status: SeedStatus = 'ACTIVE',
-): UserFixture => ({ key, institutionalEmail: email(key), fullName, role, status });
+): UserFixture => ({ key, email: email(key), fullName, role, status });
 
 export const ADMIN = user('admin', 'Administrador Ficticio', 'ADMIN');
 

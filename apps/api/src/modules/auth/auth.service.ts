@@ -1,5 +1,7 @@
 import {
+  ConflictException,
   ForbiddenException,
+  NotFoundException,
   Inject,
   Injectable,
   UnauthorizedException,
@@ -15,6 +17,7 @@ import { DniService } from './dni.service.js';
 import { LoginAttemptsService } from './login-attempts.service.js';
 import { checkPasswordPolicy } from './password-policy.js';
 import { PasswordService } from './password.service.js';
+import { RecoveryCodesService } from './recovery-codes.service.js';
 import { pendingFlags } from './setup-flags.js';
 import { TotpService } from './totp.service.js';
 import { isValidUserCode } from './user-code.js';
@@ -27,6 +30,7 @@ export type LoginResult = {
   mustAcceptPolicy: boolean;
   mustChangePassword: boolean;
   mustVerifyEmail: boolean;
+  mustEnableTwoFactor: boolean;
   mustCompleteContact: boolean;
 };
 
@@ -50,6 +54,7 @@ export class AuthService {
     private readonly store: SessionStore,
     private readonly attempts: LoginAttemptsService,
     private readonly dni: DniService,
+    private readonly recoveryCodes: RecoveryCodesService,
     @Inject(ENV) private readonly env: Env,
   ) {}
 
@@ -93,19 +98,37 @@ export class AuthService {
     }
 
     if (credential.totpSecretEncrypted) {
-      if (!dto.totp) {
+      if (!dto.totp && !dto.recoveryCode) {
         throw new UnauthorizedException({
           message: 'Ingresa el codigo de verificacion',
           code: 'TOTP_REQUIRED',
         });
       }
-      const secret = this.totp.decrypt(credential.totpSecretEncrypted);
-      if (!(await this.totp.verifyOnce(found.id, secret, dto.totp))) {
-        await this.failed(code, found.id, ip);
-        throw new UnauthorizedException({
-          message: 'Codigo de verificacion invalido o ya utilizado',
-          code: 'TOTP_INVALID',
+      if (dto.recoveryCode) {
+        // RF-85: un codigo de recuperacion sirve una sola vez y cuenta como intento fallido si no vale.
+        if (!(await this.recoveryCodes.consume(found.id, dto.recoveryCode))) {
+          await this.failed(code, found.id, ip);
+          throw new UnauthorizedException({
+            message: 'Codigo de recuperacion invalido o ya utilizado',
+            code: 'RECOVERY_CODE_INVALID',
+          });
+        }
+        await this.audit.record({
+          actorId: found.id,
+          action: 'auth.2fa_recovery_used',
+          module: 'auth',
+          ip,
+          afterState: { remaining: await this.recoveryCodes.remaining(found.id) },
         });
+      } else {
+        const secret = this.totp.decrypt(credential.totpSecretEncrypted);
+        if (!(await this.totp.verifyOnce(found.id, secret, dto.totp!))) {
+          await this.failed(code, found.id, ip);
+          throw new UnauthorizedException({
+            message: 'Codigo de verificacion invalido o ya utilizado',
+            code: 'TOTP_INVALID',
+          });
+        }
       }
     }
 
@@ -123,6 +146,7 @@ export class AuthService {
       mustAcceptPolicy: await this.mustAcceptPolicy(found.id),
       mustChangePassword,
       mustVerifyEmail: flags.mustVerifyEmail === true,
+      mustEnableTwoFactor: flags.mustEnableTwoFactor === true,
       mustCompleteContact: flags.mustCompleteContact === true,
     };
   }
@@ -130,7 +154,10 @@ export class AuthService {
   // Pasos pendientes del usuario segun la base de datos. El controlador los usa al abrir una
   // sesion nueva despues de cambiar la contrasena, verificar el correo o completar el perfil.
   async pendingFlagsOf(userId: string): Promise<ReturnType<typeof pendingFlags>> {
-    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      include: { localCredential: true },
+    });
     if (!user) throw new UnauthorizedException('Debes iniciar sesion');
     return pendingFlags(user);
   }
@@ -262,8 +289,15 @@ export class AuthService {
 
   // Paso 1 del 2FA: el secreto queda pendiente en Redis y solo se guarda en la base al confirmar un codigo.
   async startTotpSetup(userId: string): Promise<{ secret: string; otpauthUrl: string }> {
-    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      include: { localCredential: true },
+    });
     if (!user) throw new UnauthorizedException('Debes iniciar sesion');
+    // Cambiar de aplicacion autenticadora pasa por el reinicio del 2FA por otro administrador.
+    if (user.localCredential?.totpSecretEncrypted) {
+      throw new ConflictException('El 2FA ya esta activo');
+    }
     const secret = this.totp.newSecret();
     await this.store.set(this.setupKey(userId), secret, SETUP_TTL_SECONDS);
     // La etiqueta de la app autenticadora es el codigo de usuario: el correo ya no es la identidad.
@@ -273,8 +307,9 @@ export class AuthService {
     };
   }
 
-  // Paso 2: se comprueba un codigo real antes de activar, para no dejar al admin sin acceso.
-  async enableTotp(userId: string, code: string, ip?: string): Promise<void> {
+  // Paso 2: se comprueba un codigo real antes de activar, para no dejar al admin sin acceso. Al
+  // activar se entregan los codigos de recuperacion, una unica vez y en claro (RF-85).
+  async enableTotp(userId: string, code: string, ip?: string): Promise<string[]> {
     const secret = await this.store.get(this.setupKey(userId));
     if (!secret) {
       throw new BadRequestException('La configuracion del 2FA expiro. Inicia de nuevo');
@@ -282,12 +317,75 @@ export class AuthService {
     if (!(await this.totp.verifyOnce(userId, secret, code))) {
       throw new BadRequestException('Codigo de verificacion invalido');
     }
-    await this.prisma.localCredential.update({
-      where: { userId },
-      data: { totpSecretEncrypted: this.totp.encrypt(secret) },
+    const recoveryCodes = await this.prisma.$transaction(async (tx) => {
+      await tx.localCredential.update({
+        where: { userId },
+        data: { totpSecretEncrypted: this.totp.encrypt(secret) },
+      });
+      return this.recoveryCodes.issue(userId, tx);
     });
     await this.store.del(this.setupKey(userId));
     await this.audit.record({ actorId: userId, action: 'auth.2fa_enabled', module: 'auth', ip });
+    return recoveryCodes;
+  }
+
+  async twoFactorStatus(userId: string): Promise<{ enabled: boolean; recoveryCodesLeft: number }> {
+    const credential = await this.prisma.localCredential.findUnique({ where: { userId } });
+    return {
+      enabled: !!credential?.totpSecretEncrypted,
+      recoveryCodesLeft: credential?.totpSecretEncrypted
+        ? await this.recoveryCodes.remaining(userId)
+        : 0,
+    };
+  }
+
+  // Juego nuevo de codigos (los anteriores dejan de valer). Exige un codigo vigente de la app, para
+  // que quien tenga la sesion abierta pero no el telefono no pueda sacar codigos nuevos.
+  async regenerateRecoveryCodes(userId: string, code: string, ip?: string): Promise<string[]> {
+    const credential = await this.prisma.localCredential.findUnique({ where: { userId } });
+    if (!credential?.totpSecretEncrypted) {
+      throw new BadRequestException('Primero activa el 2FA');
+    }
+    const secret = this.totp.decrypt(credential.totpSecretEncrypted);
+    if (!(await this.totp.verifyOnce(userId, secret, code))) {
+      throw new BadRequestException('Codigo de verificacion invalido');
+    }
+    const codes = await this.recoveryCodes.issue(userId);
+    await this.audit.record({
+      actorId: userId,
+      action: 'auth.2fa_recovery_regenerated',
+      module: 'auth',
+      ip,
+    });
+    return codes;
+  }
+
+  // Un administrador que perdio el telefono y sus codigos entra de nuevo si otro administrador
+  // reinicia su 2FA: en su proximo ingreso vuelve a la pantalla de activacion.
+  async resetTwoFactor(adminId: string, targetId: string, ip?: string): Promise<void> {
+    if (adminId === targetId) {
+      throw new BadRequestException('No puedes reiniciar tu propio 2FA');
+    }
+    const target = await this.prisma.user.findUnique({
+      where: { id: targetId },
+      include: { localCredential: true },
+    });
+    if (!target?.localCredential) throw new NotFoundException('Usuario no encontrado');
+    await this.prisma.$transaction(async (tx) => {
+      await tx.localCredential.update({
+        where: { userId: targetId },
+        data: { totpSecretEncrypted: null },
+      });
+      await this.recoveryCodes.revokeAll(targetId, tx);
+    });
+    await this.audit.record({
+      actorId: adminId,
+      action: 'auth.2fa_reset',
+      module: 'auth',
+      entityType: 'User',
+      entityId: targetId,
+      ip,
+    });
   }
 
   private setupKey(userId: string): string {

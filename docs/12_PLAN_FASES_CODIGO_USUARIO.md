@@ -36,7 +36,7 @@
 
 ## Fase C — Usuarios y apoderados (Dev 2)
 
-> **Estado (05/11/2026): implementada** (API, pantallas y pruebas), con dos ajustes: `institutionalEmail` pasó a opcional en esta fase (la columna se retira en la Fase F) y la marca de DNI verificado y los datos de contacto tienen su propia migración (`users_codigo_apoderados` y `users_dni_verificado`). La importación masiva (Fase D) sigue creando usuarios con correo y sin credenciales hasta que se adapte.
+> **Estado (05/11/2026): implementada** (API, pantallas y pruebas), con dos ajustes: `institutionalEmail` pasó a opcional en esta fase (la columna se retira en la Fase F) y la marca de DNI verificado y los datos de contacto tienen su propia migración (`users_codigo_apoderados` y `users_dni_verificado`).
 
 **RF:** 18, 19, 20, 69 (pantalla), 74, 83, 84, 86, 87.
 
@@ -49,6 +49,8 @@
 
 ## Fase D — Importación y hojas de credenciales (Dev 2)
 
+> **Estado (05/11/2026): implementada** (API, pantalla y pruebas; sin commit). Plantillas por DNI con hasta 2 apoderados, código y contraseña inicial por cada cuenta nueva, y hoja Excel de credenciales devuelta una sola vez en la respuesta del commit (la pantalla la descarga desde la memoria). El PDF queda para cuando exista Gotenberg. Detalle en `03_CONTRATOS.md`, sección "Importación masiva".
+
 **RF:** 21, 76, 77.
 
 - La plantilla de importación cambia: DNI, apoderado (hasta 2), sin correo obligatorio. Se conservan las defensas ya hechas (SHA-256, todo o nada, límites, escape de fórmulas).
@@ -57,12 +59,16 @@
 
 ## Fase E — 2FA obligatorio del administrador (Dev 1)
 
+> **Estado (06/11/2026): implementada** (API, pantallas y pruebas; sin commit). Paso `twofactor` en el primer ingreso (después de la contraseña y el correo), 10 códigos de recuperación de un solo uso con HMAC (`RecoveryCode`, migración `auth_codigos_recuperacion_2fa`), ingreso con código de recuperación, códigos nuevos con un código vigente de la app y reinicio del 2FA por otro administrador. Pantalla `/activar-2fa` (clave manual; sin QR hasta que se acuerde una librería) y panel en «Mi perfil». Detalle en `03_CONTRATOS.md`.
+
 **RF:** 85. Puede hacerse en paralelo a la Fase B.
 
 - El administrador no entra al sistema hasta activar el TOTP; se agregan códigos de recuperación de un solo uso, guardados con hash.
 - **Listo cuando:** un administrador sin 2FA queda en la pantalla de activación y los códigos de recuperación sirven una sola vez.
 
 ## Fase F — Cierre
+
+> **Estado (06/11/2026): implementada** (sin commit). `institutionalEmail` pasó a `email` con una migración de solo cambio de nombre (`users_renombrar_correo_institucional`, conserva datos e índice único), se retiró `INSTITUTION_EMAIL_DOMAIN` y su validación, y las respuestas de la API llevan `Cache-Control: no-store`. Los recorridos completos están en `apps/api/test/journeys.e2e-spec.ts` (alumno nuevo con apoderado, apoderado con dos hijos, recuperación, bloqueo y administrador con 2FA). Quedan fuera de este cierre, y se anotan como pendientes: el SMTP de producción, el texto legal de la política, un QR para el 2FA y la revisión manual de accesibilidad con lector de pantalla.
 
 - Actualizar `02`, `03`, `04`, `05`, `10`, el manual técnico y los manuales por perfil.
 - Cambio de nombre `institutionalEmail` a `email` (PR mecánico) y retiro de `INSTITUTION_EMAIL_DOMAIN`.

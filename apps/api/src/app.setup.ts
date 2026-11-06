@@ -24,6 +24,14 @@ export function configureApp(
   // Antes de app.init(): Nest no registra su parser JSON por defecto si ya hay uno.
   (app as NestExpressApplication).useBodyParser('json', { limit: JSON_BODY_LIMIT });
   app.use(helmet());
+  // Las respuestas llevan datos de sesion y, a veces, credenciales que se muestran una sola vez
+  // (contrasenas iniciales, codigos de recuperacion): ningun navegador ni proxy debe guardarlas.
+  app.use(
+    (_req: unknown, res: { setHeader(name: string, value: string): void }, next: () => void) => {
+      res.setHeader('Cache-Control', 'no-store');
+      next();
+    },
+  );
   app.use(cookieParser());
   // Las cookies de sesion viajan solo desde el origen del frontend (RNF-05/07).
   app.enableCors({ origin: webOrigin, credentials: true });

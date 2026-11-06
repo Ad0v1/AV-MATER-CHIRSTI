@@ -144,7 +144,7 @@ describe.skipIf(!process.env.DATABASE_URL)('Archivos fase 3b (e2e, MySQL + MinIO
       include: { student: true },
     });
     const estudiante01 = await prisma.user.findUniqueOrThrow({
-      where: { institutionalEmail: 'estudiante01@colegio.example' },
+      where: { email: 'estudiante01@colegio.example' },
     });
     const guardianLink = await prisma.guardianStudent.findFirstOrThrow({
       where: { studentId: estudiante01.id, isActive: true },
@@ -163,7 +163,7 @@ describe.skipIf(!process.env.DATABASE_URL)('Archivos fase 3b (e2e, MySQL + MinIO
       [
         'admin',
         await prisma.user.findUniqueOrThrow({
-          where: { institutionalEmail: 'admin@colegio.example' },
+          where: { email: 'admin@colegio.example' },
         }),
       ],
       ['docenteA', a.teacher!],

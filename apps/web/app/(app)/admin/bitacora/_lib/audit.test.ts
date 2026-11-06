@@ -104,7 +104,7 @@ describe('redacción de la vista (seguridad 5g)', () => {
   it('oculta correos y recorta motivos y comentarios largos', () => {
     const text = stateText({
       contactEmail: 'ana@colegio.pe',
-      nested: { institutionalEmail: 'x@y.pe', reason: 'r'.repeat(300) },
+      nested: { email: 'x@y.pe', reason: 'r'.repeat(300) },
       comment: 'corto',
     })!;
     expect(text).not.toMatch(/ana@colegio|x@y/);

@@ -34,6 +34,7 @@ import {
   LinkStudentForm,
   MakePrimaryForm,
   ResetPasswordForm,
+  ResetTwoFactorForm,
   RevokeLinkAction,
   StatusAction,
   TransferAction,
@@ -157,9 +158,9 @@ async function UserPage({
               </span>
             )}
           </Item>
-          {user.institutionalEmail ? (
+          {user.email ? (
             <Item label="Correo del colegio">
-              <span className="break-all">{user.institutionalEmail}</span>
+              <span className="break-all">{user.email}</span>
             </Item>
           ) : null}
           <Item label="Teléfono">{user.phone ?? '—'}</Item>
@@ -195,6 +196,7 @@ async function UserPage({
         </dl>
         {!user.dniVerified ? <VerifyDniForm userId={user.id} /> : null}
         <ResetPasswordForm userId={user.id} />
+        {user.role === 'ADMIN' ? <ResetTwoFactorForm userId={user.id} /> : null}
         <CorrectDniForm userId={user.id} />
       </Section>
 

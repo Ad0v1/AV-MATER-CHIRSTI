@@ -15,7 +15,7 @@ async function addUser(
 ) {
   t.prisma.users.push({
     id: USER_ID,
-    institutionalEmail: null as unknown as string,
+    email: null as unknown as string,
     code: CODE,
     dniEncrypted: t.app.get(DniService).encrypt('45678901'),
     contactEmail: 'familia@correo.pe',

@@ -6,7 +6,7 @@ export type UserView = {
   id: string;
   // Código de usuario (el usuario del login, RF-68). Nulo solo en usuarios anteriores al login por código.
   code: string | null;
-  institutionalEmail: string | null;
+  email: string | null;
   // Correo de contacto que el propio usuario registró y verificó (RF-80).
   contactEmail: string | null;
   emailVerified: boolean;
@@ -59,7 +59,7 @@ export type GuardianLinkView = {
 type UserRow = {
   id: string;
   code: string | null;
-  institutionalEmail: string | null;
+  email: string | null;
   contactEmail: string | null;
   emailVerifiedAt: Date | null;
   phone: string | null;
@@ -75,7 +75,7 @@ type UserRow = {
 export const toUserView = (u: UserRow): UserView => ({
   id: u.id,
   code: u.code,
-  institutionalEmail: u.institutionalEmail,
+  email: u.email,
   contactEmail: u.contactEmail,
   emailVerified: u.emailVerifiedAt !== null,
   phone: u.phone,

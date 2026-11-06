@@ -18,6 +18,7 @@ import {
   AllowPendingContactData,
   AllowPendingEmailVerification,
   AllowPendingPasswordChange,
+  AllowPendingTwoFactor,
 } from '../../common/auth/pending-setup.guard.js';
 import { Roles } from '../../common/auth/roles.decorator.js';
 import type { AuthenticatedUser, UserRole } from '../../common/auth/roles.js';
@@ -50,6 +51,7 @@ type SessionInfo = {
   mustAcceptPolicy: boolean;
   mustChangePassword: boolean;
   mustVerifyEmail: boolean;
+  mustEnableTwoFactor: boolean;
   mustCompleteContact: boolean;
 };
 
@@ -73,8 +75,14 @@ export class AuthController {
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ): Promise<SessionInfo> {
-    const { user, mustAcceptPolicy, mustChangePassword, mustVerifyEmail, mustCompleteContact } =
-      await this.auth.login(parseBody(loginSchema, body), req.ip);
+    const {
+      user,
+      mustAcceptPolicy,
+      mustChangePassword,
+      mustVerifyEmail,
+      mustEnableTwoFactor,
+      mustCompleteContact,
+    } = await this.auth.login(parseBody(loginSchema, body), req.ip);
     const token = await this.sessions.create(user);
     res.cookie(SESSION_COOKIE, token, this.cookieOptions());
     return {
@@ -83,6 +91,7 @@ export class AuthController {
       mustAcceptPolicy,
       mustChangePassword,
       mustVerifyEmail,
+      mustEnableTwoFactor,
       mustCompleteContact,
     };
   }
@@ -98,6 +107,7 @@ export class AuthController {
       mustAcceptPolicy: await this.auth.mustAcceptPolicy(user.id),
       mustChangePassword: user.mustChangePassword === true,
       mustVerifyEmail: user.mustVerifyEmail === true,
+      mustEnableTwoFactor: user.mustEnableTwoFactor === true,
       mustCompleteContact: user.mustCompleteContact === true,
     };
   }
@@ -234,18 +244,76 @@ export class AuthController {
     await this.sessions.revokeAll(id);
   }
 
+  // RF-85: el administrador activa el 2FA en su primer ingreso. Estas rutas se pueden usar con el
+  // paso pendiente: son justo lo que lo cumple.
   @Post('2fa/setup')
   @Roles('ADMIN')
+  @AllowPendingTwoFactor()
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
   setupTotp(@Req() req: RequestWithUser): Promise<{ secret: string; otpauthUrl: string }> {
     return this.auth.startTotpSetup(this.requireUser(req).id);
   }
 
+  // Confirma un codigo, activa el 2FA y devuelve los codigos de recuperacion UNA sola vez. Abre una
+  // sesion nueva sin el paso pendiente y cierra las demas.
   @Post('2fa/enable')
   @Roles('ADMIN')
-  @HttpCode(204)
-  async enableTotp(@Body() body: unknown, @Req() req: RequestWithUser): Promise<void> {
+  @AllowPendingTwoFactor()
+  @HttpCode(200)
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  async enableTotp(
+    @Body() body: unknown,
+    @Req() req: RequestWithUser,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<{ recoveryCodes: string[] }> {
+    const user = this.requireUser(req);
     const { code } = parseBody(totpCodeSchema, body);
-    await this.auth.enableTotp(this.requireUser(req).id, code, req.ip);
+    const recoveryCodes = await this.auth.enableTotp(user.id, code, req.ip);
+    await this.sessions.revokeAll(user.id);
+    const token = await this.sessions.create({
+      id: user.id,
+      role: user.role,
+      ...(await this.auth.pendingFlagsOf(user.id)),
+    });
+    res.cookie(SESSION_COOKIE, token, this.cookieOptions());
+    return { recoveryCodes };
+  }
+
+  @Get('2fa/status')
+  @Roles('ADMIN')
+  @AllowPendingTwoFactor()
+  twoFactorStatus(@Req() req: RequestWithUser) {
+    return this.auth.twoFactorStatus(this.requireUser(req).id);
+  }
+
+  // Juego nuevo de codigos de recuperacion; exige un codigo vigente de la app.
+  @Post('2fa/recovery-codes')
+  @Roles('ADMIN')
+  @HttpCode(200)
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  async regenerateRecoveryCodes(
+    @Body() body: unknown,
+    @Req() req: RequestWithUser,
+  ): Promise<{ recoveryCodes: string[] }> {
+    const { code } = parseBody(totpCodeSchema, body);
+    const recoveryCodes = await this.auth.regenerateRecoveryCodes(
+      this.requireUser(req).id,
+      code,
+      req.ip,
+    );
+    return { recoveryCodes };
+  }
+
+  // Un administrador reinicia el 2FA de otro que perdio el telefono y sus codigos.
+  @Post('users/:id/2fa/reset')
+  @Roles('ADMIN')
+  @HttpCode(204)
+  async resetTwoFactor(@Param() params: unknown, @Req() req: RequestWithUser): Promise<void> {
+    const admin = this.requireUser(req);
+    const { id } = parseBody(userIdSchema, params);
+    await this.auth.resetTwoFactor(admin.id, id, req.ip);
+    // Sus sesiones abiertas se cierran: en su proximo ingreso debe activarlo de nuevo.
+    await this.sessions.revokeAll(id);
   }
 
   @Post('logout')

@@ -69,7 +69,6 @@ Todos bajo `/api/v1`. Cuerpos, respuestas y errores completos en `docs/03_CONTRA
 
 | Variable | Obligatoria | Uso |
 | --- | --- | --- |
-| `INSTITUTION_EMAIL_DOMAIN` | No en local; **debe definirse en producción** (pedido a Dev 1, D-019) | Dominio de los correos de STUDENT, TEACHER y ADMIN (sin `@`). Si falta, no se valida el dominio y el log avisa al arrancar. No está todavía en el `.env.example`. |
 
 La variable se lee en `institution-domain.ts` con `process.env`, no desde `config/env.ts`, porque ese archivo es de Dev 1.
 
@@ -77,7 +76,7 @@ La variable se lee en `institution-domain.ts` con `process.env`, no desde `confi
 
 1. Con MySQL local y el seed cargado (`pnpm db:seed`, ver la sección del módulo académico).
 2. Unitarios, sin base de datos: `pnpm --filter api test` (reglas de `users-policy`, DTO, servicios con Prisma simulado y el guard).
-3. Integración: `pnpm --filter api test:e2e` con `DATABASE_URL` local. El test fija el dominio con un override, así que no necesita `INSTITUTION_EMAIL_DOMAIN`. Crea usuarios `qa-f3-*@colegio.example`, un año y una sección de prueba, y los borra al final. Ejecutarlo solo sobre la base local con el seed.
+3. Integración: `pnpm --filter api test:e2e` con `DATABASE_URL` local. Crea usuarios `qa-f3-*@colegio.example`, un año y una sección de prueba, y los borra al final. Ejecutarlo solo sobre la base local con el seed.
 4. Probar a mano: el módulo exige sesión de un ADMIN activo. Como el seed no crea credenciales, hace falta un ADMIN con credencial local según el flujo de Dev 1.
 
 ### Endpoints (resumen)
@@ -106,7 +105,7 @@ Todos bajo `/api/v1`, solo ADMIN activo. Cuerpos, respuestas y errores completos
 
 ### Variables de entorno
 
-Ninguna nueva. La importación usa `INSTITUTION_EMAIL_DOMAIN`, ya descrita en la sección de usuarios: sin ella no se valida el dominio de los correos.
+Ninguna nueva. La importación se apoya en `PII_ENCRYPTION_KEY` (DNI cifrado y su hash) y no valida dominios de correo.
 
 ### Cómo usarla (API)
 

@@ -36,6 +36,7 @@ describe('Sesion (e2e)', () => {
         mustAcceptPolicy: true,
         mustChangePassword: false,
         mustVerifyEmail: false,
+        mustEnableTwoFactor: false,
         mustCompleteContact: false,
       });
   });
