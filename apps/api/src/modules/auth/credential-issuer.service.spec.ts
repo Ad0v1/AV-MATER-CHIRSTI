@@ -79,11 +79,11 @@ describe('CredentialIssuerService', () => {
         role: 'TEACHER',
         dni: '45678901',
         dniVerified: true,
-        institutionalEmail: 'ana@colegio.example',
+        email: 'ana@colegio.example',
       });
       const data = tx.user.create.mock.calls[0]![0].data as Record<string, unknown>;
       expect(data.dniVerifiedAt).toBeInstanceOf(Date);
-      expect(data.institutionalEmail).toBe('ana@colegio.example');
+      expect(data.email).toBe('ana@colegio.example');
 
       const plain = makeTx();
       await issuer.createUser(asTx(plain), {
@@ -93,7 +93,7 @@ describe('CredentialIssuerService', () => {
       });
       const plainData = plain.user.create.mock.calls[0]![0].data as Record<string, unknown>;
       expect(plainData).not.toHaveProperty('dniVerifiedAt');
-      expect(plainData).not.toHaveProperty('institutionalEmail');
+      expect(plainData).not.toHaveProperty('email');
     });
 
     it('409 si el DNI ya lo tiene otra persona', async () => {

@@ -252,7 +252,7 @@ export function userPathLabel(path: string): string | undefined {
   const key = path.split('.')[0];
   const labels: Record<string, string> = {
     fullName: 'Nombre',
-    institutionalEmail: 'Correo',
+    email: 'Correo',
     dni: 'DNI',
     dniConfirm: 'Confirmación del DNI',
     guardians: 'Apoderados',

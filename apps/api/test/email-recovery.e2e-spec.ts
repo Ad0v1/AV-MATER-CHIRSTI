@@ -28,7 +28,7 @@ async function addUser(t: TestApp, o: Overrides = {}) {
   const email = o.email === undefined ? 'familia@correo.pe' : o.email;
   t.prisma.users.push({
     id: o.id ?? USER_ID,
-    institutionalEmail: `${o.id ?? USER_ID}@colegio.example`,
+    email: `${o.id ?? USER_ID}@colegio.example`,
     code: o.code ?? CODE,
     dniEncrypted: t.app.get(DniService).encrypt('45678901'),
     contactEmail: email,

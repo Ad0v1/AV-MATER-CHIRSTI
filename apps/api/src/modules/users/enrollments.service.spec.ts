@@ -49,7 +49,6 @@ describe('EnrollmentsService', () => {
       audit as unknown as AuditService,
       events,
       asIssuer,
-      'colegio.example',
     );
     db.raw.years.set(YEAR_2026, { id: YEAR_2026, active: 1, open: 1 });
     db.raw.years.set(YEAR_2025, { id: YEAR_2025, active: 0, open: 0 });
@@ -178,13 +177,10 @@ describe('EnrollmentsService', () => {
       ).rejects.toBeInstanceOf(UnprocessableEntityException);
     });
 
-    it('422 dominio y 409 correo repetido cuando se envía el correo del colegio', async () => {
-      await expect(
-        service.createStudent({ ...dto, institutionalEmail: 'x@otro.example' }, actor),
-      ).rejects.toBeInstanceOf(UnprocessableEntityException);
+    it('409 correo repetido cuando se envía el correo del colegio', async () => {
       db.prisma.user.findUnique.mockResolvedValue({ id: 'otro' });
       await expect(
-        service.createStudent({ ...dto, institutionalEmail: 'qa-f3-1@colegio.example' }, actor),
+        service.createStudent({ ...dto, email: 'qa-f3-1@colegio.example' }, actor),
       ).rejects.toBeInstanceOf(ConflictException);
     });
 

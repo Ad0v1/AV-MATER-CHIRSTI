@@ -156,7 +156,7 @@ export const userRow = (
 ) => ({
   id,
   code: null,
-  institutionalEmail: `${id}@colegio.example`,
+  email: `${id}@colegio.example`,
   contactEmail: null,
   emailVerifiedAt: null,
   phone: null,

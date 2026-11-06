@@ -40,7 +40,7 @@ export class MemoryMailSender extends MailSender {
 
 export type FakeUser = {
   id: string;
-  institutionalEmail: string;
+  email: string;
   code: string | null;
   dniEncrypted: string | null;
   contactEmail: string | null;
@@ -67,18 +67,14 @@ export class FakePrisma {
   lastAcceptance: { onBehalfOfWards?: boolean } | null = null;
 
   user = {
-    findUnique: ({
-      where,
-    }: {
-      where: { id?: string; code?: string; institutionalEmail?: string };
-    }) =>
+    findUnique: ({ where }: { where: { id?: string; code?: string; email?: string } }) =>
       Promise.resolve(
         this.users.find((u) =>
           where.id
             ? u.id === where.id
             : where.code
               ? u.code === where.code
-              : u.institutionalEmail === where.institutionalEmail,
+              : u.email === where.email,
         ) ?? null,
       ),
     update: ({

@@ -68,6 +68,8 @@
 
 ## Fase F — Cierre
 
+> **Estado (06/11/2026): implementada** (sin commit). `institutionalEmail` pasó a `email` con una migración de solo cambio de nombre (`users_renombrar_correo_institucional`, conserva datos e índice único), se retiró `INSTITUTION_EMAIL_DOMAIN` y su validación, y las respuestas de la API llevan `Cache-Control: no-store`. Los recorridos completos están en `apps/api/test/journeys.e2e-spec.ts` (alumno nuevo con apoderado, apoderado con dos hijos, recuperación, bloqueo y administrador con 2FA). Quedan fuera de este cierre, y se anotan como pendientes: el SMTP de producción, el texto legal de la política, un QR para el 2FA y la revisión manual de accesibilidad con lector de pantalla.
+
 - Actualizar `02`, `03`, `04`, `05`, `10`, el manual técnico y los manuales por perfil.
 - Cambio de nombre `institutionalEmail` a `email` (PR mecánico) y retiro de `INSTITUTION_EMAIL_DOMAIN`.
 - Pruebas e2e de los recorridos completos (alumno nuevo, apoderado con dos hijos, recuperación, bloqueo) y revisión de seguridad.

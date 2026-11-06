@@ -39,14 +39,14 @@ async function main(): Promise<void> {
     const dniHash = dniService.hash(dni);
     const owner = await prisma.user.findUnique({
       where: { dniHash },
-      select: { institutionalEmail: true },
+      select: { email: true },
     });
-    if (owner && owner.institutionalEmail !== email) {
+    if (owner && owner.email !== email) {
       throw new Error('Ese DNI ya pertenece a otro usuario');
     }
 
     const existing = await prisma.user.findUnique({
-      where: { institutionalEmail: email },
+      where: { email: email },
       select: { code: true },
     });
     let code = existing?.code ?? null;
@@ -67,9 +67,9 @@ async function main(): Promise<void> {
       ...(process.env.ADMIN_EMAIL_VERIFIED === '1' ? { emailVerifiedAt: new Date() } : {}),
     };
     const user = await prisma.user.upsert({
-      where: { institutionalEmail: email },
+      where: { email: email },
       create: {
-        institutionalEmail: email,
+        email: email,
         fullName,
         role: 'ADMIN',
         status: 'ACTIVE',

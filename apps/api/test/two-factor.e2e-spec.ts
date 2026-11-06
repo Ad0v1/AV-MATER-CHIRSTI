@@ -22,7 +22,7 @@ async function addUser(
   const hash = await t.app.get(PasswordService).hash(PASSWORD);
   t.prisma.users.push({
     id: ID(n),
-    institutionalEmail: `u${n}@colegio.example`,
+    email: `u${n}@colegio.example`,
     code: codeOf(n),
     dniEncrypted: t.app.get(DniService).encrypt('45678901'),
     contactEmail: 'usuario@correo.pe',

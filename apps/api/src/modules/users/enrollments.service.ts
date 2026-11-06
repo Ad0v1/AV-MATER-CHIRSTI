@@ -1,6 +1,5 @@
 import {
   ConflictException,
-  Inject,
   Injectable,
   NotFoundException,
   UnprocessableEntityException,
@@ -12,7 +11,6 @@ import type { UserStatus } from '../../generated/prisma/enums.js';
 import { AcademicEventPublisher } from '../academic/academic-events.js';
 import { MSG, mapPrismaError } from '../academic/academic.errors.js';
 import type { Actor } from '../academic/request-user.js';
-import { INSTITUTION_EMAIL_DOMAIN } from './institution-domain.js';
 import {
   CredentialIssuerService,
   type IssuedCredentials,
@@ -29,7 +27,7 @@ import {
 } from './user-views.js';
 import { recordUsers } from './users-audit.js';
 import { lockUserForUpdate } from './users-locks.js';
-import { assertEmailDomain, closeInstant } from './users-policy.js';
+import { closeInstant } from './users-policy.js';
 import { assertEmailFree, resolveTargetSection } from './users-queries.js';
 import type {
   CreateStudentDto,
@@ -83,16 +81,14 @@ export class EnrollmentsService {
     private readonly audit: AuditService,
     private readonly events: AcademicEventPublisher,
     private readonly issuer: CredentialIssuerService,
-    @Inject(INSTITUTION_EMAIL_DOMAIN) private readonly domain: string | null,
   ) {}
 
   // RF-18: alumno con su codigo, su contrasena inicial, su matricula vigente y de 1 a 2 apoderados
   // (RF-86), todo en una sola transaccion. Los apoderados se buscan por DNI: si ya existe uno
   // (el de un hermano), se reutiliza; si no, se crea con sus propias credenciales.
   async createStudent(dto: CreateStudentDto, actor: Actor): Promise<CreatedStudent> {
-    if (dto.institutionalEmail) {
-      assertEmailDomain(dto.institutionalEmail, 'STUDENT', this.domain);
-      await assertEmailFree(this.prisma, dto.institutionalEmail);
+    if (dto.email) {
+      await assertEmailFree(this.prisma, dto.email);
     }
     const now = new Date();
 
@@ -104,7 +100,7 @@ export class EnrollmentsService {
           role: 'STUDENT',
           dni: dto.dni,
           dniVerified: dto.dniVerified,
-          institutionalEmail: dto.institutionalEmail,
+          email: dto.email,
         });
         const enrollment = await tx.enrollment.create({
           data: {

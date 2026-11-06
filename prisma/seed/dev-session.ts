@@ -25,7 +25,7 @@ const WHO = 'El script de sesion local';
 
 function parseEmail(argv: string[]): string {
   const i = argv.indexOf('--email');
-  if (i === -1) return ADMIN.institutionalEmail;
+  if (i === -1) return ADMIN.email;
   const value = argv[i + 1]?.trim().toLowerCase();
   if (!value) throw new Error('Falta el correo despues de --email.');
   return value;
@@ -36,7 +36,7 @@ async function main(): Promise<void> {
   const dbUrl = assertLocalDatabase(process.env, WHO);
   const redisUrl = assertLocalRedis(process.env);
   const email = parseEmail(process.argv.slice(2));
-  const seedEmails = new Set(ALL_USERS.map((u) => u.institutionalEmail));
+  const seedEmails = new Set(ALL_USERS.map((u) => u.email));
   if (!email.endsWith(`@${SEED_EMAIL_DOMAIN}`) || !seedEmails.has(email)) {
     throw new Error(`Solo se permiten correos del seed (@${SEED_EMAIL_DOMAIN}).`);
   }
@@ -45,7 +45,7 @@ async function main(): Promise<void> {
   let user: { id: string; role: 'STUDENT' | 'TEACHER' | 'ADMIN' | 'GUARDIAN'; status: string };
   try {
     const found = await prisma.user.findUnique({
-      where: { institutionalEmail: email },
+      where: { email: email },
       select: { id: true, role: true, status: true },
     });
     if (!found) throw new Error('El usuario no existe; corre antes `pnpm db:seed`.');

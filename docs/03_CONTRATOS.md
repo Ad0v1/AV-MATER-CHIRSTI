@@ -338,13 +338,13 @@ type AcademicEventMap = {
 - Ids UUID (400 si no lo son). Marcadores TRUE/NULL (`isCurrent`, `isActive`) se exponen como `boolean`.
 - Errores con el mismo formato del módulo académico: 400 `VALIDATION_ERROR` (con `details`), 401, 403 `FORBIDDEN`, 404 `NOT_FOUND`, 409 `CONFLICT`, 422 `BUSINESS_RULE_VIOLATION`. Un bloqueo mutuo de MySQL (deadlock, 1213) se responde 409 "El registro cambió o está en uso; vuelve a intentarlo".
 - Correo: se guarda en minúsculas y sin espacios, máximo 191 caracteres, único (409). Nombre: 3..120 caracteres, espacios colapsados, sin caracteres de control y **sin empezar por `=`, `+`, `-` ni `@`** (desde la importación de RF-21, PROPUESTA; ver "Importación masiva (Dev 2, RF-21)").
-- Dominio: si la variable `INSTITUTION_EMAIL_DOMAIN` está definida, los correos de STUDENT, TEACHER y ADMIN deben pertenecer a ese dominio (422). GUARDIAN queda exento hasta D-013. Sin la variable no se valida el dominio y se registra un aviso en el log.
+- Dominio: desde la Fase F ya no se valida el dominio del correo del colegio (`email`) y la variable `INSTITUTION_EMAIL_DOMAIN` se retiró; el correo verificado de cada persona es `contactEmail` (RF-80).
 - El rol de un usuario no cambia (D-012).
 
 ### Vistas
 
-- `UserView`: `{ id, institutionalEmail, fullName, role, status, createdAt, updatedAt }`.
-- `UserListItem` (solo en `GET /users`): `{ id, institutionalEmail, fullName, role, status, currentSection }`, donde `currentSection` es `{ id, gradeLevel, code }` o `null` (sección de la matrícula vigente del año).
+- `UserView`: `{ id, email, fullName, role, status, createdAt, updatedAt }`.
+- `UserListItem` (solo en `GET /users`): `{ id, email, fullName, role, status, currentSection }`, donde `currentSection` es `{ id, gradeLevel, code }` o `null` (sección de la matrícula vigente del año).
 - `EnrollmentView`: `{ id, academicYear: { id, year }, section: { id, gradeLevel, code }, isCurrent, effectiveFrom, effectiveTo, endReason }`.
 - `GuardianLinkView`: `{ id, guardian: { id, fullName, status }, student: { id, fullName, status }, isActive, createdAt, revokedAt }`.
 
@@ -360,15 +360,15 @@ type AcademicEventMap = {
 | --- | --- | --- | --- |
 | `GET /users` | Query: `q?`, `role?`, `status?`, `gradeLevel?`, `sectionId?`, `academicYearId?`, `page?`, `pageSize?` | 200 `{ items: UserListItem[], total, page, pageSize }` | 400 |
 | `GET /users/:id` | — | 200 `UserView` + `currentEnrollment` (STUDENT: `EnrollmentView` o `null`, año activo) + `guardians` (STUDENT: `GuardianLinkView[]` vigentes) o `students` (GUARDIAN: vigentes) | 400; 404 |
-| `PATCH /users/:id` | `{ fullName?, institutionalEmail? }` (al menos uno) | 200 `UserView`. Sin cambios, 200 sin bitácora | 400; 404; 409 correo en uso; 422 dominio |
+| `PATCH /users/:id` | `{ fullName?, email? }` (al menos uno) | 200 `UserView`. Sin cambios, 200 sin bitácora | 400; 404; 409 correo en uso; 422 dominio |
 | `PUT /users/:id/status` | `{ status: ACTIVE \| INACTIVE \| WITHDRAWN, reason?: 1..500 }` | 200 `{ user: UserView, closedEnrollments: EnrollmentView[] }`. Mismo estado: 200 con `closedEnrollments: []`, sin bitácora | 400; 404; 409 sobre sí mismo o último ADMIN activo |
-| `POST /students` | `{ institutionalEmail, fullName, sectionId }` | 201 `{ user: UserView, enrollment: EnrollmentView }` | 400; 404 sección; 409 correo, sin año activo, año cerrado, sección inactiva; 422 sección de otro año, dominio |
+| `POST /students` | `{ email, fullName, sectionId }` | 201 `{ user: UserView, enrollment: EnrollmentView }` | 400; 404 sección; 409 correo, sin año activo, año cerrado, sección inactiva; 422 sección de otro año, dominio |
 | `POST /students/:id/enrollments` | `{ sectionId }` | 201 `EnrollmentView` | 400; 404 estudiante o sección; 409 ya tiene matrícula vigente en el año, sin año activo, año cerrado, sección inactiva; 422 no es STUDENT, está WITHDRAWN o la sección es de otro año |
 | `POST /students/:id/transfer` | `{ sectionId, reason?: 1..500 }` | 200 `{ closed: EnrollmentView, current: EnrollmentView }` | 400; 404; 409 sin matrícula vigente en el año, sin año activo, año cerrado, sección inactiva, concurrencia; 422 no es STUDENT, está WITHDRAWN, misma sección, otro grado o sección de otro año |
 | `GET /students/:id/enrollments` | Query: `academicYearId?` | 200 `{ items: EnrollmentView[], total }`, por `effectiveFrom` | 400; 404; 422 no es STUDENT |
 | `GET /students/:id/guardians` | Query: `includeRevoked?` (`true` o `false`, por defecto `false`) | 200 `{ items: GuardianLinkView[], total }` | 400; 404; 422 no es STUDENT |
-| `POST /teachers` | `{ institutionalEmail, fullName }` | 201 `UserView` (role TEACHER) | 400; 409 correo; 422 dominio |
-| `POST /guardians` | `{ institutionalEmail, fullName, studentIds }` (uuid, 1..10, sin repetir) | 201 `{ user: UserView, links: GuardianLinkView[] }`, en una transacción | 400; 409 correo; 422 algún estudiante no existe, no es STUDENT o está WITHDRAWN |
+| `POST /teachers` | `{ email, fullName }` | 201 `UserView` (role TEACHER) | 400; 409 correo; 422 dominio |
+| `POST /guardians` | `{ email, fullName, studentIds }` (uuid, 1..10, sin repetir) | 201 `{ user: UserView, links: GuardianLinkView[] }`, en una transacción | 400; 409 correo; 422 algún estudiante no existe, no es STUDENT o está WITHDRAWN |
 | `GET /guardians/:id/students` | Query: `includeRevoked?` | 200 `{ items: GuardianLinkView[], total }` | 400; 404; 422 no es GUARDIAN |
 | `POST /guardians/:id/students` | `{ studentId }` | 201 `GuardianLinkView` | 400; 404 apoderado o estudiante; 409 vínculo vigente duplicado; 422 no es GUARDIAN, apoderado WITHDRAWN, estudiante no es STUDENT o está WITHDRAWN, mismo id |
 | `POST /guardian-links/:id/revoke` | `{ reason }` (obligatorio, 10..500) | 200 `GuardianLinkView` (`isActive: false`, `revokedAt`) | 400; 404; 409 ya revocado |
@@ -805,7 +805,7 @@ Efecto, todo o nada (si cualquier error, no se escribe nada):
 
 > **Estado: PROPUESTA** (05/11/2026). Reemplaza lo anterior de "API de usuarios" donde se contradiga. Decisiones D-058 a D-063.
 
-- **Altas sin correo.** `POST /students`, `/teachers` y `/guardians` ya no piden el correo del colegio (`institutionalEmail` es opcional). Piden `dni` y `dniConfirm` (8 dígitos, escritos dos veces) y aceptan `dniVerified` (marca de "comparado con el documento"). El usuario nuevo recibe su código, su DNI cifrado y una contraseña inicial aleatoria que debe cambiar.
+- **Altas sin correo.** `POST /students`, `/teachers` y `/guardians` ya no piden el correo del colegio (`email` es opcional). Piden `dni` y `dniConfirm` (8 dígitos, escritos dos veces) y aceptan `dniVerified` (marca de "comparado con el documento"). El usuario nuevo recibe su código, su DNI cifrado y una contraseña inicial aleatoria que debe cambiar.
 - **`POST /students`:** además `guardians` (1 a 2): cada uno `{ dni, dniConfirm, fullName?, dniVerified? }`. El primero es el principal. Si ya existe un apoderado con ese DNI (por ejemplo, el de un hermano) se reutiliza y no hace falta su nombre; si es nuevo, `fullName` es obligatorio (422). Responde `{ user, credentials, enrollment, guardians: [{ user, link, created, credentials? }] }`. Los DNI del alumno y de sus apoderados deben ser distintos.
 - **`POST /teachers`:** responde `{ user, credentials }`. **`POST /guardians`:** responde `{ user, credentials, links }`; si el DNI ya existe responde 409 (se vincula con `POST /guardians/:id/students`).
 - **`credentials`** es `{ code, initialPassword }` y viaja solo en esa respuesta: no se guarda, no se registra y `GET /users/:id` no la devuelve.

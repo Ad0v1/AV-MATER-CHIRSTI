@@ -10,7 +10,7 @@ type Db = Prisma.TransactionClient;
 /** 409 si el correo ya lo usa otro usuario (el UNIQUE con P2002 cubre la carrera). */
 export async function assertEmailFree(db: Db, email: string, exceptId?: string): Promise<void> {
   const other = await db.user.findUnique({
-    where: { institutionalEmail: email },
+    where: { email: email },
     select: { id: true },
   });
   if (other && other.id !== exceptId) throw new ConflictException(USERS_MSG.emailTaken);

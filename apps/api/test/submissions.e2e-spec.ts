@@ -171,7 +171,7 @@ describe.skipIf(!process.env.DATABASE_URL)('Entregas de Dev 3, fase 3d (e2e, MyS
       'apoderado01',
     ]) {
       const user = await prisma.user.findUniqueOrThrow({
-        where: { institutionalEmail: `${key}@colegio.example` },
+        where: { email: `${key}@colegio.example` },
       });
       ids.set(key, user.id);
     }

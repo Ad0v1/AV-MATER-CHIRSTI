@@ -90,7 +90,7 @@ describe('users.dto (Decisión 4)', () => {
       expect(
         createTeacherSchema.safeParse({
           fullName: 'Docente Uno',
-          institutionalEmail: 'doc@colegio.example',
+          email: 'doc@colegio.example',
           ...dni,
         }).success,
       ).toBe(true);
@@ -160,7 +160,7 @@ describe('users.dto (Decisión 4)', () => {
   });
 
   it('apoderado: 1..10 estudiantes sin repetir', () => {
-    const base = { institutionalEmail: 'p@correo.example', fullName: 'Padre Ficticio', ...dni };
+    const base = { email: 'p@correo.example', fullName: 'Padre Ficticio', ...dni };
     expect(createGuardianSchema.safeParse({ ...base, studentIds: [] }).success).toBe(false);
     expect(createGuardianSchema.safeParse({ ...base, studentIds: [ID, ID] }).success).toBe(false);
     expect(createGuardianSchema.safeParse({ ...base, studentIds: [ID, ID2] }).success).toBe(true);

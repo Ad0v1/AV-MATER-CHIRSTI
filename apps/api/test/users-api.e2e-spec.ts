@@ -20,7 +20,6 @@ import {
 import { loadEnv } from './../src/config/env.js';
 import { DniService } from './../src/modules/auth/dni.service.js';
 import { LoginAttemptsService } from './../src/modules/auth/login-attempts.service.js';
-import { INSTITUTION_EMAIL_DOMAIN } from './../src/modules/users/institution-domain.js';
 import { MemoryAuditSink } from './helpers.js';
 
 // Usa MySQL real con el seed cargado (solo local con Docker). Cargan el .env de la raiz si existe.
@@ -114,7 +113,7 @@ describe.skipIf(!process.env.DATABASE_URL)('API usuarios y matriculas F3 (e2e, M
   const cleanQaData = async () => {
     const users = await prisma.user.findMany({
       where: {
-        OR: [{ institutionalEmail: { startsWith: QA_PREFIX } }, { dniHash: { in: qaDniHashes() } }],
+        OR: [{ email: { startsWith: QA_PREFIX } }, { dniHash: { in: qaDniHashes() } }],
       },
       select: { id: true },
     });
@@ -203,14 +202,14 @@ describe.skipIf(!process.env.DATABASE_URL)('API usuarios y matriculas F3 (e2e, M
     sinMat = (
       await prisma.user.create({
         data: {
-          institutionalEmail: qa('sinmat'),
+          email: qa('sinmat'),
           fullName: 'QA F3 Sin Matricula',
           role: 'STUDENT',
         },
       })
     ).id;
     const admin2 = await prisma.user.create({
-      data: { institutionalEmail: qa('admin2'), fullName: 'QA F3 Admin Dos', role: 'ADMIN' },
+      data: { email: qa('admin2'), fullName: 'QA F3 Admin Dos', role: 'ADMIN' },
     });
 
     sink = new MemoryAuditSink();
@@ -219,8 +218,6 @@ describe.skipIf(!process.env.DATABASE_URL)('API usuarios y matriculas F3 (e2e, M
       .useValue(new MemorySessionStore())
       .overrideProvider(AuditSink)
       .useValue(sink)
-      .overrideProvider(INSTITUTION_EMAIL_DOMAIN)
-      .useValue(DOMAIN)
       .compile();
     app = moduleFixture.createNestApplication<INestApplication<App>>();
     configureApp(app);
@@ -245,7 +242,7 @@ describe.skipIf(!process.env.DATABASE_URL)('API usuarios y matriculas F3 (e2e, M
       'apoderado02',
     ]) {
       const user = await prisma.user.findUniqueOrThrow({
-        where: { institutionalEmail: `${key}@${DOMAIN}` },
+        where: { email: `${key}@${DOMAIN}` },
       });
       await createSession(key, user.id, user.role as Role);
     }
@@ -319,7 +316,7 @@ describe.skipIf(!process.env.DATABASE_URL)('API usuarios y matriculas F3 (e2e, M
           'emailVerified',
           'fullName',
           'id',
-          'institutionalEmail',
+          'email',
           'locked',
           'role',
           'status',
@@ -351,9 +348,7 @@ describe.skipIf(!process.env.DATABASE_URL)('API usuarios y matriculas F3 (e2e, M
         200,
       );
       expect(res.body.total).toBe(9);
-      expect(res.body.items.map((u: Json) => u.institutionalEmail)).not.toContain(
-        `estudiante03@${DOMAIN}`,
-      );
+      expect(res.body.items.map((u: Json) => u.email)).not.toContain(`estudiante03@${DOMAIN}`);
       expect(res.body.items.every((u: Json) => u.currentSection.code === 'A')).toBe(true);
     });
 
@@ -372,14 +367,14 @@ describe.skipIf(!process.env.DATABASE_URL)('API usuarios y matriculas F3 (e2e, M
     it('RF-25: status=WITHDRAWN devuelve solo a estudiante60', async () => {
       const res = await get('admin', '/users?status=WITHDRAWN').expect(200);
       expect(res.body.total).toBe(1);
-      expect(res.body.items[0].institutionalEmail).toBe(`estudiante60@${DOMAIN}`);
+      expect(res.body.items[0].email).toBe(`estudiante60@${DOMAIN}`);
       expect(res.body.items[0].currentSection).toBeNull();
     });
 
     it('RF-25: role=STUDENT&status=INACTIVE devuelve solo a estudiante59', async () => {
       const res = await get('admin', '/users?role=STUDENT&status=INACTIVE').expect(200);
       expect(res.body.total).toBe(1);
-      expect(res.body.items[0].institutionalEmail).toBe(`estudiante59@${DOMAIN}`);
+      expect(res.body.items[0].email).toBe(`estudiante59@${DOMAIN}`);
     });
 
     it.each(['%%', '__'])('RF-25: q=%s no actua como comodin (0 resultados)', async (q) => {
@@ -506,7 +501,7 @@ describe.skipIf(!process.env.DATABASE_URL)('API usuarios y matriculas F3 (e2e, M
   describe('Alta de estudiante con matricula (RF-18)', () => {
     it('RF-18: crea estudiante y matricula vigente en 3A; normaliza el correo; bitacora sin datos personales', async () => {
       const res = await post('admin', '/students', {
-        institutionalEmail: `  ${qa('Alumno1').toUpperCase().replace('@COLEGIO', '@Colegio')} `,
+        email: `  ${qa('Alumno1').toUpperCase().replace('@COLEGIO', '@Colegio')} `,
         fullName: '  QA   F3 Alumno   Uno ',
         sectionId: sec3A,
         ...dniPair1,
@@ -515,7 +510,7 @@ describe.skipIf(!process.env.DATABASE_URL)('API usuarios y matriculas F3 (e2e, M
       s1 = res.body;
       await createSession('s1', s1.user.id, 'STUDENT');
       expect(s1.user).toMatchObject({
-        institutionalEmail: qa('alumno1'),
+        email: qa('alumno1'),
         fullName: 'QA F3 Alumno Uno',
         role: 'STUDENT',
         status: 'ACTIVE',
@@ -545,13 +540,13 @@ describe.skipIf(!process.env.DATABASE_URL)('API usuarios y matriculas F3 (e2e, M
 
     it('RF-18: correo repetido 409 (tambien con otras mayusculas) y el del seed 409', async () => {
       await post('admin', '/students', {
-        institutionalEmail: qa('alumno1').toUpperCase().replace('@COLEGIO', '@colegio'),
+        email: qa('alumno1').toUpperCase().replace('@COLEGIO', '@colegio'),
         fullName: 'QA F3 Repetido',
         sectionId: sec3A,
         ...studentExtras(),
       }).expect(409);
       await post('admin', '/students', {
-        institutionalEmail: `estudiante01@${DOMAIN}`,
+        email: `estudiante01@${DOMAIN}`,
         fullName: 'QA F3 Repetido',
         sectionId: sec3A,
         ...studentExtras(),
@@ -560,7 +555,7 @@ describe.skipIf(!process.env.DATABASE_URL)('API usuarios y matriculas F3 (e2e, M
 
     it('RF-18: seccion de un año cerrado 409; de un año no activo 422; inactiva 409; inexistente 404', async () => {
       const body = (key: string, sectionId: string) => ({
-        institutionalEmail: qa(key),
+        email: qa(key),
         fullName: 'QA F3 Rechazado',
         sectionId,
         ...studentExtras(),
@@ -571,20 +566,14 @@ describe.skipIf(!process.env.DATABASE_URL)('API usuarios y matriculas F3 (e2e, M
       await post('admin', '/students', body('rech4', randomUUID())).expect(404);
       expect(
         await prisma.user.count({
-          where: { institutionalEmail: { startsWith: `${QA_PREFIX}rech` } },
+          where: { email: { startsWith: `${QA_PREFIX}rech` } },
         }),
       ).toBe(0);
     });
 
-    it('RF-18/RNF-09: dominio ajeno 422; validacion de cuerpo 400 (campo desconocido, fechas del cliente)', async () => {
-      await post('admin', '/students', {
-        institutionalEmail: 'qa-f3-ajeno@otro.example',
-        fullName: 'QA F3 Ajeno',
-        sectionId: sec3A,
-        ...studentExtras(),
-      }).expect(422);
+    it('RF-18/RNF-09: validacion de cuerpo 400 (campo desconocido, fechas del cliente)', async () => {
       const ok = {
-        institutionalEmail: qa('val'),
+        email: qa('val'),
         fullName: 'QA F3 Valida',
         sectionId: sec3A,
         ...studentExtras(),
@@ -595,12 +584,12 @@ describe.skipIf(!process.env.DATABASE_URL)('API usuarios y matriculas F3 (e2e, M
       );
       await post('admin', '/students', { ...ok, fullName: 'ab' }).expect(400);
       await post('admin', '/students', { ...ok, fullName: 'QA F3\tTab' }).expect(400);
-      await post('admin', '/students', { ...ok, institutionalEmail: 'no-es-correo' }).expect(400);
+      await post('admin', '/students', { ...ok, email: 'no-es-correo' }).expect(400);
       await post('admin', '/students', { ...ok, sectionId: 'no-uuid' }).expect(400);
-      await post('admin', '/students', { institutionalEmail: ok.institutionalEmail }).expect(400);
+      await post('admin', '/students', { email: ok.email }).expect(400);
       await post('admin', '/students', { ...ok, guardians: [] }).expect(400);
       await post('admin', '/students', { ...ok, dniConfirm: '99999999' }).expect(400);
-      expect(await prisma.user.count({ where: { institutionalEmail: qa('val') } })).toBe(0);
+      expect(await prisma.user.count({ where: { email: qa('val') } })).toBe(0);
     });
   });
 
@@ -608,7 +597,7 @@ describe.skipIf(!process.env.DATABASE_URL)('API usuarios y matriculas F3 (e2e, M
   describe('Apoderado y vinculos (RF-20, RN-13)', () => {
     it('RF-20: crea apoderado con su estudiante en una transaccion (201)', async () => {
       const res = await post('admin', '/guardians', {
-        institutionalEmail: qa('apo1'),
+        email: qa('apo1'),
         fullName: 'QA F3 Apoderado Uno',
         ...dniPair(),
         studentIds: [s1.user.id],
@@ -632,46 +621,46 @@ describe.skipIf(!process.env.DATABASE_URL)('API usuarios y matriculas F3 (e2e, M
       const base = { fullName: 'QA F3 Apoderado Malo', ...dniPair() };
       await post('admin', '/guardians', {
         ...base,
-        institutionalEmail: qa('apo1'),
+        email: qa('apo1'),
         studentIds: [s1.user.id],
       }).expect(409);
       await post('admin', '/guardians', {
         ...base,
-        institutionalEmail: qa('apoX'),
+        email: qa('apoX'),
         studentIds: [],
       }).expect(400);
       await post('admin', '/guardians', {
         ...base,
-        institutionalEmail: qa('apoX'),
+        email: qa('apoX'),
         studentIds: [s1.user.id, s1.user.id],
       }).expect(400);
       await post('admin', '/guardians', {
         ...base,
-        institutionalEmail: qa('apoX'),
+        email: qa('apoX'),
         studentIds: Array.from({ length: 11 }, () => randomUUID()),
       }).expect(400);
       await post('admin', '/guardians', {
         ...base,
-        institutionalEmail: qa('apoX'),
+        email: qa('apoX'),
         studentIds: [ids.get('docente01')],
       }).expect(422);
       await post('admin', '/guardians', {
         ...base,
-        institutionalEmail: qa('apoX'),
+        email: qa('apoX'),
         studentIds: [ids.get('estudiante60')], // WITHDRAWN
       }).expect(422);
       await post('admin', '/guardians', {
         ...base,
-        institutionalEmail: qa('apoX'),
+        email: qa('apoX'),
         studentIds: [s1.user.id, randomUUID()],
       }).expect(422);
-      expect(await prisma.user.count({ where: { institutionalEmail: qa('apoX') } })).toBe(0);
+      expect(await prisma.user.count({ where: { email: qa('apoX') } })).toBe(0);
     });
 
-    it('RF-20/D-013: el apoderado esta exento del dominio institucional (201)', async () => {
+    it('RF-20/D-013: el apoderado puede tener un correo de cualquier dominio (201)', async () => {
       // sinMat no tiene apoderados: s1 ya tiene 2 y no admite otro (RN-17).
       const res = await post('admin', '/guardians', {
-        institutionalEmail: 'qa-f3-apo-ext@otro.example',
+        email: 'qa-f3-apo-ext@otro.example',
         fullName: 'QA F3 Apoderado Externo',
         ...dniPair(),
         studentIds: [sinMat],
@@ -878,7 +867,7 @@ describe.skipIf(!process.env.DATABASE_URL)('API usuarios y matriculas F3 (e2e, M
 
     it('RF-24: dos traslados identicos en paralelo se serializan: uno 200 y otro 422', async () => {
       const created = await post('admin', '/students', {
-        institutionalEmail: qa('alumno2'),
+        email: qa('alumno2'),
         fullName: 'QA F3 Alumno Dos',
         sectionId: sec3A,
         ...studentExtras(),
@@ -904,7 +893,7 @@ describe.skipIf(!process.env.DATABASE_URL)('API usuarios y matriculas F3 (e2e, M
   describe('Concurrencia (bloqueos de fila)', () => {
     it('RF-18: dos altas con el mismo correo en paralelo: 201 y 409, un solo usuario', async () => {
       const body = {
-        institutionalEmail: qa('carrera'),
+        email: qa('carrera'),
         fullName: 'QA F3 Carrera',
         sectionId: sec3A,
         ...studentExtras(),
@@ -914,11 +903,9 @@ describe.skipIf(!process.env.DATABASE_URL)('API usuarios y matriculas F3 (e2e, M
         post('admin', '/students', body),
       ]);
       expect(statuses(results)).toEqual([201, 409]);
-      expect(
-        await prisma.user.count({ where: { institutionalEmail: body.institutionalEmail } }),
-      ).toBe(1);
+      expect(await prisma.user.count({ where: { email: body.email } })).toBe(1);
       const user = await prisma.user.findUniqueOrThrow({
-        where: { institutionalEmail: body.institutionalEmail },
+        where: { email: body.email },
       });
       expect(await prisma.enrollment.count({ where: { studentId: user.id } })).toBe(1);
     });
@@ -984,7 +971,7 @@ describe.skipIf(!process.env.DATABASE_URL)('API usuarios y matriculas F3 (e2e, M
   describe('Estados (RF-23)', () => {
     it('RF-23: WITHDRAWN cierra la matricula vigente (WITHDRAWAL), audita y publica el evento', async () => {
       const created = await post('admin', '/students', {
-        institutionalEmail: qa('alumno3'),
+        email: qa('alumno3'),
         fullName: 'QA F3 Alumno Tres',
         sectionId: sec3A,
         ...studentExtras(),
@@ -1100,18 +1087,18 @@ describe.skipIf(!process.env.DATABASE_URL)('API usuarios y matriculas F3 (e2e, M
       expect(res.body.user.status).toBe('INACTIVE');
       await get('admin2', '/users?pageSize=1').expect(401);
       await post('admin2', '/teachers', {
-        institutionalEmail: qa('docx'),
+        email: qa('docx'),
         fullName: 'QA F3 No Debe Crearse',
       }).expect(401);
-      expect(await prisma.user.count({ where: { institutionalEmail: qa('docx') } })).toBe(0);
+      expect(await prisma.user.count({ where: { email: qa('docx') } })).toBe(0);
     });
   });
 
   // ---------------------------------------------------------------------------
   describe('Docentes (RF-19)', () => {
-    it('RF-19: crea un docente (201), audita, y rechaza repetido, dominio ajeno y cuerpo invalido', async () => {
+    it('RF-19: crea un docente (201), audita, y rechaza repetido y cuerpo invalido', async () => {
       const res = await post('admin', '/teachers', {
-        institutionalEmail: qa('profe1'),
+        email: qa('profe1'),
         fullName: 'QA F3 Profe Uno',
         ...dniPair(),
       }).expect(201);
@@ -1121,28 +1108,23 @@ describe.skipIf(!process.env.DATABASE_URL)('API usuarios y matriculas F3 (e2e, M
       expect(auditOf('users.user.create', res.body.user.id)).toHaveLength(1);
 
       await post('admin', '/teachers', {
-        institutionalEmail: qa('profe1'),
+        email: qa('profe1'),
         fullName: 'QA F3 Profe Uno',
         ...dniPair(),
       }).expect(409);
       await post('admin', '/teachers', {
-        institutionalEmail: `docente01@${DOMAIN}`,
+        email: `docente01@${DOMAIN}`,
         fullName: 'QA F3 Profe Dos',
         ...dniPair(),
       }).expect(409);
       await post('admin', '/teachers', {
-        institutionalEmail: 'qa-f3-profe9@otro.example',
-        fullName: 'QA F3 Profe Nueve',
-        ...dniPair(),
-      }).expect(422);
-      await post('admin', '/teachers', {
-        institutionalEmail: qa('profe8'),
+        email: qa('profe8'),
         fullName: 'QA F3 Profe Ocho',
         ...dniPair(),
         role: 'ADMIN',
       }).expect(400);
-      await post('admin', '/teachers', { institutionalEmail: qa('profe8') }).expect(400);
-      expect(await prisma.user.count({ where: { institutionalEmail: qa('profe8') } })).toBe(0);
+      await post('admin', '/teachers', { email: qa('profe8') }).expect(400);
+      expect(await prisma.user.count({ where: { email: qa('profe8') } })).toBe(0);
     });
 
     it('RF-19/RF-14: el docente nuevo es asignable a un curso-seccion y ve su contexto', async () => {
@@ -1178,36 +1160,30 @@ describe.skipIf(!process.env.DATABASE_URL)('API usuarios y matriculas F3 (e2e, M
       const before = auditOf('users.user.update', s1.user.id).length;
       const res = await patch('admin', `/users/${s1.user.id}`, {
         fullName: '  QA F3 Alumno   Uno Editado ',
-        institutionalEmail: qa('alumno1').toUpperCase().replace('@COLEGIO', '@colegio'),
+        email: qa('alumno1').toUpperCase().replace('@COLEGIO', '@colegio'),
       }).expect(200);
-      expect(res.body.institutionalEmail).toBe(qa('alumno1'));
+      expect(res.body.email).toBe(qa('alumno1'));
       expect(auditOf('users.user.update', s1.user.id)).toHaveLength(before);
     });
 
     it('RF-22: cambia el correo (200) y registra changedFields con ambos campos', async () => {
       const res = await patch('admin', `/users/${s1.user.id}`, {
-        institutionalEmail: qa('alumno1b'),
+        email: qa('alumno1b'),
         fullName: 'QA F3 Alumno Uno Dos',
       }).expect(200);
-      expect(res.body.institutionalEmail).toBe(qa('alumno1b'));
+      expect(res.body.email).toBe(qa('alumno1b'));
       const logs = auditOf('users.user.update', s1.user.id);
       expect(logs).toHaveLength(2);
-      expect((logs[1]!.afterState as Json).changedFields.sort()).toEqual([
-        'fullName',
-        'institutionalEmail',
-      ]);
+      expect((logs[1]!.afterState as Json).changedFields.sort()).toEqual(['email', 'fullName']);
       expect(JSON.stringify(logs[1])).not.toContain('alumno1b');
     });
 
-    it('RF-22: correo ya usado 409 (el del admin del seed), dominio ajeno 422', async () => {
+    it('RF-22: correo ya usado 409 (el del admin del seed)', async () => {
       await patch('admin', `/users/${s1.user.id}`, {
-        institutionalEmail: `admin@${DOMAIN}`,
+        email: `admin@${DOMAIN}`,
       }).expect(409);
-      await patch('admin', `/users/${s1.user.id}`, {
-        institutionalEmail: 'qa-f3-alumno1@otro.example',
-      }).expect(422);
       const row = await prisma.user.findUniqueOrThrow({ where: { id: s1.user.id } });
-      expect(row.institutionalEmail).toBe(qa('alumno1b'));
+      expect(row.email).toBe(qa('alumno1b'));
     });
 
     it('RF-22/D-012: el rol no se edita (400), cuerpo vacio 400, id invalido 400, inexistente 404', async () => {
@@ -1298,7 +1274,7 @@ describe.skipIf(!process.env.DATABASE_URL)('API usuarios y matriculas F3 (e2e, M
     it('RF-86: un apoderado existente se reutiliza por DNI (un hermano), sin crear otra cuenta', async () => {
       const before = await prisma.user.count();
       const res = await post('admin', '/students', {
-        institutionalEmail: qa('hermano'),
+        email: qa('hermano'),
         fullName: 'QA F3 Hermano',
         sectionId: sec3A,
         ...dniPair(),
@@ -1404,7 +1380,7 @@ describe.skipIf(!process.env.DATABASE_URL)('API usuarios y matriculas F3 (e2e, M
 
     it('RF-74: un usuario anterior al login por código recibe código y credencial al restablecer', async () => {
       const legacy = await prisma.user.create({
-        data: { institutionalEmail: qa('legado'), fullName: 'QA F3 Legado', role: 'TEACHER' },
+        data: { email: qa('legado'), fullName: 'QA F3 Legado', role: 'TEACHER' },
       });
       expect(legacy.code).toBeNull();
       const res = await post('admin', `/users/${legacy.id}/reset-password`).expect(200);
@@ -1550,7 +1526,7 @@ describe.skipIf(!process.env.DATABASE_URL)('API usuarios y matriculas F3 (e2e, M
     it('RNF-09: las respuestas de error no revelan el correo enviado', async () => {
       const dni = dniPair();
       const res = await post('admin', '/teachers', {
-        institutionalEmail: qa('profe1'),
+        email: qa('profe1'),
         fullName: 'QA F3 Profe Uno',
         ...dni,
       }).expect(409);
@@ -1577,9 +1553,7 @@ describe.skipIf(!process.env.DATABASE_URL)('API usuarios y matriculas F3 (e2e, M
         links: 3,
         activeLinks: 3,
       });
-      expect(
-        await prisma.user.count({ where: { institutionalEmail: { startsWith: 'qa-' } } }),
-      ).toBe(0);
+      expect(await prisma.user.count({ where: { email: { startsWith: 'qa-' } } })).toBe(0);
       expect(await prisma.academicYear.count({ where: { year: { gte: 2090 } } })).toBe(0);
     });
   });

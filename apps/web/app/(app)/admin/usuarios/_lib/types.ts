@@ -13,7 +13,7 @@ export type UserView = {
   id: string;
   /** Código de usuario de 10 dígitos (RF-68). Nulo en usuarios anteriores al login por código. */
   code: string | null;
-  institutionalEmail: string | null;
+  email: string | null;
   contactEmail: string | null;
   emailVerified: boolean;
   phone: string | null;

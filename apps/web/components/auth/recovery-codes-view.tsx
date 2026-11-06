@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 
 // RF-85: los códigos de recuperación se muestran una sola vez. Quien los recibe debe poder
@@ -16,6 +16,13 @@ export function RecoveryCodesView({
 }) {
   const [saved, setSaved] = useState(false);
   const [note, setNote] = useState<string | null>(null);
+  const root = useRef<HTMLDivElement>(null);
+
+  // El formulario anterior desaparece: el foco pasa a este bloque para que el lector de pantalla
+  // lo anuncie y el teclado no se pierda.
+  useEffect(() => {
+    root.current?.focus();
+  }, []);
 
   async function copy() {
     try {
@@ -46,13 +53,19 @@ export function RecoveryCodesView({
   }
 
   return (
-    <div className="grid gap-4">
+    <div
+      ref={root}
+      tabIndex={-1}
+      role="group"
+      aria-label="Códigos de recuperación"
+      className="grid gap-4 outline-none"
+    >
       <p className="rounded-lg border border-line bg-canvas px-3 py-2.5 text-sm text-ink-2">
         Si pierdes tu teléfono, cada uno de estos códigos te deja entrar{' '}
         <strong>una sola vez</strong>. No se vuelven a mostrar: guárdalos ahora.
       </p>
       <ul
-        aria-label="Códigos de recuperación"
+        aria-label="Lista de códigos"
         className="grid grid-cols-2 gap-2 font-mono text-sm tabular-nums"
       >
         {codes.map((code) => (

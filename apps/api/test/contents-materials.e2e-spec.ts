@@ -156,7 +156,7 @@ describe.skipIf(!process.env.DATABASE_URL)('Materiales de Dev 3, fase 3e (e2e, M
       'apoderado01',
     ]) {
       const user = await prisma.user.findUniqueOrThrow({
-        where: { institutionalEmail: `${key}@colegio.example` },
+        where: { email: `${key}@colegio.example` },
       });
       ids.set(key, user.id);
       cookies.set(key, await sessions.create({ id: user.id, role: user.role as Role }));

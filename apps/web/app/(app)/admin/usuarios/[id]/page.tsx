@@ -158,9 +158,9 @@ async function UserPage({
               </span>
             )}
           </Item>
-          {user.institutionalEmail ? (
+          {user.email ? (
             <Item label="Correo del colegio">
-              <span className="break-all">{user.institutionalEmail}</span>
+              <span className="break-all">{user.email}</span>
             </Item>
           ) : null}
           <Item label="Teléfono">{user.phone ?? '—'}</Item>

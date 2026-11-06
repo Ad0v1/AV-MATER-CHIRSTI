@@ -17,6 +17,12 @@ describe('API (e2e)', () => {
       .expect((res) => expect(res.body.status).toBe('ok'));
   });
 
+  it('las respuestas de la API no se guardan en cache (llevan credenciales de un solo uso)', () => {
+    return request(app.getHttpServer())
+      .get('/api/v1/health')
+      .expect((res) => expect(res.headers['cache-control']).toBe('no-store'));
+  });
+
   it('incluye cabeceras de seguridad de helmet', () => {
     return request(app.getHttpServer())
       .get('/api/v1/health')

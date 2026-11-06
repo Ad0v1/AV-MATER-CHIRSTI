@@ -116,10 +116,7 @@ export function EnableTwoFactorForm({ homePath }: { homePath: string }) {
     <form onSubmit={confirm} className="grid gap-5" noValidate>
       <div className="grid gap-1.5">
         <p className="text-sm font-medium text-ink">Clave para tu aplicación</p>
-        <p
-          aria-label="Clave de configuración"
-          className="rounded-lg border border-line bg-canvas px-3 py-2.5 font-mono text-sm break-all tabular-nums select-all"
-        >
+        <p className="rounded-lg border border-line bg-canvas px-3 py-2.5 font-mono text-sm break-all tabular-nums select-all">
           {groups(setup.secret)}
         </p>
         <p className="text-xs text-ink-3">

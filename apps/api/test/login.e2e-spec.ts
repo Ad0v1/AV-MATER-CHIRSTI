@@ -28,7 +28,7 @@ async function addUser(
   const totp = t.app.get(TotpService);
   t.prisma.users.push({
     id: 'user-1',
-    institutionalEmail: 'admin@colegio.edu.pe',
+    email: 'admin@colegio.edu.pe',
     code: CODE,
     dniEncrypted: t.app.get(DniService).encrypt(DNI),
     contactEmail: 'usuario@correo.pe',

@@ -229,7 +229,7 @@ describe.skipIf(!process.env.DATABASE_URL)('Importacion masiva RF-21 (e2e, MySQL
   const cleanQaData = async () => {
     const users = await prisma.user.findMany({
       where: {
-        OR: [{ institutionalEmail: { startsWith: QA_PREFIX } }, { dniHash: { in: qaDniHashes() } }],
+        OR: [{ email: { startsWith: QA_PREFIX } }, { dniHash: { in: qaDniHashes() } }],
       },
       select: { id: true },
     });
@@ -260,7 +260,7 @@ describe.skipIf(!process.env.DATABASE_URL)('Importacion masiva RF-21 (e2e, MySQL
         status,
         dniEncrypted: dniService.encrypt(dni),
         dniHash: dniService.hash(dni),
-        institutionalEmail: email,
+        email: email,
       },
     });
 
@@ -307,7 +307,7 @@ describe.skipIf(!process.env.DATABASE_URL)('Importacion masiva RF-21 (e2e, MySQL
     h = await buildApp({ throttle: false });
     for (const key of ['admin', 'docente01', 'estudiante01', 'apoderado01']) {
       const user = await prisma.user.findUniqueOrThrow({
-        where: { institutionalEmail: `${key}@${DOMAIN}` },
+        where: { email: `${key}@${DOMAIN}` },
       });
       await createSession(key, user.id, user.role as Role);
     }
@@ -1383,7 +1383,7 @@ describe.skipIf(!process.env.DATABASE_URL)('Importacion masiva RF-21 (e2e, MySQL
       process.env.RATE_LIMIT_PER_MINUTE = '1000'; // que solo actue el limite propio (10/min)
       rl = await buildApp({ throttle: true });
       const admin = await prisma.user.findUniqueOrThrow({
-        where: { institutionalEmail: `admin@${DOMAIN}` },
+        where: { email: `admin@${DOMAIN}` },
       });
       cookies.set('rlAdmin', await rl.sessions.create({ id: admin.id, role: 'ADMIN' }));
     });
