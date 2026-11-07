@@ -13,6 +13,7 @@ import {
   SidebarMenuItem,
 } from '@/components/ui/sidebar';
 import { BrandSkeleton, SchoolBrand } from '@/components/layout/school-brand';
+import { MyCoursesNav, MyCoursesSkeleton } from '@/components/layout/my-courses-nav';
 import { LogoutButton } from '@/components/layout/logout-button';
 import { NAV_BY_ROLE } from '@/lib/nav';
 import { ROLE_LABELS, type Role } from '@/lib/roles';
@@ -48,6 +49,9 @@ export function AppSidebar({ role }: { role: Role }) {
             </SidebarGroupContent>
           </SidebarGroup>
         ))}
+        <Suspense fallback={<MyCoursesSkeleton role={role} />}>
+          <MyCoursesNav role={role} />
+        </Suspense>
       </SidebarContent>
       <SidebarFooter>
         <LogoutButton />
