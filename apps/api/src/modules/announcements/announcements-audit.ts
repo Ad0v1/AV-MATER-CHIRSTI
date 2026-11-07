@@ -1,5 +1,5 @@
 import { Logger } from '@nestjs/common';
-import type { AuditService } from '../../common/audit/audit.service.js';
+import type { AuditEvent, AuditService, AuditTx } from '../../common/audit/audit.service.js';
 import type { Actor } from '../academic/request-user.js';
 
 const logger = new Logger('AnnouncementsAudit');
@@ -18,9 +18,10 @@ export async function recordAnnouncement(
   action: AnnouncementAuditAction,
   announcementId: string,
   after: Record<string, unknown>,
+  tx?: AuditTx, // D-047: con tx se escribe dentro de la transaccion y el fallo la revierte
 ): Promise<void> {
   try {
-    await audit.record({
+    const event: AuditEvent = {
       actorId: actor.id,
       ip: actor.ip,
       module: 'announcements',
@@ -28,8 +29,11 @@ export async function recordAnnouncement(
       entityType: 'Announcement',
       entityId: announcementId,
       afterState: after,
-    });
+    };
+    // Sin tx se llama con un solo argumento (firma de siempre).
+    await (tx ? audit.record(event, tx) : audit.record(event));
   } catch (error: unknown) {
+    if (tx) throw error;
     logger.error(
       `Fallo al registrar la bitácora: ${JSON.stringify({
         action,

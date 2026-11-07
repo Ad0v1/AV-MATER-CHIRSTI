@@ -139,7 +139,7 @@ describe('SettingsService.get / branding (RF-61)', () => {
 
 describe('SettingsService.update (RF-61)', () => {
   it('actualiza los tres campos, invalida la caché y registra solo lo que cambió', async () => {
-    const { service, settings, audit, invalidate } = setup();
+    const { service, settings, audit, invalidate, tx } = setup();
     const scale = [
       { literal: 'AD', min: 17, max: 20 },
       { literal: 'A', min: 14, max: 16 },
@@ -169,6 +169,7 @@ describe('SettingsService.update (RF-61)', () => {
         }),
         afterState: expect.objectContaining({ purgeAfterDays: 90 }),
       }),
+      tx, // D-047: dentro de la transacción
     );
   });
 
@@ -205,7 +206,7 @@ describe('SettingsService.update (RF-61)', () => {
 
 describe('SettingsService.uploadLogo (U5)', () => {
   it('PNG limpio: antivirus, subida a institution/, fila y borrado del anterior', async () => {
-    const { service, scanner, logos, settings, audit } = setup({
+    const { service, scanner, logos, settings, audit, tx } = setup({
       logoObjectKey: OLD_KEY,
       logoMime: 'image/png',
     });
@@ -228,6 +229,7 @@ describe('SettingsService.uploadLogo (U5)', () => {
         beforeState: { hadLogo: true },
         afterState: expect.objectContaining({ mime: 'image/png', width: 200, height: 100 }),
       }),
+      tx, // D-047: dentro de la transacción
     );
   });
 

@@ -64,7 +64,7 @@ describe.skipIf(!process.env.DATABASE_URL)('Recorridos completos (e2e, MySQL)', 
   const http = () => request(app.getHttpServer());
   const api = (method: 'get' | 'post' | 'patch', path: string, cookie?: string | string[]) => {
     const req = http()[method](API + path);
-    return cookie ? req.set('Cookie', cookie) : req;
+    return cookie ? req.set('Cookie', [cookie].flat()) : req;
   };
   const asAdmin = (method: 'post' | 'get', path: string) => api(method, path, adminCookie);
   const login = (code: string, password: string) =>

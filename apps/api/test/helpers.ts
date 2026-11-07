@@ -3,7 +3,7 @@ import { INestApplication } from '@nestjs/common';
 import { App } from 'supertest/types.js';
 import { AppModule } from './../src/app.module.js';
 import { configureApp } from './../src/app.setup.js';
-import { AuditSink, type AuditRecord } from './../src/common/audit/audit.service.js';
+import { AuditService, AuditSink, type AuditRecord } from './../src/common/audit/audit.service.js';
 import { MailSender, type MailMessage } from './../src/common/mail/mail-sender.js';
 import { PrismaService } from './../src/common/prisma/prisma.service.js';
 import { MemorySessionStore, SessionStore } from './../src/common/session/session.store.js';
@@ -197,17 +197,28 @@ export async function createTestApp(): Promise<TestApp> {
 
 // Igual que createTestApp pero con MySQL real (Prisma sin reemplazar): la usan los e2e de Dev 2
 // (academic-api, academic-clone, users-promotion). Añadido al integrar develop el 29/10/2026.
+//
+// D-047 (fase A1): con `tx`, AuditService.record inserta en AuditLog dentro de la transaccion y no
+// pasa por el sink. Para que los e2e sigan leyendo `sink.records`, se copia al sink el evento
+// escrito con tx (solo si la insercion tuvo exito, igual que la fila real).
 export async function createDbTestApp(): Promise<INestApplication<App>> {
+  const sink = new MemoryAuditSink();
   const moduleFixture = await Test.createTestingModule({ imports: [AppModule] })
     .overrideProvider(SessionStore)
     .useValue(new MemorySessionStore())
     .overrideProvider(AuditSink)
-    .useValue(new MemoryAuditSink())
+    .useValue(sink)
     .overrideProvider(MailSender)
     .useValue(new MemoryMailSender())
     .compile();
   const app = moduleFixture.createNestApplication<INestApplication<App>>();
   configureApp(app);
   await app.init();
+  const audit = app.get(AuditService);
+  const record = audit.record.bind(audit);
+  audit.record = async (event, tx) => {
+    await record(event, tx);
+    if (tx) await sink.write({ ...event, occurredAt: new Date() });
+  };
   return app;
 }

@@ -138,25 +138,30 @@ export class GradesService {
     await this.access.assertCourseSectionWritable(assignment.courseSectionId, assignment.periodId);
 
     const result = await this.withRetry(() =>
-      this.prisma.$transaction((tx) =>
-        this.putInTx(tx, assignment, enrollmentId, cs.sectionId, input),
-      ),
+      this.prisma.$transaction(async (tx) => {
+        const r = await this.putInTx(tx, assignment, enrollmentId, cs.sectionId, input);
+        // D-047: la bitácora va en la misma transacción que la nota.
+        if (r.changed.length > 0) {
+          await recordGrading(
+            this.audit,
+            actor,
+            r.before ? 'grade.update' : 'grade.create',
+            r.after.id,
+            {
+              before: r.before ? auditState(r.before) : null,
+              after: auditState(r.after),
+              changedFields: r.changed,
+              assignmentId,
+              enrollmentId,
+            },
+            tx,
+          );
+        }
+        return r;
+      }),
     );
 
     if (result.changed.length > 0) {
-      await recordGrading(
-        this.audit,
-        actor,
-        result.before ? 'grade.update' : 'grade.create',
-        result.after.id,
-        {
-          before: result.before ? auditState(result.before) : null,
-          after: auditState(result.after),
-          changedFields: result.changed,
-          assignmentId,
-          enrollmentId,
-        },
-      );
       this.events.publish({
         type: 'grade.updated.v1',
         payload: {

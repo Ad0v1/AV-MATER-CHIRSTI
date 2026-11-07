@@ -6,7 +6,7 @@ import {
   NotFoundException,
   UnprocessableEntityException,
 } from '@nestjs/common';
-import { AuditService } from '../../common/audit/audit.service.js';
+import { AuditService, type AuditTx, type AuditEvent } from '../../common/audit/audit.service.js';
 import type { AuthenticatedUser } from '../../common/auth/roles.js';
 import { PrismaService } from '../../common/prisma/prisma.service.js';
 import type { Prisma } from '../../generated/prisma/client.js';
@@ -103,14 +103,23 @@ export class SubmissionsService {
     await this.access.assertCourseSectionWritable(assignment.courseSectionId, assignment.periodId);
 
     const result = await this.withRetry(() =>
-      this.prisma.$transaction((tx) =>
-        this.submitInTx(tx, assignmentId, assignment.periodId, fileId, enrollmentId, user.id),
-      ),
+      this.prisma.$transaction(async (tx) => {
+        const r = await this.submitInTx(
+          tx,
+          assignmentId,
+          assignment.periodId,
+          fileId,
+          enrollmentId,
+          user.id,
+        );
+        // D-047: la bitácora va en la misma transacción que la versión.
+        if (r.created) await this.recordVersion(actor, assignmentId, enrollmentId, r.version, tx);
+        return r;
+      }),
     );
 
     const view = this.accepted(result.version, { id: assignmentId, dueAt: result.dueAt });
     if (result.created) {
-      await this.recordVersion(actor, assignmentId, enrollmentId, result.version);
       this.events.publish({
         type: 'submission.accepted.v1',
         payload: {
@@ -431,18 +440,19 @@ export class SubmissionsService {
   }
 
   /**
-   * Bitácora `submissions.version.created` después del commit: solo ids, número, hora y
-   * puntualidad (nunca el nombre del alumno ni originalName). Nunca lanza.
+   * Bitácora `submissions.version.created` dentro de la transacción (D-047; con tx lanza): solo ids, número, hora y
+   * puntualidad (nunca el nombre del alumno ni originalName). Sin `tx` nunca lanza; con `tx` relanza (D-047).
    */
   private async recordVersion(
     actor: Actor,
     assignmentId: string,
     enrollmentId: string,
     version: VersionRow,
+    tx?: AuditTx,
   ): Promise<void> {
     const action = 'submissions.version.created';
     try {
-      await this.audit.record({
+      const event: AuditEvent = {
         actorId: actor.id,
         ip: actor.ip,
         module: 'submissions',
@@ -458,8 +468,11 @@ export class SubmissionsService {
           receivedAt: version.receivedAt.toISOString(),
           isLate: version.isLate,
         },
-      });
+      };
+      // Sin tx se llama con un solo argumento (firma de siempre).
+      await (tx ? this.audit.record(event, tx) : this.audit.record(event));
     } catch (error: unknown) {
+      if (tx) throw error;
       logger.error(
         `Fallo al registrar la bitácora: ${JSON.stringify({
           action,
