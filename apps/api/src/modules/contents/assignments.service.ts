@@ -115,7 +115,7 @@ export class AssignmentsService {
         if (dto.attachmentFileId !== null) {
           await this.assertAttachmentUsable(tx, dto.attachmentFileId, courseSectionId, null);
         }
-        return tx.assignment.create({
+        const row = await tx.assignment.create({
           data: {
             courseSectionId,
             periodId: dto.periodId,
@@ -130,13 +130,20 @@ export class AssignmentsService {
           },
           include: assignmentInclude,
         });
+        const rowFields = fieldsOf(row);
+        await recordContents(
+          this.audit,
+          actor,
+          'assignment.created',
+          'Assignment',
+          row.id,
+          { after: auditSnapshot({ ...rowFields, courseSectionId, periodId: row.periodId }) },
+          tx,
+        );
+        return row;
       })
       .catch((e: unknown) => this.mapError(e));
 
-    const fields = fieldsOf(created);
-    await recordContents(this.audit, actor, 'assignment.created', 'Assignment', created.id, {
-      after: auditSnapshot({ ...fields, courseSectionId, periodId: created.periodId }),
-    });
     this.events.publish({
       type: 'assignment.created.v1',
       payload: {
@@ -210,14 +217,26 @@ export class AssignmentsService {
           },
         });
         if (count === 0) throw new NotFoundException(MSG.notFound);
-        return tx.assignment.findUniqueOrThrow({ where: { id }, include: assignmentInclude });
+        const row = await tx.assignment.findUniqueOrThrow({
+          where: { id },
+          include: assignmentInclude,
+        });
+        await recordContents(
+          this.audit,
+          actor,
+          'assignment.updated',
+          'Assignment',
+          id,
+          {
+            before: change.before,
+            after: { ...change.after, changedFields: change.changedFields },
+          },
+          tx,
+        );
+        return row;
       })
       .catch((e: unknown) => this.mapError(e));
 
-    await recordContents(this.audit, actor, 'assignment.updated', 'Assignment', id, {
-      before: change.before,
-      after: { ...change.after, changedFields: change.changedFields },
-    });
     this.events.publish({
       type: 'assignment.updated.v1',
       payload: {
@@ -254,13 +273,17 @@ export class AssignmentsService {
         });
         if (versions > 0) throw new ConflictException(MSG.hasSubmissions);
         await tx.assignment.update({ where: { id }, data: { deletedAt } });
+        await recordContents(
+          this.audit,
+          actor,
+          'assignment.deleted',
+          'Assignment',
+          id,
+          { before: { deletedAt: null }, after: { deletedAt: deletedAt.toISOString() } },
+          tx,
+        );
       })
       .catch((e: unknown) => this.mapError(e));
-
-    await recordContents(this.audit, actor, 'assignment.deleted', 'Assignment', id, {
-      before: { deletedAt: null },
-      after: { deletedAt: deletedAt.toISOString() },
-    });
   }
 
   /**
