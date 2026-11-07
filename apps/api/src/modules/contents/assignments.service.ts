@@ -51,6 +51,7 @@ export const MSG = {
   invalidAttachment: 'El archivo adjunto no es válido para esta tarea',
   attachmentInUse: 'El archivo adjunto ya está en uso',
   hasSubmissions: 'La tarea ya tiene entregas y no se puede eliminar',
+  hasGrades: 'La tarea ya tiene notas y no se puede eliminar',
 } as const;
 
 const assignmentInclude = {
@@ -252,7 +253,7 @@ export class AssignmentsService {
     return toView(updated);
   }
 
-  // Borrado lógico (RN-14: no se pierde historial). 409 si ya hay alguna versión entregada.
+  // Borrado lógico (RN-14: no se pierde historial). 409 si ya hay alguna versión entregada o nota.
   async remove(id: string, user: AuthenticatedUser, actor: Actor): Promise<void> {
     const current = await this.findOrFail(id);
     await assertCanWriteCourseSection(this.access, user, current.courseSectionId);
@@ -272,6 +273,9 @@ export class AssignmentsService {
           where: { submission: { assignmentId: id } },
         });
         if (versions > 0) throw new ConflictException(MSG.hasSubmissions);
+        // RN-10: tampoco si ya tiene notas (p. ej. una NE registrada sin entrega).
+        const grades = await tx.grade.count({ where: { assignmentId: id } });
+        if (grades > 0) throw new ConflictException(MSG.hasGrades);
         await tx.assignment.update({ where: { id }, data: { deletedAt } });
         await recordContents(
           this.audit,
