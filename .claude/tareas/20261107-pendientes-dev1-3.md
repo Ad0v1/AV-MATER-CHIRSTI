@@ -180,3 +180,30 @@ Estado: LISTO.
 ### Decisión del orquestador 6
 
 El usuario pidió enviar lo avanzado a los dos repos ("de lo que se tiene hasta el momento manda el pull request a la repo grupal y mi repor privada"). Se envía **sin la pasada de revisor-pr** de A2-A4 y B2/B4; queda pendiente. B1 y B3 siguen sin empezar.
+
+### INFORME 11 — arquitecto-integrador (plan B1)
+
+Estado: LISTO.
+- Se usa `GET /me/course-sections` tal como está (docs/03 §259): TEACHER y STUDENT; ADMIN y GUARDIAN reciben 403. Sin contrato nuevo ni cambio de esquema.
+- "Mis cursos" en el sidebar solo para TEACHER (curso · sección) y STUDENT (curso).
+- Nuevo `curso/[id]/layout.tsx`, con encabezado y `<nav aria-label="Secciones del curso">`. `page.tsx` redirige a clases.
+- Pestañas:
+  - TEACHER y ADMIN (soporte): Clases, Lecturas, Tareas, Anuncios y Registro.
+  - STUDENT: las mismas, sin Registro.
+- Componentes `course-tabs.tsx` y `my-courses-nav.tsx`. Dueño: dev1.
+- Criterios: 360 px con overflow-x, objetivos de 44 px, `aria-current` y foco visible.
+- Decisión futura: ¿el apoderado debe ver los cursos de su hijo?
+
+### Decisión del orquestador 7
+
+dev1 implementa B1 cuando termine el revisor (para no alterar el árbol mientras corre sus comandos).
+
+### INFORME 12 — revisor-pr (A2-A4 + B2/B4)
+
+Estado: CAMBIOS_PEDIDOS. Pasan lint, tsc, api (1242), web (491) y e2e completo (36/712), y se confirmaron aplicados los hallazgos de seguridad y UX.
+- [ALTO] Turbo 2 filtra `S3_PUBLIC_ORIGIN` y `web#build` falla (el CI del PR #20 falló por esto).
+- [BAJO] La detección de la regla de `minio-init` depende del formato de `mc`; hay que verificarla en local.
+
+### Decisión del orquestador 8 (vuelta 1/2 cerrada)
+
+El orquestador agregó `"env": ["S3_PUBLIC_ORIGIN"]` a la tarea `build` de `turbo.json` (archivo compartido). `S3_PUBLIC_ORIGIN=https://bucket.ci.invalid pnpm build --force`: 5/5 ok. Se da por aprobado sin repetir el revisor, porque el único hallazgo era este y ya se verificó con el build. La corrección también va al PR #20.

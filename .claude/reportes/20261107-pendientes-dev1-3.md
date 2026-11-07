@@ -272,3 +272,17 @@ Corre api lint, tsc, test y build, y los e2e de storage-facades, jobs, settings-
 - revisor-pr de A2-A4 y B2/B4, y prueba del logo con sesión de admin.
 - B1 y B3.
 - Deuda: `'unsafe-inline'` en `script-src`.
+
+### Revisión final (después del envío)
+
+- **revisor-pr:** CAMBIOS_PEDIDOS. Un hallazgo ALTO: turbo no pasaba `S3_PUBLIC_ORIGIN` al build de la web, y el CI del PR #20 falló.
+- **Corrección del orquestador:** `turbo.json`, con `env: ["S3_PUBLIC_ORIGIN"]` en `build`. El `pnpm build --force` completo pasa (5/5).
+- **Prompt literal (revisor-pr):**
+
+```text
+Expediente: .claude/tareas/20261107-pendientes-dev1-3.md (lee los INFORMES 4 a 10 y la Decisión 6).
+
+Encargo: revisión final del commit b0c0bb7 (rama features/adolfo) que trae A2 (logo en cabecera y cabeceras de seguridad en apps/web/next.config.ts), A3 (minio-init en docker-compose), A4 (worker dev --wait), B2 (gradeState en submissions) y B4 (complete() vencido 409 UPLOAD_EXPIRED, StorageService con lista blanca de activos y fachadas). Ya está enviado en el PR #20 del equipo; si encuentras algo, se corrige en un commit nuevo.
+
+Verifica: definición de terminado, carpetas tocadas, lint, tsc, test (api y web) y build (api, web, worker). Usa NODE_OPTIONS=--dns-result-order=ipv4first. Corre el e2e completo solo si Docker está arriba (cd apps/api && timeout 900 pnpm test:e2e), escribiendo cualquier log en el scratchpad del sistema, no en el repo. Revisa también que los hallazgos de seguridad M1-M3 y B1-B5 y los de UX quedaron aplicados. No modifiques archivos. Devuelve el INFORME del protocolo (.claude/PROTOCOLO_AGENTES.md) con APROBADO o CAMBIOS_PEDIDOS y hallazgos por severidad.
+```
