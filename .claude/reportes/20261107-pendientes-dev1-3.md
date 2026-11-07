@@ -286,3 +286,127 @@ Encargo: revisión final del commit b0c0bb7 (rama features/adolfo) que trae A2 (
 
 Verifica: definición de terminado, carpetas tocadas, lint, tsc, test (api y web) y build (api, web, worker). Usa NODE_OPTIONS=--dns-result-order=ipv4first. Corre el e2e completo solo si Docker está arriba (cd apps/api && timeout 900 pnpm test:e2e), escribiendo cualquier log en el scratchpad del sistema, no en el repo. Revisa también que los hallazgos de seguridad M1-M3 y B1-B5 y los de UX quedaron aplicados. No modifiques archivos. Devuelve el INFORME del protocolo (.claude/PROTOCOLO_AGENTES.md) con APROBADO o CAMBIOS_PEDIDOS y hallazgos por severidad.
 ```
+
+---
+
+# Actualización: B1 (navegación del curso, RF-08)
+
+## Pedido
+
+"Sí, sigue" (07/11/2026). Flujo completo. Rama `features/adolfo`, sobre `c8cf6da`.
+
+## Resultado
+
+- **"Mis cursos" en el menú lateral:** lo ven docentes y estudiantes, con datos reales de `GET /me/course-sections`. Para el admin y el apoderado no se pide nada a la API.
+- **Barra de pestañas del curso:**
+  - Clases, Lecturas, Tareas y Anuncios.
+  - Registro, solo para docente y admin.
+  - `aria-current`, objetivos de 44 px y scroll horizontal a 360 px.
+- **Encabezado del curso:** curso, sección, docente, año y aviso de solo lectura. Responde "no encontrado" si el curso no es tuyo.
+- **`/curso/[id]`:** redirige a Clases.
+
+## Agentes que participaron
+
+| # | Agente | Qué hizo | Estado |
+|---|---|---|---|
+| 1 | arquitecto-integrador | Plan | LISTO |
+| 2 | dev1-plataforma | Implementación | LISTO |
+| 3 | qa-tester | Tests del encabezado y la redirección | LISTO |
+| 4 | seguridad-cumplimiento | Auditoría | APROBADO (2 BAJO) |
+| 5 | ux-accesibilidad | Revisión | APROBADO (4 MEDIO, 5 BAJO) |
+| 6 | dev1-plataforma | Corrección 1/2 | LISTO |
+| 7 | revisor-pr | Revisión final | APROBADO |
+
+## Prompts usados (literales)
+
+### arquitecto-integrador — Plan de B1 menú y pestañas
+
+```text
+Expediente: .claude/tareas/20261107-pendientes-dev1-3.md (plan del orquestador, punto B1).
+
+Encargo: planifica B1. Hay que mostrar en el menú lateral (apps/web/components/layout/app-sidebar.tsx) la lista "Mis cursos" con los cursos reales del usuario según su rol (docente: cursos-sección asignados; estudiante: cursos de su sección; apoderado y admin: decidir si aplica), y agregar dentro de la página del curso una barra de pestañas (Materiales, Tareas, Anuncios, Notas u otras que ya existan como rutas) para navegar entre sus secciones.
+
+Responde:
+1. Qué endpoints de la API ya existen para listar los cursos del usuario (busca en apps/api/src/modules y en docs/03_CONTRATOS.md) y si falta alguno o hay que cambiar un contrato.
+2. Qué rutas existen bajo apps/web/app/(app)/ para el curso y cuáles serían las pestañas por rol, respetando docs/05_AUTORIZACION.md.
+3. Agente dueño (dev1 para el menú, dev2/dev3 para cursos, dev5 para anuncios) y orden, señalando archivos compartidos para no lanzar en paralelo.
+4. Si hay cambio de esquema (espero que no).
+5. Requisitos afectados (RF/RNF) y criterios de aceptación concretos, incluido 360 px y accesibilidad (aria-current, navegación por teclado).
+Solo lectura. Devuelve el INFORME del protocolo (.claude/PROTOCOLO_AGENTES.md).
+```
+
+### dev1-plataforma — B1 menú Mis cursos y pestañas
+
+```text
+Expediente: .claude/tareas/20261107-pendientes-dev1-3.md (lee el INFORME 11 del arquitecto: es tu plan).
+
+Encargo B1 (RF-08, con RF-16/19, RF-32 y RNF de accesibilidad):
+1. `apps/web/components/layout/my-courses-nav.tsx`: grupo "Mis cursos" en el sidebar con datos reales de `GET /me/course-sections` (docs/03 §259), pedido en servidor con la sesión y SOLO si el rol es TEACHER o STUDENT (ADMIN y GUARDIAN: no pedir nada, no mostrar el grupo). TEACHER: un ítem por curso-sección "Curso · 3°A"; STUDENT: un ítem por curso. Orden por curso y sección. Lista vacía: "No tienes cursos asignados en el año activo". Error: "No se pudieron cargar tus cursos" sin romper el menú. Integrarlo en `app-sidebar.tsx` con Suspense y skeleton (como SchoolBrand). Enlace activo con `aria-current="page"` también en subrutas /curso/:id/*. Nombres largos truncados con title.
+2. `apps/web/app/(app)/curso/[id]/layout.tsx`: encabezado con `GET /course-sections/:id/context` (curso, sección, docente, aviso de solo lectura si readOnly) y barra `apps/web/components/layout/course-tabs.tsx` (client, usePathname) como `<nav aria-label="Secciones del curso">` con `<Link>` (no tablist). Pestañas: TEACHER y ADMIN: Clases, Lecturas, Tareas, Anuncios, Registro; STUDENT: sin Registro; GUARDIAN: sin barra. Activa con aria-current, subrayado o borde y peso (no solo color). A 360 px overflow-x-auto sin scroll horizontal de página, objetivos de al menos 44 px, focus-visible:ring.
+3. `curso/[id]/page.tsx` que redirige a `/curso/[id]/clases`.
+No edites las páginas hijas. Si alguna ya pinta su propio encabezado y queda duplicado, NO lo quites: avísalo en el informe con la ruta. No toques turbo.json ni archivos fuera de apps/web/components/layout y apps/web/app/(app)/curso/[id]/ (más los tests). Agrega tests de componente: pestañas por rol, aria-current, lista vacía y error.
+Verifica con NODE_OPTIONS=--dns-result-order=ipv4first: lint, tsc, test y build de web (build con S3_PUBLIC_ORIGIN=https://bucket.ci.invalid). No hagas commit. Devuelve el INFORME del protocolo (.claude/PROTOCOLO_AGENTES.md).
+```
+
+### qa-tester — QA de B1
+
+```text
+Expediente: .claude/tareas/20261107-pendientes-dev1-3.md (INFORMES 11 y 13). Encargo: tests de B1 (RF-08): grupo "Mis cursos" del sidebar y barra de pestañas del curso en apps/web/components/layout/ (course-nav-model.ts, course-tabs.tsx, my-courses-list.tsx, my-courses-nav.tsx) y apps/web/app/(app)/curso/[id]/layout.tsx y page.tsx. Completa los casos que falten: pestañas por rol (TEACHER/ADMIN 5, STUDENT 4 sin Registro, GUARDIAN ninguna), aria-current en activa y subrutas, orden y etiquetas, lista vacía, error de la API, que ADMIN y GUARDIAN no llaman a /me/course-sections, encabezado con readOnly y con error de /context, y la redirección de /curso/[id]. Sigue el patrón sin DOM de school-brand.test.ts. Solo archivos de test. Corre con NODE_OPTIONS=--dns-result-order=ipv4first: test, lint y tsc de web. Devuelve el INFORME del protocolo.
+```
+
+### seguridad-cumplimiento — Seguridad de B1
+
+```text
+Expediente: .claude/tareas/20261107-pendientes-dev1-3.md (INFORMES 11 y 13). Audita B1: apps/web/components/layout/my-courses-nav.tsx, my-courses-list.tsx, course-tabs.tsx, course-nav-model.ts, app-sidebar.tsx y apps/web/app/(app)/curso/[id]/layout.tsx y page.tsx. Revisa: que el rol para decidir la llamada sale de la sesión del servidor y no del cliente, que no se filtran datos de otros cursos ni de menores, que ocultar pestañas no se usa como control de acceso (la API debe proteger cada subruta: confírmalo en docs/05 y en los guards), manejo de errores sin exponer detalles, y que no se pasan datos personales innecesarios al cliente. Solo lectura. Devuelve el INFORME del protocolo con hallazgos por severidad.
+```
+
+### ux-accesibilidad — UX de B1
+
+```text
+Expediente: .claude/tareas/20261107-pendientes-dev1-3.md (INFORMES 11 y 13). Revisa B1: grupo "Mis cursos" en apps/web/components/layout/my-courses-list.tsx, my-courses-nav.tsx y app-sidebar.tsx, la barra apps/web/components/layout/course-tabs.tsx y el encabezado apps/web/app/(app)/curso/[id]/layout.tsx. Criterios: coherencia con shadcn/ui y el sidebar existente, 360 px (overflow-x de la barra sin scroll de página, sheet móvil), objetivos de 44 px, foco visible, aria-current, pestaña activa no solo por color, contraste AA en claro y oscuro, esqueletos sin salto de layout, jerarquía de encabezados con los h1 de las páginas hijas, textos en español claros. Solo lectura. Devuelve el INFORME del protocolo con hallazgos por severidad.
+```
+
+### SendMessage → a7285487e578fafa0
+
+```text
+Corrección 1/2 de B1: aplica estos hallazgos de UX y seguridad (expediente, INFORMES 14 a 16).
+UX:
+- M1: HeaderSkeleton de curso/[id]/layout.tsx con la misma estructura que el real (pt-4, línea text-lg, línea text-sm, mt-2 y franja de 44 px con borde inferior para la barra).
+- M2: esqueletos de my-courses-nav.tsx con h-8 y gap-1, y <span className="sr-only">Cargando tus cursos…</span> (o role="status").
+- M3: ítems de "Mis cursos" con className="h-11 md:h-8" solo en el grupo nuevo; no toques ui/sidebar.
+- M4: errores con role="alert" y acción: "No se pudieron cargar los datos del curso. Recarga la página o vuelve a intentarlo en unos minutos." y "No se pudieron cargar tus cursos. Recarga la página.". El texto de vacío para docente añade "Consulta con el administrador".
+- B5: scrollIntoView({inline:'nearest', block:'nearest'}) de la pestaña activa al montar; px-2 en móvil (md:px-3).
+- B6: scroll-px-4 en el nav.
+- B7-B8: revisa el contraste de text-sidebar-foreground/70 en text-xs y de text-muted-foreground; si no llega a 4.5:1, quita la opacidad.
+Seguridad:
+- BAJO-1: en layout.tsx, si /context responde 403 o 404, notFound(); otros errores siguen con el aviso.
+- BAJO-2: encodeURIComponent(id) en el redirect de page.tsx (o dentro de COURSE_ROUTES).
+Actualiza los tests afectados (course-nav.test.ts y course-header.test.ts de QA) para que reflejen los textos y el notFound. Mismas carpetas que antes. Verifica lint, tsc, test y build de web (S3_PUBLIC_ORIGIN=https://bucket.ci.invalid). Sin commit. Devuelve el INFORME.
+```
+
+### revisor-pr — Revisor de B1
+
+```text
+Expediente: .claude/tareas/20261107-pendientes-dev1-3.md (INFORMES 11 a 17). Encargo: revisión final de B1 (RF-08), sin commit todavía: cambios sin commitear en apps/web/components/layout/ (app-sidebar.tsx, my-courses-nav.tsx, my-courses-list.tsx, course-tabs.tsx, course-nav-model.ts, course-nav.test.ts, course-header.test.ts) y apps/web/app/(app)/curso/[id]/ (layout.tsx, page.tsx). Verifica definición de terminado, carpetas tocadas, que se aplicaron los hallazgos de UX (M1-M4, B5-B6) y de seguridad (BAJO-1, BAJO-2), y corre con NODE_OPTIONS=--dns-result-order=ipv4first: pnpm lint, tsc de web, test de web y `S3_PUBLIC_ORIGIN=https://bucket.ci.invalid pnpm build` completo en la raíz. No hace falta e2e de la API (no hay cambios en api). Logs en el scratchpad, no en el repo. No modifiques archivos. Devuelve el INFORME del protocolo con APROBADO o CAMBIOS_PEDIDOS.
+```
+
+## Decisiones del orquestador
+
+- Sin endpoints ni contratos nuevos. El grupo "Mis cursos" queda fuera para el admin y el apoderado (contrato 403).
+- Los ítems de 44 px en móvil van solo en el grupo nuevo, sin tocar `ui/sidebar`.
+- Contraste: se acepta el cálculo de dev1 (más de 4.5:1 en el tema oscuro).
+
+## Verificación
+
+| Comando | Resultado |
+|---|---|
+| pnpm lint, tsc de web | ok |
+| web test | 31 archivos / 510 ok |
+| `S3_PUBLIC_ORIGIN=… pnpm build` | 5/5 ok |
+
+## Pendientes
+
+- Probarlo en el navegador a 360 px y con teclado.
+- `tareas/page.tsx` repite la petición a `/context`.
+- Decisión futura: ¿el apoderado debe ver los cursos de su hijo?
+- B3.

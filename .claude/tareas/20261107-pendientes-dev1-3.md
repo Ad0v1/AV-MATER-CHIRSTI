@@ -207,3 +207,73 @@ Estado: CAMBIOS_PEDIDOS. Pasan lint, tsc, api (1242), web (491) y e2e completo (
 ### Decisión del orquestador 8 (vuelta 1/2 cerrada)
 
 El orquestador agregó `"env": ["S3_PUBLIC_ORIGIN"]` a la tarea `build` de `turbo.json` (archivo compartido). `S3_PUBLIC_ORIGIN=https://bucket.ci.invalid pnpm build --force`: 5/5 ok. Se da por aprobado sin repetir el revisor, porque el único hallazgo era este y ya se verificó con el build. La corrección también va al PR #20.
+
+### INFORME 13 — dev1 (B1)
+
+Estado: LISTO.
+- Nuevos: `course-nav-model.ts`, `course-tabs.tsx`, `my-courses-list.tsx`, `my-courses-nav.tsx`, `course-nav.test.ts` (8 tests), y `curso/[id]/layout.tsx` y `page.tsx`. Se modificó `app-sidebar.tsx`.
+- Web: lint y tsc ok, 499 tests, build ok.
+- Nota: `tareas/page.tsx` repite la petición a `/context`. No se tocó.
+- Sin prueba en navegador.
+
+### Decisión del orquestador 9
+
+Se lanzan en paralelo qa-tester, seguridad y ux sobre B1.
+
+### INFORME 14 — ux-accesibilidad (B1)
+
+Estado: APROBADO, con 4 MEDIO y 5 BAJO.
+
+MEDIO:
+- El esqueleto del encabezado no reserva el espacio de la barra.
+- Los esqueletos del sidebar miden `h-6` en vez de `h-8`, y les falta el texto sr-only.
+- Los ítems de "Mis cursos" miden 32 px en móvil (pedido: `h-11 md:h-8`).
+- Los textos de error no dicen qué hacer y les falta `role="alert"`.
+
+BAJO:
+- Hacer scroll hasta la pestaña activa al montar.
+- Agregar `scroll-px-4`.
+- Revisar el contraste de `text-xs` con opacidad y de `muted-foreground`.
+- Contexto en los h1 de las páginas hijas.
+
+### INFORME 15 — seguridad-cumplimiento (B1)
+
+Estado: APROBADO (0 CRÍTICO, 0 ALTO, 0 MEDIO).
+
+BAJO:
+- BAJO-1: llamar a `notFound()` si `/context` responde 403 o 404.
+- BAJO-2: `encodeURIComponent` en el redirect de `page.tsx`.
+
+INFO: el DTO de context podría ser más reducido (v2). La protección de `getCourseSectionContext` depende de que quien lo llama haga la comprobación.
+
+### INFORME 16 — qa-tester (B1)
+
+Estado: LISTO.
+- Nuevo `course-header.test.ts`: pestañas por rol, encabezado con readOnly, sin docente y con error, y la redirección.
+- Web: 507 tests, lint y tsc ok. Sin bugs.
+
+### Decisión del orquestador 10 (vuelta de corrección 1/2 de B1)
+
+Se envían a dev1 en un solo mensaje UX M1-M4 y B5-B6, y seguridad BAJO-1 y BAJO-2.
+- M3, ítems de 44 px en móvil: solo en el grupo nuevo, sin tocar `ui/sidebar`.
+- B7-B8, contraste: verificar los tokens y corregir solo si no llegan a 4.5:1.
+- B9 no aplica: los h1 de las hijas ya son claros.
+
+### INFORME 17 — dev1 (corrección B1, 1/2)
+
+Estado: LISTO.
+- UX M1-M4 y B5-B6 aplicados. B7-B8: el contraste calculado está por encima de 4.5:1, así que no se cambió.
+- Seguridad: `notFound()` si responde 403 o 404, y `encodeURIComponent` en el redirect.
+- Tests: 510, lint, tsc y build ok.
+
+### Decisión del orquestador 11
+
+revisor-pr de B1.
+
+### INFORME 18 — revisor-pr (B1)
+
+Estado: APROBADO. lint, tsc, web 510 y build 5/5 ok. Hallazgos aplicados. BAJO: `tareas/page.tsx` repite `/context`, y `format:check` global falla por archivos ajenos (`.agents/`).
+
+### Decisión del orquestador 12
+
+Commit de B1 en mio y en la rama limpia `envio`, encima del arreglo de turbo, para que un solo push lleve los dos commits al PR #20.
