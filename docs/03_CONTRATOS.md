@@ -827,7 +827,7 @@ Lectura: ADMIN, docente, estudiante (apoderado 403). Escritura: ADMIN o docente 
 | `GET /course-sections/:id/assignments` | Query `periodId?` | 200 `{ items: AssignmentView[], total }` | 400; 403; 404 |
 | `GET /assignments/:id` | — | 200 `AssignmentView` | 403; 404 (no existe o está borrada) |
 | `PATCH /assignments/:id` | `{ title?, instructions?, dueAt?, maxSizeBytes?, noSubmissionGrade?, allowLate?, attachmentFileId? }` (al menos uno; `null` quita el adjunto). El período no se cambia | 200 `AssignmentView`. Publica `assignment.updated.v1` | 400 (incluye `periodId`); 403; 404; 409 período cerrado o adjunto en uso; 422 `dueAt` pasado o adjunto no usable |
-| `DELETE /assignments/:id` | — | 204 (borrado lógico; no publica evento; el adjunto queda enlazado) | 403; 404; 409 si ya tiene entregas |
+| `DELETE /assignments/:id` | — | 204 (borrado lógico; no publica evento; el adjunto queda enlazado) | 403; 404; 409 si ya tiene entregas; 409 si ya tiene notas (RN-10) |
 
 `AssignmentView`: `{ id, courseSectionId, periodId, title, instructions, dueAt, maxSizeBytes, noSubmissionGrade ("12.50"), allowLate, attachmentFileId | null, periodIsOpen, createdAt, updatedAt }`. `periodIsOpen` es `false` si el período o su año están cerrados (la tarea ya no se edita).
 

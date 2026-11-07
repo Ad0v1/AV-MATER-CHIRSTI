@@ -51,7 +51,13 @@ export type TeacherSubmissionItem = {
   enrollmentId: string;
   fullName: string;
   submissionId: string | null;
-  latestVersion: { versionNumber: number; receivedAt: string; isLate: boolean } | null;
+  latestVersion: {
+    versionId: string;
+    versionNumber: number;
+    receivedAt: string;
+    isLate: boolean;
+    fileId: string;
+  } | null;
   versionCount: number;
   displayStatus: string;
 };

@@ -145,6 +145,7 @@ describe.skipIf(!process.env.DATABASE_URL)('Tareas de Dev 3, fase 3c (e2e, MySQL
         }),
       );
     }
+    await prisma.grade.deleteMany({ where: { assignmentId: { in: assignmentIds } } });
     await prisma.submission.deleteMany({ where: { assignmentId: { in: assignmentIds } } });
     await prisma.storedFile.deleteMany({
       where: { objectKey: { startsWith: KEY_PREFIX }, purpose: 'SUBMISSION' },
@@ -652,6 +653,27 @@ describe.skipIf(!process.env.DATABASE_URL)('Tareas de Dev 3, fase 3c (e2e, MySQL
       const row = await prisma.assignment.findUniqueOrThrow({ where: { id: created.id } });
       expect(row.deletedAt).toBeNull();
       await get('estudiante01', `/assignments/${created.id}`).expect(200);
+      expect(auditOf('contents.assignment.deleted')).toHaveLength(0);
+    });
+
+    it('RN-10: con notas (p. ej. una NE sin entrega): 409 y la tarea sigue visible', async () => {
+      const { body: created } = await createAs('docente01', cs3AMath).expect(201);
+      await prisma.grade.create({
+        data: {
+          assignmentId: created.id,
+          enrollmentId: enrollment01In3A,
+          state: 'NE',
+          value: '0',
+          gradedAt: new Date(),
+        },
+      });
+      sink.records.length = 0;
+
+      const res = await del('docente01', `/assignments/${created.id}`).expect(409);
+      expect(JSON.stringify(res.body)).toContain('ya tiene notas');
+      await del('admin', `/assignments/${created.id}`).expect(409);
+      const row = await prisma.assignment.findUniqueOrThrow({ where: { id: created.id } });
+      expect(row.deletedAt).toBeNull();
       expect(auditOf('contents.assignment.deleted')).toHaveLength(0);
     });
   });

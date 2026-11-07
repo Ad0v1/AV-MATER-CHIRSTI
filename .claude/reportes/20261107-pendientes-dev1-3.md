@@ -410,3 +410,127 @@ Expediente: .claude/tareas/20261107-pendientes-dev1-3.md (INFORMES 11 a 17). Enc
 - `tareas/page.tsx` repite la petición a `/context`.
 - Decisión futura: ¿el apoderado debe ver los cursos de su hijo?
 - B3.
+
+---
+
+# Actualización: B3 (editar y eliminar tareas, descarga de PDF)
+
+## Pedido
+
+"Sí, sigue" (07/11/2026). Flujo completo. Rama `features/adolfo`, sobre `c55267f`.
+
+## Resultado
+
+- **Estudiante:** "Descargar mi PDF" en la constancia. Cada clic pide una URL firmada nueva, de 60 s.
+- **Docente y admin:**
+  - **Editar:** solo se envían los campos cambiados, sin período.
+  - **Eliminar:** pide confirmación en un `<dialog>` nativo accesible.
+  - Ambos solo aparecen con el período abierto.
+- **Descarga del docente:** "Descargar" de la última versión en la tabla de entregas.
+- **API:** `DELETE /assignments/:id` responde 409 también si la tarea tiene notas. docs/03 actualizado.
+
+## Agentes que participaron
+
+| # | Agente | Qué hizo | Estado |
+|---|---|---|---|
+| 1 | arquitecto-integrador | Plan | LISTO |
+| 2 | dev3-contenidos | Implementación | LISTO |
+| 3 | qa-tester | 25 tests | LISTO |
+| 4 | seguridad-cumplimiento | Auditoría | APROBADO (1 MEDIO) |
+| 5 | ux-accesibilidad | Revisión | CAMBIOS_PEDIDOS (3 ALTO) |
+| 6 | dev3-contenidos | Corrección 1/2 | LISTO |
+| 7 | revisor-pr | Revisión final | APROBADO |
+
+## Prompts usados (literales)
+
+### arquitecto-integrador — Plan de B3 PDF y edición de tareas
+
+```text
+Expediente: .claude/tareas/20261107-pendientes-dev1-3.md (punto B3 del plan del orquestador).
+
+Encargo: planifica B3 en la web: (1) descargar el PDF de una entrega (docente desde la revisión de entregas o el registro; estudiante su propia entrega) y (2) editar y borrar tareas desde la pantalla del curso (apps/web/app/(app)/curso/[id]/tareas/). Revisa qué endpoints ya existen en apps/api/src/modules (submissions, files, contents/assignments) y en docs/03_CONTRATOS.md para: URL firmada de descarga del PDF, PATCH y DELETE de tareas, y sus reglas en docs/04_REGLAS_ESTADOS.md (p. ej. no borrar ni cambiar ciertos campos si ya hay entregas o notas) y docs/05_AUTORIZACION.md.
+Responde: endpoints existentes o faltantes (si falta algo o cambia un contrato, dilo), reglas de negocio aplicables, pantallas y componentes a tocar, agente dueño (dev3 para contenidos y entregas; dev4 si toca el registro) y orden sin archivos compartidos en paralelo, cambio de esquema (sí o no), RF afectados (RF-26..31, 33..40) y criterios de aceptación (confirmación antes de borrar, 360 px, accesibilidad, bitácora). Solo lectura. Devuelve el INFORME del protocolo.
+```
+
+### dev3-contenidos — B3 paso 1 tareas y PDF
+
+```text
+Expediente: .claude/tareas/20261107-pendientes-dev1-3.md (INFORME 19 del arquitecto: es tu plan, paso 1). RF-29, RF-30, RF-33..36, RN-10, RN-14.
+
+Encargo, solo en apps/web/app/(app)/curso/[id]/tareas/ (más sus tests):
+a) actions.ts: server actions getSubmissionDownloadUrl(fileId) (valida UUID, POST /files/:id/download-url), updateAssignment(id, dto) (PATCH /assignments/:id, solo campos cambiados, sin período) y deleteAssignment(id) (DELETE). Errores 403/409/422 con el mensaje del API, como en _materials/actions.ts; revalidatePath al terminar.
+b) receipt-view.tsx: botón "Descargar mi PDF" para el estudiante; pide URL nueva en cada clic (vence en 60 s), no la cachea ni la registra, y la abre.
+c) edit-assignment-form.tsx reutilizando campos y validaciones de create-assignment-form.tsx y assignment-format.ts (puedes extraer un componente de campos común en la misma carpeta).
+d) delete-assignment-button.tsx con diálogo de confirmación accesible (role="alertdialog", foco atrapado, Esc cancela, foco vuelve al botón, el texto nombra la tarea). Ante 409 muestra el aviso y sugiere editar.
+e) page.tsx: Editar y Eliminar solo para TEACHER y ADMIN y solo con período abierto. Si en esta carpeta hay lista de entregas del docente, añade "Descargar" por versión.
+Errores con role="alert". 360 px sin scroll horizontal, objetivos de 44 px, foco visible. Diálogo local en la carpeta (no packages/ui). No toques registro/ (es de dev4) ni el layout del curso.
+Tests unitarios de helpers y formatos. Verifica con NODE_OPTIONS=--dns-result-order=ipv4first: lint, tsc, test de web y `S3_PUBLIC_ORIGIN=https://bucket.ci.invalid pnpm build`. Sin commit. Devuelve el INFORME del protocolo.
+```
+
+### qa-tester — QA de B3
+
+```text
+Expediente: .claude/tareas/20261107-pendientes-dev1-3.md (INFORMES 19 y 20). Encargo: tests de B3 en apps/web/app/(app)/curso/[id]/tareas/ (actions.ts, assignment-format.ts, edit-assignment-form.tsx, delete-assignment-button.tsx, download-file-button.tsx, receipt-view.tsx, page.tsx). Cubre: updateAssignment envía solo campos cambiados y nunca periodId; plazo vencido sin tocar se puede guardar y plazo cambiado al pasado se rechaza; deleteAssignment con 204 ok, 409 → conflict con aviso que sugiere editar, 403/422 con el mensaje del API; getSubmissionDownloadUrl rechaza UUID inválido y URL no http(s), y pide URL nueva en cada llamada; Editar y Eliminar no aparecen para STUDENT ni con período cerrado. Simula el apiServer como en los tests existentes y sigue el patrón sin DOM del proyecto. Si Docker está arriba, confirma con e2e existentes de la API que assignment.updated/deleted y download-url.issued se registran (no hace falta crear e2e nuevos si ya existen). Solo archivos de test. Corre con NODE_OPTIONS=--dns-result-order=ipv4first test, lint y tsc de web. Devuelve el INFORME.
+```
+
+### seguridad-cumplimiento — Seguridad de B3
+
+```text
+Expediente: .claude/tareas/20261107-pendientes-dev1-3.md (INFORMES 19 y 20). Audita B3 en apps/web/app/(app)/curso/[id]/tareas/ (actions.ts, assignment-format.ts, download-file-button.tsx, delete-assignment-button.tsx, edit-assignment-form.tsx, receipt-view.tsx, page.tsx) y los endpoints que usa: PATCH/DELETE /assignments/:id (apps/api/src/modules/contents) y POST /files/:id/download-url (apps/api/src/modules/files/files.service.ts). Revisa: que las server actions validan entrada y no confían en el cliente (rol, periodId, fileId), que la URL firmada no se cachea, registra ni filtra (window.open con noopener), que un estudiante solo descarga lo suyo y el apoderado no, pertenencia del docente al editar/borrar, mensajes de error sin detalles internos, y bitácora en el API. Solo lectura. Devuelve el INFORME con hallazgos por severidad.
+```
+
+### ux-accesibilidad — UX de B3
+
+```text
+Expediente: .claude/tareas/20261107-pendientes-dev1-3.md (INFORMES 19 y 20). Revisa B3 en apps/web/app/(app)/curso/[id]/tareas/: edit-assignment-form.tsx, assignment-fields.tsx, delete-assignment-button.tsx (diálogo alertdialog), download-file-button.tsx, receipt-view.tsx y page.tsx (botones Editar/Eliminar y columna Archivo de la tabla del docente). Criterios: coherencia con shadcn/ui, 360 px sin scroll horizontal de página, objetivos de 44 px, foco visible, diálogo accesible (foco inicial, atrapado, Esc, retorno, fondo inert), errores con role="alert", etiquetas de botones que distinguen la tarea o versión para lectores de pantalla, estados de carga, contraste AA, textos en español claros. Solo lectura. Devuelve el INFORME con hallazgos por severidad.
+```
+
+### SendMessage → a013c98fa64dd48e0
+
+```text
+Corrección 1/2 de B3: aplica estos hallazgos de UX y seguridad (expediente, INFORMES 21 a 23).
+UX ALTO:
+1. download-file-button: window.open va después de un await y el móvil lo bloquea. Abre la ventana en blanco de forma síncrona en el clic (const w = window.open('', '_blank'); w.opener = null) y asigna w.location después; si falla o devuelve null, ciérrala y muestra "Tu navegador bloqueó la descarga. Permite las ventanas emergentes o inténtalo de nuevo.".
+2. Diálogo de eliminar: fondo inerte. Usa el <dialog> nativo con showModal(), o el AlertDialog de packages/ui si ya existe (no lo crees allí). Bloquea también el scroll.
+3. Mientras pending: ignora Esc y Cancelar. Tras borrar con éxito, mueve el foco al h2 "Tareas publicadas" (tabIndex=-1) y anuncia "Tarea eliminada" en aria-live.
+UX MEDIO:
+4. aria-label "Editar la tarea {título}" y "Eliminar la tarea {título}".
+5. aria-label "Descargar versión N de la entrega de {nombre}", y en receipt-view "Descargar el PDF de la versión N".
+6. Error de descarga: "No se pudo preparar la descarga. Inténtalo de nuevo en unos segundos."; el estado "Preparando…" en aria-live.
+7. Revisa el contraste de text-white sobre bg-destructive y de text-destructive; corrige si es menor a 4.5:1.
+8. El error de borrado se muestra dentro del diálogo, que sigue abierto, y nombra la tarea.
+9. summary "Editar tarea" con chevron y focus-visible:ring (también los otros summary).
+UX BAJO: 11 role="status" en "Cargando tareas…"; 12 trampa de foco genérica (si usas <dialog>, ya no hace falta). 10 solo si Button existe en packages/ui.
+Seguridad:
+- MEDIO-1: en apps/api/src/modules/contents/assignments.service.ts (DELETE), dentro de la transacción y antes del update, haz tx.grade.count({ where: { assignmentId: id } }); si es > 0, ConflictException "La tarea ya tiene notas y no se puede eliminar". Agrega unit test y un caso e2e en contents-assignments.e2e-spec.ts (Docker está arriba; NODE_OPTIONS=--dns-result-order=ipv4first). Si docs/03 lista los 409 de DELETE /assignments/:id, agrega este.
+- BAJO-2: en createAssignment y updateAssignment valida el tipo de input/original (typeof de cada campo) o envuelve en try/catch y devuelve el Result con error.
+Actualiza los tests de QA afectados (actions.test.ts, page.test.ts). Verifica: lint, tsc y test de web y de api, el e2e de contents-assignments, y `S3_PUBLIC_ORIGIN=https://bucket.ci.invalid pnpm build`. Sin commit. Devuelve el INFORME.
+```
+
+### revisor-pr — Revisor de B3
+
+```text
+Expediente: .claude/tareas/20261107-pendientes-dev1-3.md (INFORMES 19 a 24). Encargo: revisión final de B3 (RF-29, RF-30, RF-33..36, RN-10, RN-14), sin commit todavía: cambios en apps/web/app/(app)/curso/[id]/tareas/, apps/api/src/modules/contents/assignments.service.ts (+ .spec.ts nuevo), apps/api/test/contents-assignments.e2e-spec.ts y docs/03_CONTRATOS.md. Verifica definición de terminado, carpetas tocadas (Grade de Dev 4 solo se lee), que se aplicaron los hallazgos de UX (ALTO 1-3, MEDIO 4-9, BAJO 11-12) y de seguridad (MEDIO-1, BAJO-2), y corre con NODE_OPTIONS=--dns-result-order=ipv4first: pnpm lint, tsc de api y web, test de api y web, `S3_PUBLIC_ORIGIN=https://bucket.ci.invalid pnpm build` en la raíz y, si Docker está arriba, el e2e de contents-assignments, files y audit-tx-rollback. Logs en el scratchpad, no en el repo. No modifiques archivos. Devuelve el INFORME con APROBADO o CAMBIOS_PEDIDOS.
+```
+
+## Decisiones del orquestador
+
+- Se omitió el paso 2 de dev4 (botón en el registro): el docente ya descarga desde la tabla de tareas y el registro tiene visor.
+- El 409 por notas se hace en el API de contents (carpeta de dev3). `Grade` solo se lee.
+- La descarga por versión y el uso del `Button` de ui quedan para v2.
+
+## Verificación
+
+| Comando | Resultado |
+|---|---|
+| lint, tsc api y web | ok |
+| api test | 1244 ok |
+| web test | 545 ok |
+| build | 5/5 ok |
+| e2e contents-assignments, files y audit-tx-rollback | 67 ok |
+
+## Pendientes
+
+- Probar en un móvil real la descarga y el diálogo.
+- Manual de usuario: editar y eliminar tareas.
+- Descarga por versión para el docente.

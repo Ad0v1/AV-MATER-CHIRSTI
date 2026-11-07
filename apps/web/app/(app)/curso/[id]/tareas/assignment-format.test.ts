@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
   acceptsSubmissions,
+  assignmentToInput,
+  buildAssignmentPatch,
+  isAssignmentInput,
+  isoToLocal,
+  isSafeHttpUrl,
   buildAssignmentBody,
   checkPdf,
   formatDelay,
@@ -130,5 +135,72 @@ describe('checkPdf: mensajes distintos para tipo y tamaño', () => {
     const peso = checkPdf({ name: 'a.pdf', size: 2 * 1024 * 1024 }, 1024 * 1024);
     expect(tipo).toMatch(/no es un PDF/);
     expect(peso).toMatch(/2 MiB.*1 MiB/);
+  });
+});
+
+describe('edición (RF-29)', () => {
+  const published = {
+    periodId: base.periodId,
+    title: 'Práctica 1',
+    instructions: 'Resolver los ejercicios',
+    dueAt: '2026-11-06T04:59:00.000Z',
+    noSubmissionGrade: '0.00',
+    maxSizeBytes: 20 * 1024 * 1024,
+    allowLate: false,
+  };
+  it('isoToLocal convierte a hora de Lima', () => {
+    expect(isoToLocal('2026-11-06T04:59:00.000Z')).toBe('2026-11-05T23:59');
+    expect(isoToLocal('x')).toBe('');
+  });
+  it('assignmentToInput arma los valores iniciales', () => {
+    const i = assignmentToInput(published);
+    expect(i).toMatchObject({
+      dueLocal: '2026-11-05T23:59',
+      noSubmissionGrade: '0',
+      maxSizeMiB: '20',
+    });
+  });
+  it('sin cambios no hay patch', () => {
+    const o = assignmentToInput(published);
+    const r = buildAssignmentPatch(o, o, NOW);
+    expect(r).toEqual({ ok: true, patch: {}, changed: false });
+  });
+  it('envía solo los campos cambiados y nunca el período', () => {
+    const o = assignmentToInput(published);
+    const r = buildAssignmentPatch(
+      o,
+      { ...o, title: 'Nueva', periodId: 'otro', allowLate: true },
+      NOW,
+    );
+    expect(r).toEqual({ ok: true, patch: { title: 'Nueva', allowLate: true }, changed: true });
+  });
+  it('plazo vencido sin tocar no bloquea; cambiado a pasado sí', () => {
+    const o = assignmentToInput({ ...published, dueAt: '2026-10-01T05:00:00.000Z' });
+    expect(buildAssignmentPatch(o, { ...o, title: 'X' }, NOW).ok).toBe(true);
+    const r = buildAssignmentPatch(o, { ...o, dueLocal: '2026-10-02T10:00' }, NOW);
+    expect(r.ok).toBe(false);
+  });
+  it('incluye dueAt con zona de Lima al cambiarlo', () => {
+    const o = assignmentToInput(published);
+    const r = buildAssignmentPatch(o, { ...o, dueLocal: '2026-11-10T08:00' }, NOW);
+    expect(r).toMatchObject({ ok: true, patch: { dueAt: '2026-11-10T08:00:00-05:00' } });
+  });
+});
+
+describe('isSafeHttpUrl', () => {
+  it('solo acepta http(s)', () => {
+    expect(isSafeHttpUrl('https://bucket/x?sig=1')).toBe(true);
+    expect(isSafeHttpUrl('javascript:alert(1)')).toBe(false);
+    expect(isSafeHttpUrl('data:text/html,x')).toBe(false);
+    expect(isSafeHttpUrl(undefined)).toBe(false);
+  });
+});
+
+describe('isAssignmentInput', () => {
+  it('acepta la forma correcta y rechaza tipos erróneos', () => {
+    expect(isAssignmentInput(base)).toBe(true);
+    expect(isAssignmentInput({ ...base, allowLate: 'true' })).toBe(false);
+    expect(isAssignmentInput({ ...base, title: undefined })).toBe(false);
+    expect(isAssignmentInput(null)).toBe(false);
   });
 });

@@ -277,3 +277,114 @@ Estado: APROBADO. lint, tsc, web 510 y build 5/5 ok. Hallazgos aplicados. BAJO: 
 ### Decisión del orquestador 12
 
 Commit de B1 en mio y en la rama limpia `envio`, encima del arreglo de turbo, para que un solo push lleve los dos commits al PR #20.
+
+### INFORME 19 — arquitecto-integrador (plan B3)
+
+Estado: LISTO.
+- El backend ya está completo:
+  - `PATCH /assignments/:id`;
+  - `DELETE /assignments/:id` (204, o 409 si hay entregas);
+  - `POST /files/:id/download-url`, con firma de 60 s y bitácora.
+- Sin esquema ni contrato nuevo.
+- Paso 1, dev3, en `curso/[id]/tareas/`:
+  - actions;
+  - "Descargar mi PDF" en receipt-view;
+  - edit-assignment-form;
+  - delete-assignment-button con alertdialog;
+  - botones solo para TEACHER y ADMIN con el período abierto.
+- Paso 2, dev4: botón "Descargar" en `registro/tarea/[assignmentId]`.
+
+### Decisión del orquestador 13
+
+- dev3 hace el paso 1.
+- dev4 hace después el paso 2: el docente necesita descargar el PDF y ahí está su revisión.
+- En serie, sin paralelo.
+
+### INFORME 20 — dev3 (B3, paso 1)
+
+Estado: LISTO.
+- Server actions:
+  - `updateAssignment`: solo los campos cambiados, sin período.
+  - `deleteAssignment`: devuelve `conflict` ante un 409.
+  - `getSubmissionDownloadUrl`: valida el UUID y que la URL sea http(s).
+- "Descargar mi PDF" en la constancia del estudiante.
+- Formulario de edición y diálogo accesible para eliminar.
+- Columna "Archivo" con "Descargar vN" en la tabla del docente.
+- Web: 517 tests, lint, tsc y build ok.
+- MEDIO: el docente solo descarga la última versión de cada entrega.
+- BAJO: el fondo del diálogo no se marca como `inert`.
+
+### Decisión del orquestador 14
+
+Se omite el paso 2 de dev4: el docente ya descarga desde la tabla de entregas de tareas, y el registro tiene su visor. La descarga por versión queda pendiente (v2). Se lanzan en paralelo qa-tester, seguridad y ux sobre B3.
+
+### INFORME 21 — ux-accesibilidad (B3)
+
+Estado: CAMBIOS_PEDIDOS.
+
+ALTO:
+- `window.open` se llama después de un `await` y los navegadores móviles bloquean la ventana sin avisar.
+- El fondo del diálogo no queda inerte.
+- Esc y Cancelar siguen activos mientras se borra, y el foco se pierde después de borrar.
+
+MEDIO:
+- Las etiquetas (aria-label) no dicen de qué tarea o versión se trata.
+- Los mensajes de error no dicen qué hacer.
+- Revisar el contraste de destructive.
+- El error del borrado aparece fuera del diálogo.
+- El summary "Editar" no tiene indicador ni anillo de foco.
+
+BAJO:
+- No usa el `Button` de ui.
+- "Cargando tareas…" sin `role="status"`.
+- La trampa de foco solo cubre botones.
+
+### INFORME 22 — seguridad-cumplimiento (B3)
+
+Estado: APROBADO (0 CRÍTICO, 0 ALTO).
+- MEDIO-1: DELETE no comprueba si la tarea tiene notas (`Grade.assignmentId`). Hay que agregar `tx.grade.count` y responder 409.
+- BAJO-2: las server actions no validan el tipo de `input` ni de `original`.
+- BAJO-3: `original` lo envía el cliente. Solo documentarlo.
+
+### INFORME 23 — qa-tester (B3)
+
+Estado: LISTO.
+- `actions.test.ts` (17) y `page.test.ts` (8).
+- Web: 543 tests, tsc y eslint ok.
+- e2e: contents-assignments y files, 53 ok.
+- Sin DOM no se prueban el diálogo ni `window.open`.
+
+### Decisión del orquestador 15 (vuelta 1/2 de B3)
+
+A dev3, en un solo mensaje:
+- UX: ALTO 1-3 y MEDIO 4-9, más BAJO 11-12. BAJO 10 (Button/AlertDialog de ui) solo si ya existen en `packages/ui`.
+- Seguridad: MEDIO-1 (409 si la tarea tiene notas, en el API de contents, carpeta de dev3) y BAJO-2.
+- e2e del 409 por notas.
+
+### INFORME 24 — dev3 (corrección B3, 1/2)
+
+Estado: LISTO.
+- Web:
+  - descarga con la ventana abierta de forma síncrona y aviso si el navegador la bloquea;
+  - `<dialog>` nativo con fondo inerte, Esc y Cancelar ignorados mientras borra, foco al h2 al terminar y error dentro del diálogo;
+  - aria-labels, chevrons y `role="status"`;
+  - `bg-danger` en el botón de confirmar;
+  - `isAssignmentInput`.
+- API: DELETE con notas responde 409 (unit y e2e). docs/03 actualizado.
+- Comandos: web 545, api 1244, e2e de contents-assignments 29, build ok.
+
+### Decisión del orquestador 16
+
+revisor-pr de B3.
+
+### INFORME 25 — revisor-pr (B3)
+
+Estado: APROBADO.
+- Comandos: lint y tsc ok; api 1244; web 545; build 5/5; e2e contents-assignments, files y audit-tx-rollback: 67 ok.
+- BAJO: botones propios en vez de `Button` de ui; descarga solo de la última versión; diálogo y `window.open` sin prueba en un navegador real.
+
+### Decisión del orquestador 17
+
+- Commit de B3 en mio y en la rama limpia sobre el PR #20 (el CI de 4c9aa41 está en verde).
+- No se lanza al documentador: docs/03 ya está actualizado y el manual de usuario queda pendiente.
+- Con esto se cierra el plan A y B de Dev 1 a 3.
