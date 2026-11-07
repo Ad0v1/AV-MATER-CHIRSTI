@@ -1,30 +1,20 @@
 import { randomUUID } from 'node:crypto';
 import type { Readable } from 'node:stream';
-import { Inject, Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
-import {
-  DeleteObjectCommand,
-  GetObjectCommand,
-  HeadObjectCommand,
-  S3Client,
-} from '@aws-sdk/client-s3';
-import { Upload } from '@aws-sdk/lib-storage';
-import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
-import { loadStorageConfig } from '../storage/storage.config.js';
-import { buildContentDisposition } from '../storage/object-key.util.js';
-import type { SignedUrl, StorageConfig } from '../storage/index.js';
+import { Injectable } from '@nestjs/common';
+import { ASSET_CONTENT_TYPES, StorageService, type SignedUrl } from '../storage/index.js';
 
-// Resultados de los trabajos (XLSX, PDF, ZIP, JSON) en el bucket privado. StorageService de Dev 3
-// solo acepta claves .pdf de materiales y entregas, asi que los resultados usan este adaptador con
-// la misma configuracion S3 y la misma vigencia de URL (60 s). Prefijos:
+// Resultados de los trabajos (XLSX, PDF, ZIP, JSON) en el bucket privado. Desde B4 (07/11/2026) es
+// una fachada fina sobre StorageService (lista blanca exports/ y backups/), con la misma vigencia
+// de URL (60 s). Prefijos:
 //   - exports/: exportaciones que vencen a los EXPORT_TTL_DAYS (U6); admite regla de bucket.
 //   - backups/: respaldos anuales (RF-65) que se conservan hasta la purga del año (U6, U7).
 //     Fuera de exports/ para que una regla de vencimiento del bucket no los borre antes.
 
 export const RESULT_FORMATS = {
-  xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-  pdf: 'application/pdf',
-  zip: 'application/zip',
-  json: 'application/json',
+  xlsx: ASSET_CONTENT_TYPES.xlsx,
+  pdf: ASSET_CONTENT_TYPES.pdf,
+  zip: ASSET_CONTENT_TYPES.zip,
+  json: ASSET_CONTENT_TYPES.json,
 } as const;
 export type ResultFormat = keyof typeof RESULT_FORMATS;
 
@@ -33,9 +23,6 @@ export type ResultPrefix = (typeof RESULT_PREFIXES)[number];
 
 const RESULT_KEY =
   /^(exports|backups)\/\d{4}\/(0[1-9]|1[0-2])\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.(xlsx|pdf|zip|json)$/;
-
-export const RESULT_S3 = Symbol('RESULT_S3');
-export const RESULT_STORAGE_CONFIG = Symbol('RESULT_STORAGE_CONFIG');
 
 export function isResultKey(key: string): boolean {
   return RESULT_KEY.test(key);
@@ -76,106 +63,39 @@ function assertResultKey(key: string): void {
 
 @Injectable()
 export class JobResultStorage {
-  private readonly logger = new Logger(JobResultStorage.name);
-
-  constructor(
-    @Inject(RESULT_S3) private readonly s3: S3Client,
-    @Inject(RESULT_STORAGE_CONFIG) private readonly config: StorageConfig,
-  ) {}
+  constructor(private readonly storage: StorageService) {}
 
   /** Sube el resultado y devuelve su tamaño real en bytes. */
   async upload(key: string, body: Buffer | Readable): Promise<number> {
     assertResultKey(key);
-    const upload = new Upload({
-      client: this.s3,
-      params: {
-        Bucket: this.config.bucket,
-        Key: key,
-        Body: body,
-        ContentType: RESULT_FORMATS[formatOf(key)],
-      },
-    });
-    await upload.done();
-    if (Buffer.isBuffer(body)) return body.length;
-    const head = await this.s3.send(
-      new HeadObjectCommand({ Bucket: this.config.bucket, Key: key }),
-    );
-    return Number(head.ContentLength ?? 0);
+    return this.storage.putAsset(key, body);
   }
 
   /** URL GET firmada de corta duracion (S3_DOWNLOAD_URL_TTL_SECONDS, 60 s por defecto). */
   async createDownloadUrl(key: string, fileName: string): Promise<SignedUrl> {
     assertResultKey(key);
     const format = formatOf(key);
-    const command = new GetObjectCommand({
-      Bucket: this.config.bucket,
-      Key: key,
-      ResponseContentType: RESULT_FORMATS[format],
-      ResponseContentDisposition: buildContentDisposition(
-        safeResultFileName(fileName, format),
-        false,
-      ),
+    return this.storage.createAssetDownloadUrl(key, {
+      fileName: safeResultFileName(fileName, format),
+      contentType: RESULT_FORMATS[format],
     });
-    const ttl = this.config.downloadUrlTtlSeconds;
-    try {
-      const url = await getSignedUrl(this.s3, command, { expiresIn: ttl });
-      return {
-        url,
-        method: 'GET',
-        headers: {},
-        expiresAt: new Date(Date.now() + ttl * 1000).toISOString(),
-      };
-    } catch (error) {
-      this.logger.error(`No se pudo firmar la URL del resultado: ${describe(error)}`);
-      throw new ServiceUnavailableException({
-        code: 'STORAGE_UNAVAILABLE',
-        message: 'El almacenamiento no está disponible. Intenta más tarde.',
-      });
-    }
   }
 
   /**
-   * Tamaño del resultado en S3, o null si el objeto no existe (404). Otros errores de S3 lanzan.
+   * Tamaño del resultado en S3, o null si el objeto no existe (404). Otros errores lanzan (503).
    * Lo usa la purga del año para comprobar que cada respaldo sigue ahí (seguridad 5g).
    */
   async size(key: string): Promise<number | null> {
     assertResultKey(key);
-    try {
-      const head = await this.s3.send(
-        new HeadObjectCommand({ Bucket: this.config.bucket, Key: key }),
-      );
-      return Number(head.ContentLength ?? 0);
-    } catch (error) {
-      const status = (error as { $metadata?: { httpStatusCode?: number } }).$metadata
-        ?.httpStatusCode;
-      if (status === 404 || (error instanceof Error && error.name === 'NotFound')) return null;
-      throw error;
-    }
+    return this.storage.headAsset(key);
   }
 
   /** Borra el resultado. Un objeto que ya no existe no es error (S3 responde 204). */
   async delete(key: string): Promise<void> {
     assertResultKey(key);
-    await this.s3.send(new DeleteObjectCommand({ Bucket: this.config.bucket, Key: key }));
+    await this.storage.deleteAsset(key);
   }
 }
 
-function describe(error: unknown): string {
-  return error instanceof Error ? error.name : typeof error;
-}
-
-export const resultStorageProviders = [
-  { provide: RESULT_STORAGE_CONFIG, useFactory: () => loadStorageConfig() },
-  {
-    provide: RESULT_S3,
-    inject: [RESULT_STORAGE_CONFIG],
-    useFactory: (config: StorageConfig) =>
-      new S3Client({
-        endpoint: config.endpoint,
-        region: config.region,
-        forcePathStyle: config.forcePathStyle,
-        credentials: { accessKeyId: config.accessKeyId, secretAccessKey: config.secretAccessKey },
-      }),
-  },
-  JobResultStorage,
-];
+/** Requiere StorageModule importado en el módulo que lo registra. */
+export const resultStorageProviders = [JobResultStorage];

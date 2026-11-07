@@ -436,3 +436,56 @@ Todos bajo `/api/v1`. Cuerpos, vistas y códigos completos en `docs/03_CONTRATOS
 - Dev 3: integrar `gradeState` en sus listados (hoy se pasa `null`).
 - Promedio anual (D-014): pendiente de la institución.
 - Medir la cobertura combinada de la API (RNF-31) y verificar en local con Docker las pruebas e2e.
+
+## Plataforma: almacenamiento, CSP y arranque en desarrollo (Dev 1, A2–A4)
+
+### Ciclo de vida de `incoming/` (cuarentena)
+
+Las subidas directas llegan primero a `incoming/` y la API las mueve tras validarlas; lo que quede ahí más de 1 día se borra solo.
+
+- **Local (MinIO):** el servicio `minio-init` de `docker-compose.yml` crea el bucket si falta y, solo si no existe ya una regla para `incoming/`, agrega una con `mc ilm rule add --prefix incoming/ --expire-days 1`. Es idempotente y no borra otras reglas del bucket; para reaplicarla a mano: `docker compose run --rm minio-init`.
+- **Producción (Cloudflare R2):** en el panel, _R2 → bucket → Settings → Object lifecycle rules → Add rule_: nombre `incoming-1d`, prefijo `incoming/`, acción _Delete objects_ después de 1 día. Con la API S3 de R2 (compatible) equivale a:
+
+  ```json
+  {
+    "Rules": [
+      {
+        "ID": "incoming-1d",
+        "Status": "Enabled",
+        "Filter": { "Prefix": "incoming/" },
+        "Expiration": { "Days": 1 }
+      }
+    ]
+  }
+  ```
+
+  `aws s3api put-bucket-lifecycle-configuration --bucket <bucket> --endpoint-url https://<cuenta>.r2.cloudflarestorage.com --lifecycle-configuration file://lifecycle.json`
+
+- **CORS en R2** (el navegador hace `PUT` de la subida y `GET` del logo/visor con URL firmada). _Settings → CORS policy_:
+
+  ```json
+  [
+    {
+      "AllowedOrigins": ["https://<dominio-de-la-web>"],
+      "AllowedMethods": ["PUT", "GET"],
+      "AllowedHeaders": ["Content-Type"],
+      "MaxAgeSeconds": 3600
+    }
+  ]
+  ```
+
+  Solo el origen de la web, nunca `*`.
+
+### Cabeceras de seguridad de la web (CSP)
+
+`apps/web/next.config.ts` envía `Content-Security-Policy`, `X-Content-Type-Options`, `Referrer-Policy`, `X-Frame-Options`, `Permissions-Policy` (cámara, micrófono y geolocalización desactivados) y, fuera de desarrollo, `Strict-Transport-Security`. El origen del bucket se agrega a `img-src`, `connect-src` y `frame-src`.
+
+- **Producción:** `S3_PUBLIC_ORIGIN` es **obligatoria al hacer `next build`** (y en `next start`): el origen exacto de las URL firmadas, p. ej. `https://<cuenta>.r2.cloudflarestorage.com` o el dominio propio del bucket. Si falta o no es una URL válida, el build falla con un error que la nombra. La misma variable se usa en tiempo de ejecución para aceptar el logo del colegio solo si es `https:` y de ese origen. No hay Dockerfile de la web en el repo; si se agrega, debe declarar `ARG S3_PUBLIC_ORIGIN` y `ENV S3_PUBLIC_ORIGIN=$S3_PUBLIC_ORIGIN` antes de `next build`.
+- **Desarrollo:** `S3_PUBLIC_ORIGIN`, si no `S3_ENDPOINT`, si no `http://127.0.0.1:9000` (se admiten `localhost` y `127.0.0.1`).
+- Las cabeceras se calculan al construir/arrancar la web: si cambias la variable, reconstruye o reinicia.
+
+**Deuda aceptada (M1): `'unsafe-inline'` en `script-src`.** Next inyecta scripts inline de hidratación y, con `cacheComponents` y Partial Prerendering, el HTML estático se genera en el build y se comparte entre peticiones, por lo que no puede llevar un nonce por petición. Usar nonces obligaría a renderizar todo de forma dinámica y perder PPR. Mitigación: sin orígenes externos de script, `object-src 'none'`, `base-uri 'self'`, `frame-ancestors 'none'`. Revisar si Next ofrece hashes/SRI compatibles con PPR.
+
+### Arranque en desarrollo (API + worker)
+
+`apps/api/dist` lo escribe un solo proceso: `api dev` (= `start:dev`, `nest start --watch`). `pnpm --filter worker dev` ya no compila la API: espera hasta 120 s a que exista `apps/api/dist/worker.main.js` y lo arranca. `pnpm dev` (turbo) levanta api, web y worker juntos. Si cambias código de los procesadores, reinicia el worker.

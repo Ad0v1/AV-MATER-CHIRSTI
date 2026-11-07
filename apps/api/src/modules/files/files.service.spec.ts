@@ -440,6 +440,9 @@ describe('FilesService', () => {
     });
 
     it('RF-37: si la tarea venció al confirmar (sin tardías) responde 409 y la subida vence', async () => {
+      ctx.prisma.storedFile.findUnique.mockResolvedValue(
+        storedFile({ intentExpiresAt: new Date('2026-12-31T00:00:00.000Z') }),
+      );
       await expect(
         ctx.service.complete(student, FILE, actor, new Date('2026-10-22T00:00:00.000Z')),
       ).rejects.toMatchObject({ response: { code: 'DEADLINE_PASSED' } });
@@ -459,6 +462,37 @@ describe('FilesService', () => {
         response: { code: 'UPLOAD_NOT_FOUND' },
       });
       expect(ctx.prisma.storedFile.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('B4: intent vencido más el margen → 409 UPLOAD_EXPIRED sin leer el objeto', async () => {
+      const late = new Date(NOW.getTime() + 5 * 60_000 + 15 * 60_000 + 1);
+      await expect(ctx.service.complete(student, FILE, actor, late)).rejects.toMatchObject({
+        response: { code: 'UPLOAD_EXPIRED' },
+      });
+      expect(ctx.storage.headObject).not.toHaveBeenCalled();
+      expect(ctx.prisma.storedFile.updateMany.mock.calls[0][0].where).toEqual({
+        id: FILE,
+        uploadStatus: 'PENDING',
+      });
+      expect(auditActions(ctx)).toEqual(['files.upload.expired']);
+    });
+
+    it('B4: dentro del margen tras intentExpiresAt todavía se valida el objeto', async () => {
+      ctx.storage.headObject.mockRejectedValue(new NotFoundException());
+      const inGrace = new Date(NOW.getTime() + 5 * 60_000 + 60_000);
+      await expect(ctx.service.complete(student, FILE, actor, inGrace)).rejects.toMatchObject({
+        response: { code: 'UPLOAD_EXPIRED' },
+      });
+      expect(ctx.storage.headObject).toHaveBeenCalled();
+    });
+
+    it('B4: si otro proceso ya lo venció (guarda optimista) no duplica la bitácora', async () => {
+      ctx.prisma.storedFile.updateMany.mockResolvedValue({ count: 0 });
+      const late = new Date(NOW.getTime() + 60 * 60_000);
+      await expect(ctx.service.complete(student, FILE, actor, late)).rejects.toMatchObject({
+        response: { code: 'UPLOAD_EXPIRED' },
+      });
+      expect(auditActions(ctx)).toEqual([]);
     });
 
     it('409 UPLOAD_EXPIRED si el objeto no está y la intención venció', async () => {
@@ -540,6 +574,9 @@ describe('FilesService', () => {
     });
 
     it('RF-37: con allowLate la entrega tardía se acepta al confirmar', async () => {
+      ctx.prisma.storedFile.findUnique.mockResolvedValue(
+        storedFile({ intentExpiresAt: new Date('2026-12-31T00:00:00.000Z') }),
+      );
       ctx.prisma.assignment.findUnique.mockResolvedValue(assignment({ allowLate: true }));
       await expect(
         ctx.service.complete(student, FILE, actor, new Date('2026-10-25T00:00:00.000Z')),
@@ -547,6 +584,9 @@ describe('FilesService', () => {
     });
 
     it('RF-37: justo en dueAt todavía se acepta; un milisegundo después no', async () => {
+      ctx.prisma.storedFile.findUnique.mockResolvedValue(
+        storedFile({ intentExpiresAt: new Date('2026-12-31T00:00:00.000Z') }),
+      );
       const due = assignment().dueAt;
       await expect(ctx.service.complete(student, FILE, actor, due)).resolves.toMatchObject({
         scanStatus: 'CLEAN',
@@ -576,6 +616,50 @@ describe('FilesService', () => {
       );
       expect(ctx.storage.headObject).not.toHaveBeenCalled();
       expect(ctx.published).toEqual([]);
+    });
+
+    it('B4 (margen): exactamente intentExpiresAt + 15 min todavía valida el objeto; +1 ms vence sin leerlo', async () => {
+      const limit = NOW.getTime() + 5 * 60_000 + 15 * 60_000;
+      // En el límite exacto la comparación es estricta (>): se acepta y el PDF limpio se completa.
+      const ok = await ctx.service.complete(student, FILE, actor, new Date(limit));
+      expect(ok).toBeDefined();
+      expect(ctx.storage.headObject).toHaveBeenCalled();
+      expect(auditActions(ctx)).not.toContain('files.upload.expired');
+
+      ctx.storage.headObject.mockClear();
+      ctx.prisma.storedFile.updateMany.mockClear();
+      await expect(
+        ctx.service.complete(student, FILE, actor, new Date(limit + 1)),
+      ).rejects.toMatchObject({ response: { code: 'UPLOAD_EXPIRED' } });
+      expect(ctx.storage.headObject).not.toHaveBeenCalled();
+      expect(ctx.prisma.storedFile.updateMany.mock.calls[0][0].data).toEqual({
+        uploadStatus: 'EXPIRED',
+      });
+      expect(ctx.storage.deleteObject).toHaveBeenCalledWith(INCOMING);
+    });
+
+    it('B4 (concurrencia): dos complete() sobre un intent vencido → ambos 409 y una sola bitácora', async () => {
+      // Guarda optimista con estado: solo el primero en pasar de PENDING a EXPIRED cuenta.
+      let pending = true;
+      ctx.prisma.storedFile.updateMany.mockImplementation(() => {
+        const count = pending ? 1 : 0;
+        pending = false;
+        return Promise.resolve({ count });
+      });
+      const late = new Date(NOW.getTime() + 60 * 60_000);
+      const results = await Promise.allSettled([
+        ctx.service.complete(student, FILE, actor, late),
+        ctx.service.complete(student, FILE, actor, late),
+      ]);
+      for (const r of results) {
+        expect(r.status).toBe('rejected');
+        expect((r as PromiseRejectedResult).reason).toMatchObject({
+          response: { code: 'UPLOAD_EXPIRED' },
+        });
+      }
+      expect(auditActions(ctx)).toEqual(['files.upload.expired']);
+      expect(ctx.storage.headObject).not.toHaveBeenCalled();
+      expect(ctx.storage.copyObject).not.toHaveBeenCalled();
     });
 
     it('complete sobre una subida EXPIRED responde 409 UPLOAD_EXPIRED sin tocar el almacenamiento', async () => {

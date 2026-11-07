@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { AuditService } from '../../common/audit/audit.service.js';
 import type { PrismaService } from '../../common/prisma/prisma.service.js';
 import type { FileScanner } from '../files/file-scanner.js';
-import type { StorageConfig } from '../storage/index.js';
+import { StorageService, type StorageConfig } from '../storage/index.js';
 import { InstitutionLogoStorage } from './institution-logo.storage.js';
 import { LiteralScaleProvider } from './literal-scale.provider.js';
 import { jpegBytes, PNG_BASE_BYTES, pngBytes } from './logo-fixtures.mock-spec.js';
@@ -98,7 +98,9 @@ describe('InstitutionLogoStorage.delete', () => {
 
   it('borra solo claves institution/ del bucket configurado', async () => {
     const send = vi.fn(() => Promise.resolve({}));
-    const storage = new InstitutionLogoStorage({ send } as unknown as S3Client, config);
+    const storage = new InstitutionLogoStorage(
+      new StorageService({ send } as unknown as S3Client, config),
+    );
     await storage.delete(KEY);
     const input = (send.mock.calls[0] as unknown as [{ input: Record<string, unknown> }])[0].input;
     expect(input).toEqual({ Bucket: 'aula-privado', Key: KEY });

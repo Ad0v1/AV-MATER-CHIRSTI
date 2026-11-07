@@ -27,6 +27,7 @@ import {
   safeDownloadFileName,
   type ObjectScope,
 } from '../storage/index.js';
+import { INTENT_SWEEP_GRACE_MS } from './file-lifecycle.service.js';
 import { FileScanner, ScannerUnavailableError } from './file-scanner.js';
 import { recordFiles } from './files-audit.js';
 import { FilesEventPublisher } from './files-events.js';
@@ -146,6 +147,12 @@ export class FilesService {
     if (!file || file.uploadedById !== user.id) throw new NotFoundException(NOT_FOUND);
     if (file.uploadStatus === 'COMPLETED') return replay(file);
     if (file.uploadStatus === 'EXPIRED') throw expired();
+    // Intent vencido (más el mismo margen del barrido): no se valida ni se acepta. La guarda
+    // optimista de expire() (uploadStatus PENDING) evita pisar un complete concurrente.
+    if (now.getTime() > file.intentExpiresAt.getTime() + INTENT_SWEEP_GRACE_MS) {
+      await this.expire(file, actor, null);
+      throw expired();
+    }
 
     // Los permisos se revisan otra vez: la matrícula, el plazo o el período pudieron cambiar.
     try {

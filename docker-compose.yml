@@ -54,6 +54,32 @@ services:
       timeout: 5s
       retries: 5
 
+  # A3 (Dev 1): regla de ciclo de vida del bucket: borra incoming/ (cuarentena de subidas) a 1 dia.
+  # Idempotente: crea el bucket si falta y agrega la regla solo si no hay ya una para incoming/;
+  # nunca borra ni reemplaza otras reglas del bucket. Termina
+  # al aplicarla. Reaplicar a mano: `docker compose run --rm minio-init`. En R2: docs/manuales/tecnico.md.
+  minio-init:
+    image: bitnamilegacy/minio:latest
+    depends_on:
+      minio:
+        condition: service_healthy
+    restart: 'no'
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+      S3_BUCKET: ${S3_BUCKET}
+    entrypoint: ['/bin/sh', '-ec']
+    command:
+      - |
+        mc alias set local http://minio:9000 "$$MINIO_ROOT_USER" "$$MINIO_ROOT_PASSWORD" >/dev/null
+        mc mb --ignore-existing "local/$$S3_BUCKET"
+        if mc ilm rule ls "local/$$S3_BUCKET" --json 2>/dev/null | grep -q '"prefix":"incoming/"\|"Prefix":"incoming/"'; then
+          echo "minio-init: la regla de incoming/ ya existe, no se cambia nada."
+        else
+          mc ilm rule add --prefix incoming/ --expire-days 1 "local/$$S3_BUCKET"
+        fi
+        mc ilm rule ls "local/$$S3_BUCKET"
+
   clamav:
     image: clamav/clamav:stable
     restart: unless-stopped

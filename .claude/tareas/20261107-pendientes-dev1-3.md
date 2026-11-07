@@ -65,3 +65,118 @@ Estado: APROBADO.
 - e2e completo: 34 archivos / 698 tests.
 - Seguridad ligera: ok.
 - Hallazgos BAJO: docstrings "Nunca lanza" (los corrigió el orquestador) y una nota sobre el wrapper de `helpers.ts`.
+
+### Decisión del orquestador 3
+
+- A1 y A5: commit c2b1724 en mio y PR #20 al equipo.
+- Se lanzan en paralelo dos agentes, sin archivos compartidos entre ellos:
+  - dev1: A2 a A4;
+  - dev3: B2 y B4.
+
+### INFORME 4 — dev1-plataforma (A2-A4)
+
+Estado: LISTO
+
+- A2:
+  - `school-brand.tsx` en el sidebar, usando el branding vía BFF y con fallback.
+  - `next.config` con `headers()`: CSP (`img-src`, `connect-src` y `frame-src` del bucket), nosniff, Referrer-Policy y X-Frame-Options DENY.
+- A3: servicio `minio-init` con `mc ilm`, regla `incoming-1d` idempotente. R2 y CORS documentados en `tecnico.md`.
+- A4: el worker `dev` hace `--wait` hasta que aparece `dist/worker.main.js`; la API tiene `dev` con `nest start --watch`.
+- Comandos: API 1147 tests; web 465; builds ok. Humo de A4 ok; las cabeceras de A2 ok.
+- Pendientes:
+  - humo autenticado del logo;
+  - la CSP se calcula al hacer el build;
+  - `'unsafe-inline'` en `script-src`;
+  - `mc ilm import` reemplaza las reglas existentes.
+
+### INFORME 5 — dev3-contenidos (B2 + B4)
+
+Estado: LISTO
+
+- **B2:** `gradeState` real en `listForTeacher` (una sola consulta) y en `mine()`. Solo se lee `state`.
+- **B4.1:** `complete()` vencido, pasados los 15 min de margen, responde 409 `UPLOAD_EXPIRED` y llama a `expire()`.
+- **B4.2:** `StorageService` admite una lista blanca de activos en `exports/`, `backups/` e `institution/`.
+- **B4.3:** `JobResultStorage` e `InstitutionLogoStorage` quedan como fachadas sobre `StorageService`.
+- **Comandos:**
+  - api: 1166 tests;
+  - web: 465 tests;
+  - e2e de files, jobs, lifecycle, reports, settings y submissions: 167 tests, ok.
+
+### Decisión del orquestador 4
+
+- Se acepta el 409 con margen de 15 min: respeta el contrato de docs/03, la web y el barrido.
+- Se lanzan en paralelo qa-tester, seguridad y ux sobre A2-A4 y B2/B4.
+
+### INFORME 6 — ux-accesibilidad (A2 + B2)
+
+Estado: CAMBIOS_PEDIDOS
+
+- [ALTO] El `alt` del logo repite el nombre: debe ser `alt=""`.
+- [MEDIO] El fallback del `Suspense` provoca un salto de layout: reservar el espacio con un esqueleto.
+- [MEDIO] Logo en modo oscuro: agregar un fondo blanco.
+- [MEDIO] B2 no aparece en la web. El orquestador lo revisa: `displayStatus` ya incorpora `gradeState` mediante `computeDisplayStatus`.
+- [BAJO] El enlace de la marca necesita un anillo de foco.
+
+### INFORME 7 — seguridad-cumplimiento (A2-A4 + B2/B4)
+
+Estado: APROBADO (0 CRÍTICO, 0 ALTO)
+
+MEDIO:
+
+- M1: `'unsafe-inline'` en `script-src` (incompatible con nonces por PPR). Documentarlo como deuda.
+- M2: la CSP se fija en el build. Pasar los ARG/ENV y fallar en producción si falta `S3_PUBLIC_ORIGIN`.
+- M3: `mc ilm import` reemplaza todas las reglas. Usar `rule add` idempotente.
+
+BAJO:
+
+- B1: `readAsset` debe tener un tope por stream.
+- B2: `Object.hasOwn` en `isAssetKey`.
+- B3: el `contentType` debe coincidir con la clave.
+- B4: el logo solo por https y con el origen del bucket en producción.
+- B5: Permissions-Policy y HSTS (este último fuera de dev).
+
+### INFORME 8 — qa-tester (A2-A4 + B2/B4)
+
+Estado: LISTO, sin bugs de producción.
+
+- Tests nuevos: school-brand (13), next-config.headers (8), worker-launcher (6), storage.assets.qa, files +2, submissions-grade-state e2e (3), storage-facades e2e (11).
+- Resultados: api 1237, e2e completo 36 archivos / 712, web 486. Lint y tsc limpios.
+
+### Decisión del orquestador 5 (vuelta de corrección 1/2)
+
+En paralelo y sin archivos compartidos:
+
+- **dev1:** UX 1 a 4; seguridad M1, M2, M3, B4 y B5.
+- **dev3:** seguridad B1, B2 y B3.
+
+### INFORME 9 — dev1 (corrección A2-A4, 1/2)
+
+Estado: LISTO. Se aplicaron los 9 puntos.
+
+- UX:
+  - logo con `alt=""`;
+  - `BrandSkeleton`;
+  - `bg-white`;
+  - anillo de foco.
+- Seguridad:
+  - comentario de deuda sobre `unsafe-inline`;
+  - en producción el build falla si falta `S3_PUBLIC_ORIGIN` (el paso Build de CI la define);
+  - `minio-init` usa `rule add` idempotente y no borra otras reglas;
+  - `safeLogoUrl` solo acepta https y el mismo origen;
+  - Permissions-Policy y HSTS fuera de dev.
+- Comandos: web 491 tests, api 1242 tests, builds ok.
+
+Hay un cambio en un compartido de Dev 1: `.github/workflows` (env de build). Se acepta.
+
+### INFORME 10 — dev3 (corrección B4, 1/2)
+
+Estado: LISTO.
+
+- B1: `readAsset` lee por stream y corta con 413 al pasar `maxBytes`.
+- B2: `isAssetKey` con `Object.hasOwn`.
+- B3: `createAssetDownloadUrl` responde 415 si el `contentType` no coincide con la clave.
+- Comandos: api 1242 tests, lint, tsc y build ok; e2e de storage, jobs, settings y reports: 69 ok.
+
+### Decisión del orquestador 6
+
+El usuario pidió enviar lo avanzado a los dos repos ("de lo que se tiene hasta el momento manda el pull request a la repo grupal y mi repor privada"). Se envía **sin la pasada de revisor-pr** de A2-A4 y B2/B4; queda pendiente. B1 y B3 siguen sin empezar.
