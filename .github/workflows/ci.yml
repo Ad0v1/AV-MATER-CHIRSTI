@@ -42,3 +42,6 @@ jobs:
 
       - name: Build
         run: pnpm build
+        env:
+          # next build exige el origen del bucket para la CSP (A2/M2). Valor de prueba solo para CI.
+          S3_PUBLIC_ORIGIN: https://bucket.ci.invalid

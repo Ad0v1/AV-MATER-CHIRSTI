@@ -145,11 +145,16 @@ export class SubmissionsService {
       where: { assignmentId_enrollmentId: { assignmentId, enrollmentId } },
       include: { versions: { include: versionInclude } },
     });
+    // B2: solo el estado de la nota; ni valor, ni comentario, ni exemptionReason (D-049).
+    const grade = await this.prisma.grade.findUnique({
+      where: { assignmentId_enrollmentId: { assignmentId, enrollmentId } },
+      select: { state: true },
+    });
     const versions = submission ? toReceipts(submission.versions, assignment) : [];
     const latest = versions[0] ?? null;
     const display = computeDisplayStatus({
       latestVersion: latest,
-      gradeState: null, // Dev 4 completará con Grade.state
+      gradeState: grade?.state ?? null,
       dueAt: assignment.dueAt,
       allowLate: assignment.allowLate,
       now: new Date(),
@@ -221,6 +226,12 @@ export class SubmissionsService {
       },
     });
     const byEnrollment = new Map(submissions.map((s) => [s.enrollmentId, s]));
+    // B2: una sola consulta para todas las notas de la tarea (sin N+1); solo el estado (D-049).
+    const grades = await this.prisma.grade.findMany({
+      where: { assignmentId },
+      select: { enrollmentId: true, state: true },
+    });
+    const gradeByEnrollment = new Map(grades.map((g) => [g.enrollmentId, g.state]));
     const now = new Date();
     const items = enrollments.map((e): TeacherSubmissionItem => {
       const s = byEnrollment.get(e.enrollmentId);
@@ -230,7 +241,7 @@ export class SubmissionsService {
       );
       const display = computeDisplayStatus({
         latestVersion: latest ?? null,
-        gradeState: null,
+        gradeState: gradeByEnrollment.get(e.enrollmentId) ?? null,
         dueAt: assignment.dueAt,
         allowLate: assignment.allowLate,
         now,

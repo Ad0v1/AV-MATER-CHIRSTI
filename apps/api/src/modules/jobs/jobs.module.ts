@@ -2,6 +2,7 @@ import { Inject, Module, type OnModuleDestroy } from '@nestjs/common';
 import type { Transporter } from 'nodemailer';
 import { ENV, type Env } from '../../config/config.module.js';
 import { QueueModule } from '../queue/index.js';
+import { StorageModule } from '../storage/index.js';
 import { BackgroundJobService } from './background-job.service.js';
 import { JobResultStorage, resultStorageProviders } from './job-result.storage.js';
 import { createMailTransport, MAIL_TRANSPORT, MailerService } from './mailer.service.js';
@@ -12,7 +13,7 @@ import { TrackedJobRunner } from './tracked-job.runner.js';
 // URL de descarga) y el worker (procesadores, correo). Registrado en AppModule con autorizacion
 // del usuario (30/10/2026). PrismaModule es global.
 @Module({
-  imports: [QueueModule],
+  imports: [QueueModule, StorageModule],
   providers: [
     ...resultStorageProviders,
     BackgroundJobService,

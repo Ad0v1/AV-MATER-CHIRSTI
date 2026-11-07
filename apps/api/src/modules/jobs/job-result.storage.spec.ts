@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { S3Client } from '@aws-sdk/client-s3';
-import type { StorageConfig } from '../storage/index.js';
+import { StorageService, type StorageConfig } from '../storage/index.js';
 import {
   buildResultKey,
   isResultKey,
@@ -45,7 +45,7 @@ describe('JobResultStorage', () => {
       forcePathStyle: true,
       credentials: { accessKeyId: 'test', secretAccessKey: 'test' },
     });
-    const storage = new JobResultStorage(s3, config);
+    const storage = new JobResultStorage(new StorageService(s3, config));
     const signed = await storage.createDownloadUrl(`exports/2026/10/${ID}.xlsx`, 'Notas 1A');
     const url = new URL(signed.url);
     expect(url.pathname).toBe(`/aula-privado/exports/2026/10/${ID}.xlsx`);
@@ -57,7 +57,9 @@ describe('JobResultStorage', () => {
 
   it('rechaza claves que no son de resultados', async () => {
     const send = vi.fn();
-    const storage = new JobResultStorage({ send } as unknown as S3Client, config);
+    const storage = new JobResultStorage(
+      new StorageService({ send } as unknown as S3Client, config),
+    );
     await expect(storage.delete(`submissions/2026/10/${ID}.pdf`)).rejects.toThrow(/invalida/);
     await expect(storage.createDownloadUrl('../x', 'a')).rejects.toThrow(/invalida/);
     expect(send).not.toHaveBeenCalled();
@@ -65,7 +67,9 @@ describe('JobResultStorage', () => {
 
   it('borra con DeleteObject en el bucket privado', async () => {
     const send = vi.fn(() => Promise.resolve({}));
-    const storage = new JobResultStorage({ send } as unknown as S3Client, config);
+    const storage = new JobResultStorage(
+      new StorageService({ send } as unknown as S3Client, config),
+    );
     await storage.delete(`exports/2026/10/${ID}.zip`);
     const cmd = (send.mock.calls[0] as unknown[])[0] as { input: Record<string, string> };
     expect(cmd.input).toEqual({ Bucket: 'aula-privado', Key: `exports/2026/10/${ID}.zip` });

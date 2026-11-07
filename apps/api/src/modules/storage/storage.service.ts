@@ -19,7 +19,14 @@ import {
   PutObjectCommand,
   S3Client,
 } from '@aws-sdk/client-s3';
+import { Upload } from '@aws-sdk/lib-storage';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+import {
+  ASSET_CONTENT_TYPES,
+  assertAssetKey,
+  assetFormatOf,
+  isAllowedAssetContentType,
+} from './asset-key.util.js';
 import {
   ABSOLUTE_MAX_SIZE_BYTES,
   BYTES_PER_MB,
@@ -231,6 +238,150 @@ export class StorageService {
           }),
         ),
       sourceKey,
+    );
+  }
+
+  // --- B4 (07/11/2026): objetos que no son PDF de contenidos (exports/, backups/, institution/) ---
+  // Lista blanca por prefijo y extensión (asset-key.util.ts). Las validaciones de PDF de arriba no
+  // cambian. Solo los usa código del servidor (worker, settings); nunca hay subida firmada.
+
+  /** Sube un objeto del servidor y devuelve su tamaño real en bytes. */
+  async putAsset(
+    key: string,
+    body: Buffer | Readable,
+    options: { cacheControl?: string } = {},
+  ): Promise<number> {
+    assertAssetKey(key);
+    const ContentType = ASSET_CONTENT_TYPES[assetFormatOf(key)];
+    if (Buffer.isBuffer(body)) {
+      await this.call(
+        () =>
+          this.s3.send(
+            new PutObjectCommand({
+              Bucket: this.config.bucket,
+              Key: key,
+              Body: body,
+              ContentType,
+              ContentLength: body.length,
+              CacheControl: options.cacheControl,
+            }),
+          ),
+        key,
+      );
+      return body.length;
+    }
+    await this.call(
+      () =>
+        new Upload({
+          client: this.s3,
+          params: {
+            Bucket: this.config.bucket,
+            Key: key,
+            Body: body,
+            ContentType,
+            CacheControl: options.cacheControl,
+          },
+        }).done(),
+      key,
+    );
+    return (await this.headAsset(key)) ?? 0;
+  }
+
+  /**
+   * URL GET firmada de un objeto de la lista blanca. `fileName` debe venir ya limpio (con su
+   * extensión). `contentType` solo puede ser uno de la lista blanca; por defecto, el de la clave.
+   */
+  async createAssetDownloadUrl(
+    key: string,
+    options: {
+      fileName?: string;
+      inline?: boolean;
+      contentType?: string;
+      ttlSeconds?: number;
+    } = {},
+  ): Promise<SignedUrl> {
+    assertAssetKey(key);
+    const expected = ASSET_CONTENT_TYPES[assetFormatOf(key)];
+    const contentType = options.contentType ?? expected;
+    // El tipo debe ser el del formato de la clave (no basta con estar en la lista blanca).
+    if (contentType !== expected || !isAllowedAssetContentType(contentType)) {
+      throw new UnsupportedMediaTypeException({
+        code: 'UNSUPPORTED_MEDIA_TYPE',
+        message: 'Tipo de archivo no permitido.',
+      });
+    }
+    const inline = options.inline ?? false;
+    const command = new GetObjectCommand({
+      Bucket: this.config.bucket,
+      Key: key,
+      ResponseContentType: contentType,
+      ResponseContentDisposition: options.fileName
+        ? buildContentDisposition(options.fileName, inline)
+        : inline
+          ? 'inline'
+          : 'attachment',
+    });
+    const ttl = options.ttlSeconds ?? this.config.downloadUrlTtlSeconds;
+    const url = await this.sign(command, ttl);
+    return { url, method: 'GET', headers: {}, expiresAt: this.expiresAt(ttl) };
+  }
+
+  /** Tamaño del objeto, o null si no existe. Otros errores: 503. */
+  async headAsset(key: string): Promise<number | null> {
+    assertAssetKey(key);
+    try {
+      const head = await this.call(
+        () => this.s3.send(new HeadObjectCommand({ Bucket: this.config.bucket, Key: key })),
+        key,
+      );
+      return Number(head.ContentLength ?? 0);
+    } catch (error) {
+      if (error instanceof NotFoundException) return null;
+      throw error;
+    }
+  }
+
+  /** Bytes del objeto; 413 si supera maxBytes (antes y después de leerlo). */
+  async readAsset(key: string, maxBytes: number): Promise<Buffer> {
+    assertAssetKey(key);
+    const res = await this.call(
+      () => this.s3.send(new GetObjectCommand({ Bucket: this.config.bucket, Key: key })),
+      key,
+    );
+    if (res.ContentLength !== undefined && Number(res.ContentLength) > maxBytes) {
+      throw this.tooLarge(maxBytes);
+    }
+    if (!res.Body) throw this.unavailable();
+    // Se cuenta el stream: no se confía en ContentLength (puede faltar o mentir).
+    const body = res.Body as unknown as Partial<AsyncIterable<Uint8Array>> & {
+      destroy?: () => void;
+      transformToByteArray: () => Promise<Uint8Array>;
+    };
+    if (typeof body[Symbol.asyncIterator] !== 'function') {
+      // Cuerpo no iterable (no ocurre con el SDK en Node): se lee y se valida el tamaño real.
+      const bytes = Buffer.from(await body.transformToByteArray());
+      if (bytes.length > maxBytes) throw this.tooLarge(maxBytes);
+      return bytes;
+    }
+    const chunks: Buffer[] = [];
+    let total = 0;
+    for await (const chunk of body as AsyncIterable<Uint8Array>) {
+      total += chunk.length;
+      if (total > maxBytes) {
+        body.destroy?.();
+        throw this.tooLarge(maxBytes);
+      }
+      chunks.push(Buffer.from(chunk));
+    }
+    return Buffer.concat(chunks, total);
+  }
+
+  /** Borra un objeto de la lista blanca. Si ya no existe no es error (S3 responde 204). */
+  async deleteAsset(key: string): Promise<void> {
+    assertAssetKey(key);
+    await this.call(
+      () => this.s3.send(new DeleteObjectCommand({ Bucket: this.config.bucket, Key: key })),
+      key,
     );
   }
 

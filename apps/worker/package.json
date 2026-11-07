@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "dev": "pnpm --filter api build && tsc -p tsconfig.json && node dist/index.js",
+    "dev": "tsc -p tsconfig.json && node dist/index.js --wait",
     "start": "node dist/index.js",
     "lint": "tsc -p tsconfig.json --noEmit",
     "test": "echo \"sin tests: los procesadores y sus tests estan en apps/api/src/modules/jobs\""
