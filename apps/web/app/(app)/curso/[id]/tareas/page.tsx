@@ -4,6 +4,13 @@ import { toUserMessage } from '@/lib/api/errors';
 import { requireUser } from '@/lib/session';
 import { acceptsSubmissions, formatDateTime, formatSize, statusLabel } from './assignment-format';
 import { CreateAssignmentForm } from './create-assignment-form';
+import {
+  DeleteAssignmentButton,
+  LIST_HEADING_ID,
+  LIST_STATUS_ID,
+} from './delete-assignment-button';
+import { DownloadFileButton } from './download-file-button';
+import { EditAssignmentForm } from './edit-assignment-form';
 import { ReceiptView } from './receipt-view';
 import { SubmitForm } from './submit-form';
 import type {
@@ -27,6 +34,17 @@ async function load<T>(path: string): Promise<Loaded<T>> {
   } catch (error) {
     return { ok: false, message: toUserMessage(error) };
   }
+}
+
+const SUMMARY =
+  'flex min-h-11 cursor-pointer list-none items-center gap-2 rounded-md text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden';
+
+function Chevron() {
+  return (
+    <span aria-hidden="true" className="inline-block transition-transform group-open:rotate-90">
+      ▸
+    </span>
+  );
 }
 
 function ErrorText({ children }: { children: React.ReactNode }) {
@@ -64,8 +82,27 @@ async function TeacherAssignment({ a }: { a: AssignmentItem }) {
       <p className="mt-1 text-xs text-muted-foreground">
         Nota si no entrega (NE = no entregó): {a.noSubmissionGrade}
       </p>
-      <details className="mt-3">
-        <summary className="min-h-11 cursor-pointer py-2 text-sm font-medium">
+      {/* RF-29/30: solo con período abierto; RN-10 y permisos los decide el API. */}
+      {a.periodIsOpen && (
+        <div className="mt-3 flex flex-wrap items-start gap-2">
+          <details className="group w-full">
+            <summary
+              aria-label={`Editar tarea ${a.title}`}
+              className={`${SUMMARY} w-fit border px-4`}
+            >
+              <Chevron />
+              Editar tarea
+            </summary>
+            <div className="mt-2 rounded-md border p-3">
+              <EditAssignmentForm assignment={a} />
+            </div>
+          </details>
+          <DeleteAssignmentButton id={a.id} title={a.title} />
+        </div>
+      )}
+      <details className="group mt-3">
+        <summary className={`${SUMMARY} py-2`}>
+          <Chevron />
           Entregas{list.ok ? ` (${delivered} de ${list.data.items.length})` : ''}
         </summary>
         {!list.ok ? (
@@ -79,7 +116,7 @@ async function TeacherAssignment({ a }: { a: AssignmentItem }) {
             role="region"
             aria-label={`Entregas de ${a.title} (desplazable)`}
           >
-            <table className="mt-2 w-full min-w-[32rem] text-left text-sm">
+            <table className="mt-2 w-full min-w-[38rem] text-left text-sm">
               <caption className="sr-only">Entregas de la tarea {a.title}</caption>
               <thead className="text-xs text-muted-foreground">
                 <tr>
@@ -92,8 +129,11 @@ async function TeacherAssignment({ a }: { a: AssignmentItem }) {
                   <th scope="col" className="py-2 pr-3 font-medium">
                     Última entrega
                   </th>
-                  <th scope="col" className="py-2 font-medium">
+                  <th scope="col" className="py-2 pr-3 font-medium">
                     Versiones
+                  </th>
+                  <th scope="col" className="py-2 font-medium">
+                    Archivo
                   </th>
                 </tr>
               </thead>
@@ -105,7 +145,18 @@ async function TeacherAssignment({ a }: { a: AssignmentItem }) {
                     <td className="py-2 pr-3">
                       {i.latestVersion ? formatDateTime(i.latestVersion.receivedAt) : '—'}
                     </td>
-                    <td className="py-2">{i.versionCount}</td>
+                    <td className="py-2 pr-3">{i.versionCount}</td>
+                    <td className="py-2">
+                      {i.latestVersion ? (
+                        <DownloadFileButton
+                          fileId={i.latestVersion.fileId}
+                          label={`Descargar v${i.latestVersion.versionNumber}`}
+                          ariaLabel={`Descargar versión ${i.latestVersion.versionNumber} de la entrega de ${i.fullName}`}
+                        />
+                      ) : (
+                        '—'
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -134,8 +185,13 @@ async function TeacherView({ courseSectionId }: { courseSectionId: string }) {
         periods={periods.map((p) => ({ id: p.id, label: p.label }))}
         defaultPeriodId={periods.some((p) => p.id === current) ? current : null}
       />
-      <section aria-labelledby="t-list">
-        <h2 id="t-list" className="text-base font-semibold">
+      <section aria-labelledby={LIST_HEADING_ID}>
+        <p id={LIST_STATUS_ID} role="status" aria-live="polite" className="sr-only" />
+        <h2
+          id={LIST_HEADING_ID}
+          tabIndex={-1}
+          className="rounded-md text-base font-semibold outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
           Tareas publicadas
         </h2>
         {list.data.items.length === 0 ? (
@@ -157,7 +213,7 @@ async function TeacherView({ courseSectionId }: { courseSectionId: string }) {
 function Receipt({ v }: { v: SubmissionReceipt }) {
   return (
     <li className="py-3">
-      <ReceiptView r={v} />
+      <ReceiptView r={v} downloadable />
     </li>
   );
 }
@@ -205,12 +261,14 @@ async function StudentAssignment({
           <ReceiptView
             r={m.latestVersion}
             title={`Constancia de tu entrega oficial: versión ${m.latestVersion.versionNumber}`}
+            downloadable
           />
         </section>
       )}
       {m.versions.length > 0 && (
-        <details className="mt-3">
-          <summary className="min-h-11 cursor-pointer py-2 text-sm font-medium">
+        <details className="group mt-3">
+          <summary className={`${SUMMARY} py-2`}>
+            <Chevron />
             Historial y constancias ({m.versions.length})
           </summary>
           <ul className="divide-y">
@@ -262,7 +320,13 @@ export default function Page({ params }: { params: Promise<{ id: string }> }) {
       <p className="mb-6 mt-1 text-sm text-muted-foreground">
         Tareas del curso con entrega en PDF. La hora de entrega es la del servidor.
       </p>
-      <Suspense fallback={<p className="text-sm text-muted-foreground">Cargando tareas…</p>}>
+      <Suspense
+        fallback={
+          <p role="status" className="text-sm text-muted-foreground">
+            Cargando tareas…
+          </p>
+        }
+      >
         <Content params={params} />
       </Suspense>
     </div>

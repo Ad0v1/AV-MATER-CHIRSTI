@@ -142,9 +142,27 @@ export class NeMaterializer implements OnModuleInit, OnModuleDestroy {
     let changes: Change[] = [];
     for (let attempt = 1; ; attempt++) {
       try {
-        changes = await this.prisma.$transaction((tx) =>
-          this.materializeInTx(tx, a, target, now, requireOpen),
-        );
+        changes = await this.prisma.$transaction(async (tx) => {
+          const list = await this.materializeInTx(tx, a, target, now, requireOpen);
+          // D-047: la bitácora va en la misma transacción que las NE.
+          for (const c of list) {
+            await recordGrading(
+              this.audit,
+              {},
+              'grade.auto_ne',
+              c.gradeId,
+              {
+                before: c.before,
+                after: c.after,
+                changedFields: c.before === null ? ['state', 'value', 'source'] : ['value'],
+                assignmentId: c.assignmentId,
+                enrollmentId: c.enrollmentId,
+              },
+              tx,
+            );
+          }
+          return list;
+        });
         break;
       } catch (error: unknown) {
         if (retriable(error) && attempt < MAX_ATTEMPTS) continue;
@@ -155,13 +173,6 @@ export class NeMaterializer implements OnModuleInit, OnModuleDestroy {
     }
 
     for (const c of changes) {
-      await recordGrading(this.audit, {}, 'grade.auto_ne', c.gradeId, {
-        before: c.before,
-        after: c.after,
-        changedFields: c.before === null ? ['state', 'value', 'source'] : ['value'],
-        assignmentId: c.assignmentId,
-        enrollmentId: c.enrollmentId,
-      });
       this.events.publish({
         type: 'grade.updated.v1',
         payload: {

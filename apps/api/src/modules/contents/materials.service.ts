@@ -98,7 +98,7 @@ export class MaterialsService {
       .$transaction(async (tx) => {
         if (dto.periodId !== null) await lockOpenPeriod(tx, dto.periodId);
         await this.assertFileUsable(tx, dto.fileId, courseSectionId);
-        return tx.material.create({
+        const row = await tx.material.create({
           data: {
             courseSectionId,
             periodId: dto.periodId,
@@ -110,18 +110,27 @@ export class MaterialsService {
             createdById: actor.id,
           },
         });
+        await recordContents(
+          this.audit,
+          actor,
+          'material.created',
+          'Material',
+          row.id,
+          {
+            after: {
+              courseSectionId,
+              periodId: row.periodId,
+              kind: row.kind,
+              fileId: row.fileId,
+              isReusable: row.isReusable,
+            },
+          },
+          tx,
+        );
+        return row;
       })
       .catch((e: unknown) => mapPrismaError(e, MATERIAL_MSG.fileInUse));
 
-    await recordContents(this.audit, actor, 'material.created', 'Material', created.id, {
-      after: {
-        courseSectionId,
-        periodId: created.periodId,
-        kind: created.kind,
-        fileId: created.fileId,
-        isReusable: created.isReusable,
-      },
-    });
     this.events.publish({
       type: 'material.published.v1',
       payload: {
@@ -186,14 +195,23 @@ export class MaterialsService {
           data: { title: dto.title, description: dto.description, isReusable: dto.isReusable },
         });
         if (count === 0) throw new NotFoundException(MATERIAL_MSG.notFound);
-        return tx.material.findUniqueOrThrow({ where: { id } });
+        const row = await tx.material.findUniqueOrThrow({ where: { id } });
+        await recordContents(
+          this.audit,
+          actor,
+          'material.updated',
+          'Material',
+          id,
+          {
+            before: change.before,
+            after: { ...change.after, changedFields: change.changedFields },
+          },
+          tx,
+        );
+        return row;
       })
       .catch((e: unknown) => mapPrismaError(e));
 
-    await recordContents(this.audit, actor, 'material.updated', 'Material', id, {
-      before: change.before,
-      after: { ...change.after, changedFields: change.changedFields },
-    });
     return toView(updated);
   }
 
@@ -212,13 +230,17 @@ export class MaterialsService {
           data: { deletedAt, deletedById: actor.id },
         });
         if (count === 0) throw new NotFoundException(MATERIAL_MSG.notFound);
+        await recordContents(
+          this.audit,
+          actor,
+          'material.deleted',
+          'Material',
+          id,
+          { before: { deletedAt: null }, after: { deletedAt: deletedAt.toISOString() } },
+          tx,
+        );
       })
       .catch((e: unknown) => mapPrismaError(e));
-
-    await recordContents(this.audit, actor, 'material.deleted', 'Material', id, {
-      before: { deletedAt: null },
-      after: { deletedAt: deletedAt.toISOString() },
-    });
   }
 
   // RF-30: restaurar dentro de los 30 días (409 después o si el archivo ya se purgó).
@@ -243,14 +265,19 @@ export class MaterialsService {
         });
         if (!file || file.purgedAt !== null) throw new ConflictException(MATERIAL_MSG.filePurged);
         await tx.material.update({ where: { id }, data: { deletedAt: null, deletedById: null } });
-        return { row: await tx.material.findUniqueOrThrow({ where: { id } }), deletedAt };
+        const row = await tx.material.findUniqueOrThrow({ where: { id } });
+        await recordContents(
+          this.audit,
+          actor,
+          'material.restored',
+          'Material',
+          id,
+          { before: { deletedAt: deletedAt.toISOString() }, after: { deletedAt: null } },
+          tx,
+        );
+        return { row, deletedAt };
       })
       .catch((e: unknown) => mapPrismaError(e));
-
-    await recordContents(this.audit, actor, 'material.restored', 'Material', id, {
-      before: { deletedAt: restored.deletedAt.toISOString() },
-      after: { deletedAt: null },
-    });
     return toView(restored.row);
   }
 

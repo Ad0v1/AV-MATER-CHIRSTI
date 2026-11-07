@@ -106,7 +106,7 @@ export class SettingsService {
     assertValidScale(dto.literalScale);
     const scale = sortScale(dto.literalScale);
 
-    const { before, after } = await this.prisma.$transaction(async (tx) => {
+    const { after } = await this.prisma.$transaction(async (tx) => {
       // Bloqueo de la fila: dos ADMIN que guardan a la vez no mezclan cambios en la bitácora.
       const exists = await tx.$queryRaw<{ id: number }[]>`
         SELECT id FROM InstitutionSettings WHERE id = 1 FOR UPDATE`;
@@ -127,25 +127,32 @@ export class SettingsService {
         },
         select: rowSelect,
       });
+
+      // D-047: la bitácora va en la misma transacción que el cambio.
+      const previousScale = toScale(locked.literalScale) ?? [];
+      const changed: string[] = [];
+      if (locked.name !== updated.name) changed.push('name');
+      if (!sameScale(previousScale, scale)) changed.push('literalScale');
+      if (locked.purgeAfterDays !== updated.purgeAfterDays) changed.push('purgeAfterDays');
+      if (changed.length > 0) {
+        const pick = (row: SettingsRow, s: LiteralScale) => ({
+          ...(changed.includes('literalScale') ? { literalScale: sortScale(s) } : {}),
+          ...(changed.includes('purgeAfterDays') ? { purgeAfterDays: row.purgeAfterDays } : {}),
+        });
+        await recordSettings(
+          this.audit,
+          actor,
+          'settings.update',
+          {
+            before: { changedFields: changed, ...pick(locked, previousScale) },
+            after: { changedFields: changed, ...pick(updated, scale) },
+          },
+          tx,
+        );
+      }
       return { before: locked, after: updated };
     });
     this.scales.invalidate();
-
-    const previousScale = toScale(before.literalScale) ?? [];
-    const changed: string[] = [];
-    if (before.name !== after.name) changed.push('name');
-    if (!sameScale(previousScale, scale)) changed.push('literalScale');
-    if (before.purgeAfterDays !== after.purgeAfterDays) changed.push('purgeAfterDays');
-    if (changed.length > 0) {
-      const pick = (row: SettingsRow, s: LiteralScale) => ({
-        ...(changed.includes('literalScale') ? { literalScale: sortScale(s) } : {}),
-        ...(changed.includes('purgeAfterDays') ? { purgeAfterDays: row.purgeAfterDays } : {}),
-      });
-      await recordSettings(this.audit, actor, 'settings.update', {
-        before: { changedFields: changed, ...pick(before, previousScale) },
-        after: { changedFields: changed, ...pick(after, scale) },
-      });
-    }
     return this.view(after);
   }
 
@@ -204,6 +211,23 @@ export class SettingsService {
           data: { logoObjectKey: key, logoMime: mime, updatedById: actor.id },
           select: rowSelect,
         });
+        // D-047: la bitácora va en la misma transacción que la fila.
+        await recordSettings(
+          this.audit,
+          actor,
+          'settings.logo.update',
+          {
+            before: { hadLogo: locked[0].logoObjectKey !== null },
+            after: {
+              mime,
+              sizeBytes: file.buffer.length,
+              width: check.width,
+              height: check.height,
+              sha256: createHash('sha256').update(file.buffer).digest('hex'),
+            },
+          },
+          tx,
+        );
         return { previousKey: locked[0].logoObjectKey, row: updated };
       }));
     } catch (error) {
@@ -213,16 +237,6 @@ export class SettingsService {
 
     if (previousKey && previousKey !== key) await this.safeDelete(previousKey);
 
-    await recordSettings(this.audit, actor, 'settings.logo.update', {
-      before: { hadLogo: previousKey !== null },
-      after: {
-        mime,
-        sizeBytes: file.buffer.length,
-        width: check.width,
-        height: check.height,
-        sha256: createHash('sha256').update(file.buffer).digest('hex'),
-      },
-    });
     return this.view(row);
   }
 

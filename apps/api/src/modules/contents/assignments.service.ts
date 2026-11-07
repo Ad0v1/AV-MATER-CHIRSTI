@@ -51,6 +51,7 @@ export const MSG = {
   invalidAttachment: 'El archivo adjunto no es válido para esta tarea',
   attachmentInUse: 'El archivo adjunto ya está en uso',
   hasSubmissions: 'La tarea ya tiene entregas y no se puede eliminar',
+  hasGrades: 'La tarea ya tiene notas y no se puede eliminar',
 } as const;
 
 const assignmentInclude = {
@@ -115,7 +116,7 @@ export class AssignmentsService {
         if (dto.attachmentFileId !== null) {
           await this.assertAttachmentUsable(tx, dto.attachmentFileId, courseSectionId, null);
         }
-        return tx.assignment.create({
+        const row = await tx.assignment.create({
           data: {
             courseSectionId,
             periodId: dto.periodId,
@@ -130,13 +131,20 @@ export class AssignmentsService {
           },
           include: assignmentInclude,
         });
+        const rowFields = fieldsOf(row);
+        await recordContents(
+          this.audit,
+          actor,
+          'assignment.created',
+          'Assignment',
+          row.id,
+          { after: auditSnapshot({ ...rowFields, courseSectionId, periodId: row.periodId }) },
+          tx,
+        );
+        return row;
       })
       .catch((e: unknown) => this.mapError(e));
 
-    const fields = fieldsOf(created);
-    await recordContents(this.audit, actor, 'assignment.created', 'Assignment', created.id, {
-      after: auditSnapshot({ ...fields, courseSectionId, periodId: created.periodId }),
-    });
     this.events.publish({
       type: 'assignment.created.v1',
       payload: {
@@ -210,14 +218,26 @@ export class AssignmentsService {
           },
         });
         if (count === 0) throw new NotFoundException(MSG.notFound);
-        return tx.assignment.findUniqueOrThrow({ where: { id }, include: assignmentInclude });
+        const row = await tx.assignment.findUniqueOrThrow({
+          where: { id },
+          include: assignmentInclude,
+        });
+        await recordContents(
+          this.audit,
+          actor,
+          'assignment.updated',
+          'Assignment',
+          id,
+          {
+            before: change.before,
+            after: { ...change.after, changedFields: change.changedFields },
+          },
+          tx,
+        );
+        return row;
       })
       .catch((e: unknown) => this.mapError(e));
 
-    await recordContents(this.audit, actor, 'assignment.updated', 'Assignment', id, {
-      before: change.before,
-      after: { ...change.after, changedFields: change.changedFields },
-    });
     this.events.publish({
       type: 'assignment.updated.v1',
       payload: {
@@ -233,7 +253,7 @@ export class AssignmentsService {
     return toView(updated);
   }
 
-  // Borrado lógico (RN-14: no se pierde historial). 409 si ya hay alguna versión entregada.
+  // Borrado lógico (RN-14: no se pierde historial). 409 si ya hay alguna versión entregada o nota.
   async remove(id: string, user: AuthenticatedUser, actor: Actor): Promise<void> {
     const current = await this.findOrFail(id);
     await assertCanWriteCourseSection(this.access, user, current.courseSectionId);
@@ -253,14 +273,21 @@ export class AssignmentsService {
           where: { submission: { assignmentId: id } },
         });
         if (versions > 0) throw new ConflictException(MSG.hasSubmissions);
+        // RN-10: tampoco si ya tiene notas (p. ej. una NE registrada sin entrega).
+        const grades = await tx.grade.count({ where: { assignmentId: id } });
+        if (grades > 0) throw new ConflictException(MSG.hasGrades);
         await tx.assignment.update({ where: { id }, data: { deletedAt } });
+        await recordContents(
+          this.audit,
+          actor,
+          'assignment.deleted',
+          'Assignment',
+          id,
+          { before: { deletedAt: null }, after: { deletedAt: deletedAt.toISOString() } },
+          tx,
+        );
       })
       .catch((e: unknown) => this.mapError(e));
-
-    await recordContents(this.audit, actor, 'assignment.deleted', 'Assignment', id, {
-      before: { deletedAt: null },
-      after: { deletedAt: deletedAt.toISOString() },
-    });
   }
 
   /**

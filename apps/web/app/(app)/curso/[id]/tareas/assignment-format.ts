@@ -145,3 +145,85 @@ export function acceptsSubmissions(
 ): boolean {
   return a.periodIsOpen && (a.allowLate || Date.parse(a.dueAt) > now.getTime());
 }
+
+// ---------------------------------------------------------------- Edición (RF-29/30, RN-10)
+
+/** ISO (UTC) a valor de `<input type="datetime-local">` en hora de Lima ("2026-11-05T23:59"). */
+export function isoToLocal(iso: string): string {
+  const ms = Date.parse(iso);
+  if (Number.isNaN(ms)) return '';
+  // Lima es UTC-5 fijo: se resta el desfase y se toma la parte local de la cadena ISO.
+  return new Date(ms - 5 * 3_600_000).toISOString().slice(0, 16);
+}
+
+/** Valores iniciales del formulario de edición a partir de la tarea publicada. */
+export function assignmentToInput(a: {
+  periodId: string;
+  title: string;
+  instructions: string;
+  dueAt: string;
+  noSubmissionGrade: string;
+  maxSizeBytes: number;
+  allowLate: boolean;
+}): NewAssignmentInput {
+  return {
+    periodId: a.periodId,
+    title: a.title,
+    instructions: a.instructions,
+    dueLocal: isoToLocal(a.dueAt),
+    noSubmissionGrade: String(Number(a.noSubmissionGrade)),
+    maxSizeMiB: String(Math.max(1, Math.round(a.maxSizeBytes / MIB))),
+    allowLate: a.allowLate,
+  };
+}
+
+export type AssignmentPatch = Partial<Omit<NewAssignmentBody, 'periodId'>>;
+
+/**
+ * Valida la edición y arma el PATCH solo con los campos cambiados (sin período: no se edita).
+ * Si el plazo no cambió, no se exige que sea futuro (una tarea vencida puede corregir su título).
+ */
+export function buildAssignmentPatch(
+  original: NewAssignmentInput,
+  input: NewAssignmentInput,
+  now: Date = new Date(),
+):
+  | { ok: true; patch: AssignmentPatch; changed: boolean }
+  | { ok: false; errors: Partial<Record<AssignmentField, string>>; first: AssignmentField } {
+  const same = input.dueLocal === original.dueLocal;
+  const r = validateAssignment({ ...input, periodId: original.periodId }, same ? new Date(0) : now);
+  if (!r.ok) return r;
+  const before = validateAssignment(original, new Date(0));
+  const patch: AssignmentPatch = {};
+  const b = r.body;
+  const o = before.ok ? before.body : null;
+  if (!o || b.title !== o.title) patch.title = b.title;
+  if (!o || b.instructions !== o.instructions) patch.instructions = b.instructions;
+  if (!same) patch.dueAt = b.dueAt;
+  if (!o || Number(b.noSubmissionGrade) !== Number(o.noSubmissionGrade)) {
+    patch.noSubmissionGrade = b.noSubmissionGrade;
+  }
+  if (!o || b.maxSizeBytes !== o.maxSizeBytes) patch.maxSizeBytes = b.maxSizeBytes;
+  if (b.allowLate !== original.allowLate) patch.allowLate = b.allowLate;
+  return { ok: true, patch, changed: Object.keys(patch).length > 0 };
+}
+
+/** Solo URLs http(s) firmadas: nunca javascript: ni data:. */
+export function isSafeHttpUrl(url: unknown): url is string {
+  return typeof url === 'string' && /^https?:\/\//i.test(url);
+}
+
+/** Las server actions reciben datos del cliente: comprueba la forma antes de validar. */
+export function isAssignmentInput(v: unknown): v is NewAssignmentInput {
+  if (typeof v !== 'object' || v === null) return false;
+  const o = v as Record<string, unknown>;
+  const strings = [
+    'periodId',
+    'title',
+    'instructions',
+    'dueLocal',
+    'noSubmissionGrade',
+    'maxSizeMiB',
+  ];
+  return strings.every((k) => typeof o[k] === 'string') && typeof o.allowLate === 'boolean';
+}

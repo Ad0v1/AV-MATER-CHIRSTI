@@ -4,6 +4,7 @@ declare const __dirname: string;
 declare function require(id: string): unknown;
 declare const process: {
   execPath: string;
+  argv: string[];
   env: Record<string, string | undefined>;
   exitCode?: number;
   on(event: 'SIGINT' | 'SIGTERM', listener: () => void): void;

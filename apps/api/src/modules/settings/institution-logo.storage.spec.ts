@@ -1,6 +1,6 @@
 import { S3Client } from '@aws-sdk/client-s3';
 import { describe, expect, it, vi } from 'vitest';
-import type { StorageConfig } from '../storage/index.js';
+import { StorageService, type StorageConfig } from '../storage/index.js';
 import {
   buildLogoKey,
   InstitutionLogoStorage,
@@ -43,7 +43,7 @@ describe('InstitutionLogoStorage', () => {
       forcePathStyle: true,
       credentials: { accessKeyId: 'test', secretAccessKey: 'test' },
     });
-    const storage = new InstitutionLogoStorage(s3, config);
+    const storage = new InstitutionLogoStorage(new StorageService(s3, config));
     const signed = await storage.signedUrl(`institution/${ID}.png`, 'image/png');
     const url = new URL(signed.url);
     expect(url.pathname).toBe(`/aula-privado/institution/${ID}.png`);
@@ -55,7 +55,9 @@ describe('InstitutionLogoStorage', () => {
 
   it('sube con el tipo de la extensión y rechaza claves ajenas', async () => {
     const send = vi.fn(() => Promise.resolve({}));
-    const storage = new InstitutionLogoStorage({ send } as unknown as S3Client, config);
+    const storage = new InstitutionLogoStorage(
+      new StorageService({ send } as unknown as S3Client, config),
+    );
     await storage.upload(`institution/${ID}.jpg`, Buffer.from([1, 2, 3]));
     const input = (send.mock.calls[0] as unknown as [{ input: Record<string, unknown> }])[0].input;
     expect(input).toMatchObject({
