@@ -1,3 +1,4 @@
+import { EDUCATION_LEVELS, LEVEL_GRADES, isValidGradeForLevel } from '@aula/shared';
 import { z } from 'zod';
 import { MAX_YEAR, MIN_YEAR, PERIOD_COUNT } from './academic-policy.js';
 
@@ -60,10 +61,20 @@ export const sectionCode = z
   .transform((v) => v.toUpperCase())
   .pipe(z.string().regex(/^[A-Z0-9]{1,8}$/, 'Usa de 1 a 8 letras o dígitos'));
 
-export const createSectionSchema = z.object({
-  gradeLevel: z.number().int().min(1).max(5),
-  code: sectionCode,
-});
+/** Nivel educativo (tres niveles, 09/11/2026). */
+export const educationLevelSchema = z.enum(EDUCATION_LEVELS);
+
+// El grado se valida contra el rango del nivel (INICIAL 3..5, PRIMARIA 1..6, SECUNDARIA 1..5).
+export const createSectionSchema = z
+  .object({
+    level: educationLevelSchema,
+    gradeLevel: z.number().int(),
+    code: sectionCode,
+  })
+  .refine((v) => isValidGradeForLevel(v.level, v.gradeLevel), {
+    path: ['gradeLevel'],
+    message: `Grado fuera del rango del nivel (Inicial ${LEVEL_GRADES.INICIAL.min}..${LEVEL_GRADES.INICIAL.max}, Primaria ${LEVEL_GRADES.PRIMARIA.min}..${LEVEL_GRADES.PRIMARIA.max}, Secundaria ${LEVEL_GRADES.SECUNDARIA.min}..${LEVEL_GRADES.SECUNDARIA.max})`,
+  });
 export type CreateSectionDto = z.output<typeof createSectionSchema>;
 
 export const updateSectionSchema = z

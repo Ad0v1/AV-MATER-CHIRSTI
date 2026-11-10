@@ -18,7 +18,7 @@ import {
 import { sectionTitleId } from '../../_shared/components/page-bits';
 import { IDLE } from '../../_shared/lib/action-state';
 import { focusAfterSuccess } from '../../_shared/lib/focus';
-import { sectionLabel } from '../../_shared/lib/format';
+import { sectionLabel } from '../../estructura/_lib/format';
 import {
   changeStatusAction,
   correctDniAction,
@@ -46,7 +46,7 @@ import { StudentPicker } from './student-picker';
 
 const sectionOptions = (sections: SectionOption[], placeholder: string) => [
   { value: '', label: placeholder },
-  ...sections.map((s) => ({ value: s.id, label: sectionLabel(s.gradeLevel, s.code) })),
+  ...sections.map((s) => ({ value: s.id, label: sectionLabel(s.gradeLevel, s.code, s.level) })),
 ];
 
 // --- Datos (RF-22) ------------------------------------------------------------

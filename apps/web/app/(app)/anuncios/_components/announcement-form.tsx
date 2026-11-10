@@ -12,6 +12,13 @@ import {
   updateAnnouncement,
   type ActionResult,
 } from '../_lib/actions';
+import {
+  EDUCATION_LEVELS,
+  LEVEL_LABELS,
+  gradeLabel,
+  gradesForLevel,
+  isEducationLevel,
+} from '../../admin/estructura/_lib/levels';
 import { BODY_MAX, TITLE_MAX, type AnnouncementField } from '../_lib/announcements';
 
 const FIELD =
@@ -40,6 +47,7 @@ export function AnnouncementForm({
   const [title, setTitle] = useState(editing ? mode.title : '');
   const [body, setBody] = useState(editing ? mode.body : '');
   const [scope, setScope] = useState<'INSTITUTION' | 'GRADE'>('INSTITUTION');
+  const [level, setLevel] = useState('');
   const [gradeLevel, setGradeLevel] = useState('');
   const [errors, setErrors] = useState<Partial<Record<AnnouncementField, string>>>({});
   const [message, setMessage] = useState<string | null>(null);
@@ -70,7 +78,7 @@ export function AnnouncementForm({
       if (mode.kind === 'course')
         res = await createCourseAnnouncement(mode.courseSectionId, title, body);
       else if (mode.kind === 'admin')
-        res = await createAdminAnnouncement(scope, gradeLevel, title, body);
+        res = await createAdminAnnouncement(scope, level, gradeLevel, title, body);
       else res = await updateAnnouncement(mode.id, title, body);
       if (!res.ok) {
         setErrors(res.errors ?? {});
@@ -108,26 +116,56 @@ export function AnnouncementForm({
             </select>
           </div>
           {scope === 'GRADE' ? (
-            <div className="flex-1">
-              <label className="text-sm font-medium" htmlFor={id('gradeLevel')}>
-                Grado
-              </label>
-              <select
-                id={id('gradeLevel')}
-                className={`${FIELD} h-11 md:h-9`}
-                value={gradeLevel}
-                onChange={(e) => setGradeLevel(e.target.value)}
-                {...a11y('gradeLevel')}
-              >
-                <option value="">Elige un grado</option>
-                {[1, 2, 3, 4, 5].map((g) => (
-                  <option key={g} value={g}>
-                    {g}.° de secundaria
+            <>
+              <div className="flex-1">
+                <label className="text-sm font-medium" htmlFor={id('level')}>
+                  Nivel
+                </label>
+                <select
+                  id={id('level')}
+                  className={`${FIELD} h-11 md:h-9`}
+                  value={level}
+                  onChange={(e) => {
+                    setLevel(e.target.value);
+                    setGradeLevel('');
+                  }}
+                  {...a11y('level')}
+                >
+                  <option value="">Elige un nivel</option>
+                  {EDUCATION_LEVELS.map((l) => (
+                    <option key={l} value={l}>
+                      {LEVEL_LABELS[l]}
+                    </option>
+                  ))}
+                </select>
+                <FieldError id={id('level-error')} message={errors.level} />
+              </div>
+              <div className="flex-1">
+                <label className="text-sm font-medium" htmlFor={id('gradeLevel')}>
+                  Grado
+                </label>
+                <select
+                  id={id('gradeLevel')}
+                  className={`${FIELD} h-11 md:h-9`}
+                  value={gradeLevel}
+                  disabled={!isEducationLevel(level)}
+                  onChange={(e) => setGradeLevel(e.target.value)}
+                  {...a11y('gradeLevel')}
+                >
+                  <option value="">
+                    {isEducationLevel(level) ? 'Elige un grado' : 'Primero elige el nivel'}
                   </option>
-                ))}
-              </select>
-              <FieldError id={id('gradeLevel-error')} message={errors.gradeLevel} />
-            </div>
+                  {isEducationLevel(level)
+                    ? gradesForLevel(level).map((g) => (
+                        <option key={g} value={g}>
+                          {gradeLabel(level, g)}
+                        </option>
+                      ))
+                    : null}
+                </select>
+                <FieldError id={id('gradeLevel-error')} message={errors.gradeLevel} />
+              </div>
+            </>
           ) : null}
         </div>
       ) : null}

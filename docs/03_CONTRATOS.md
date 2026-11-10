@@ -164,7 +164,7 @@ Errores: `GradingError` con `code` (`INVALID_GRADE`, `INVALID_STATE`, `INVALID_S
 
 Están en `packages/shared/src/grading/` y las exporta `index.ts`. Son puras: no leen el reloj ni la BD; la API pasa `now`.
 
-- `resolveEffectiveEntry(input): EffectiveEntry`. Entrada: `{ grade?, hasSubmission, dueAt, now, noSubmissionGrade?, neEligible? }`. Salida: `{ state, value, virtual, needsRegrade }`. Una fila `Grade` guardada manda. Sin fila, una tarea vencida sin entrega y con matrícula elegible da NE virtual con la nota NE de la tarea (A2). En otro caso, `state: null`. Lanza `INVALID_STATE` o `INVALID_INPUT`.
+- `resolveEffectiveEntry(input): EffectiveEntry`. Entrada: `{ grade?, hasSubmission, dueAt, now, noSubmissionGrade?, neEligible?, scale?, noSubmissionLiteral?, defaultNoSubmissionLiteral? }`. Salida: `{ state, value, literal, virtual, needsRegrade }`. Con `scale: 'LITERAL_ADABC'` la fila guardada es `{ state, literal }` y la NE virtual usa el literal de la tarea o `null`. `buildGradebook` acepta además `gradingScale` y `achievements` (logros del período) y, en escala literal, devuelve `average.status = 'LITERAL_SCALE'`, `rows[].achievement` y la distribución por logro. `normalizeGradeInput` acepta `literal` y `checkGradeInputScale(input, scale)` dice si el campo coincide con la escala. Una fila `Grade` guardada manda. Sin fila, una tarea vencida sin entrega y con matrícula elegible da NE virtual con la nota NE de la tarea (A2). En otro caso, `state: null`. Lanza `INVALID_STATE` o `INVALID_INPUT`.
 - `isNeEligible(enrollment, dueAt): boolean`. Entrada: `{ effectiveFrom, effectiveTo? }`. La matrícula estaba vigente al vencer la tarea, con intervalo `[effectiveFrom, effectiveTo)`: en un traslado, una tarea que vence justo en el instante del traslado es de la matrícula nueva. Lanza `INVALID_INPUT` si una fecha no es válida.
 - `buildGradebook({ assignments, students, cells, now, scale? }): Gradebook`. Registro auxiliar completo: `rows` (promedio por estudiante y `atRisk`), `columns` (promedio y conteos por tarea) y `dashboard` (`distribution` por literal, `noGrades`, `counts`, `riskLiteral` y `atRisk`). Lanza `INVALID_INPUT` ante ids repetidos o celdas de tareas o matrículas que no están en la entrada.
 - `normalizeGradeInput(body: unknown): { ok: true, data } | { ok: false, issues }`. Valida y normaliza el cuerpo del PUT (ver "API de calificaciones") sin lanzar. `issues` lleva `path` y `message`. Solo acepta punto decimal, como RN-01 (`"13,5"` no es válida). La API lo envuelve en un esquema Zod (`gradeInputSchema`), porque `shared` no depende de Zod (Decisión del orquestador 2 del expediente `20261030-dev4-calificaciones`).
@@ -199,7 +199,7 @@ Los cuerpos son JSON. La columna Rol lista quién puede llamar, según `@Roles` 
 | `POST /academic-periods/:id/close` | ADMIN | `{ reason? }` (1..500 caracteres) | 200 `PeriodView` | 400; 404; 409 ya cerrado o año de solo lectura |
 | `POST /academic-periods/:id/reopen` | ADMIN | `{ reason }` obligatorio (10..500 caracteres) | 200 `PeriodView` | 400 sin motivo; 404; 409 no cerrado, año no activo o año cerrado |
 | `GET /academic-years/:yearId/sections` | ADMIN | — | 200 `{ items: SectionView[], total }` | 400; 404 año |
-| `POST /academic-years/:yearId/sections` | ADMIN | `{ gradeLevel: 1..5, code }` (`[A-Z0-9]{1,8}`, se pasa a mayúsculas) | 201 `SectionView` | 400; 404; 409 solo lectura o sección duplicada |
+| `POST /academic-years/:yearId/sections` | ADMIN | `{ level, gradeLevel, code }`: `level` `INICIAL`\|`PRIMARIA`\|`SECUNDARIA` (obligatorio); `gradeLevel` en el rango del nivel (INICIAL 3..5, PRIMARIA 1..6, SECUNDARIA 1..5); `code` `[A-Z0-9]{1,8}`, se pasa a mayúsculas. Única por año + nivel + grado + código | 201 `SectionView` | 400; 404; 409 solo lectura o sección duplicada |
 | `PATCH /sections/:id` | ADMIN | `{ code?, isActive? }` (al menos uno) | 200 `SectionView` | 400; 404; 409 solo lectura, código duplicado o desactivar con matrículas vigentes |
 | `GET /courses` | ADMIN | Query `includeInactive` (`true` o `false`; por defecto `false`) | 200 `{ items: CourseView[], total }` | 400 |
 | `POST /courses` | ADMIN | `{ name }` (1..120 caracteres) | 201 `CourseView` | 400; 409 nombre duplicado |
@@ -215,7 +215,7 @@ Formas de respuesta comunes:
 
 - `YearSummary`: `{ id, year, isActive: boolean, closedAt, readOnly }`. `YearDetail` es `YearSummary` más `periods: PeriodView[]`.
 - `PeriodView`: `{ id, academicYearId, sequence, kind, label, startDate, endDate, closedAt, isOpen }`. `kind` y `label` según D-002: `FIRST_BIMESTER` "I Bimestre", `SECOND_BIMESTER` "II Bimestre", `THIRD_TRIMESTER` "III Trimestre", `FOURTH_TRIMESTER` "IV Trimestre".
-- `SectionView`: `{ id, academicYearId, gradeLevel, code, isActive }`.
+- `SectionView`: `{ id, academicYearId, level, gradeLevel, code, isActive }` (tres niveles, 09/11/2026). Orden: nivel (INICIAL, PRIMARIA, SECUNDARIA), grado y código. El nivel y el grado no se editan. Catálogo y etiquetas ("5 años", "3.° Primaria") en `@aula/shared` (`LEVEL_GRADES`, `gradeLabel`, `scaleForLevel`).
 - `CourseView`: `{ id, name, isActive }`.
 - `CourseSectionView`: `{ id, sectionId, course: { id, name }, teacher: { id, fullName } | null, isActive }`.
 
@@ -231,7 +231,7 @@ Roles ADMIN, TEACHER, STUDENT y GUARDIAN. ADMIN siempre; los demás solo si tien
   "isActive": true,
   "readOnly": false,
   "academicYear": { "id": "uuid", "year": 2026, "isActive": true, "closedAt": null },
-  "section": { "id": "uuid", "gradeLevel": 3, "code": "A", "isActive": true },
+  "section": { "id": "uuid", "level": "SECUNDARIA", "gradeLevel": 3, "code": "A", "isActive": true },
   "course": { "id": "uuid", "name": "Matemática" },
   "teacher": { "id": "uuid", "fullName": "Nombre del docente" },
   "periods": [
@@ -266,7 +266,7 @@ Roles TEACHER y STUDENT. GUARDIAN y ADMIN reciben 403.
     {
       "id": "uuid",
       "course": { "id": "uuid", "name": "Matemática" },
-      "section": { "id": "uuid", "gradeLevel": 3, "code": "A" },
+      "section": { "id": "uuid", "level": "SECUNDARIA", "gradeLevel": 3, "code": "A" },
       "academicYear": { "id": "uuid", "year": 2026 },
       "teacher": { "id": "uuid", "fullName": "Nombre del docente" },
       "enrollmentId": "uuid"
@@ -354,21 +354,21 @@ type AcademicEventMap = {
 ### Vistas
 
 - `UserView`: `{ id, email, fullName, role, status, createdAt, updatedAt }`.
-- `UserListItem` (solo en `GET /users`): `{ id, email, fullName, role, status, currentSection }`, donde `currentSection` es `{ id, gradeLevel, code }` o `null` (sección de la matrícula vigente del año).
-- `EnrollmentView`: `{ id, academicYear: { id, year }, section: { id, gradeLevel, code }, isCurrent, effectiveFrom, effectiveTo, endReason }`.
+- `UserListItem` (solo en `GET /users`): `{ id, email, fullName, role, status, currentSection }`, donde `currentSection` es `{ id, level, gradeLevel, code }` o `null` (sección de la matrícula vigente del año).
+- `EnrollmentView`: `{ id, academicYear: { id, year }, section: { id, level, gradeLevel, code }, isCurrent, effectiveFrom, effectiveTo, endReason }`.
 - `GuardianLinkView`: `{ id, guardian: { id, fullName, status }, student: { id, fullName, status }, isActive, createdAt, revokedAt }`.
 
 ### Paginación y búsqueda (`GET /users`)
 
 - `page`: 1..1000 (por defecto 1). `pageSize`: 1..100 (por defecto 20). Fuera de rango, 400.
 - `q`: 2..100 caracteres, texto literal (`%` y `_` no son comodines), sin distinguir mayúsculas, sobre nombre y correo. Tope de **5000 coincidencias**: si hay más, `total` y las páginas se calculan sobre las primeras 5000 (por id). Orden: `fullName` y luego `id`.
-- `gradeLevel` y `sectionId` exigen `role=STUDENT`; si no, 400. Se buscan en la matrícula vigente del año indicado (por defecto, el activo). Sin año activo no hay coincidencias.
+- `level`, `gradeLevel` y `sectionId` exigen `role=STUDENT`; si no, 400. `gradeLevel` va de 1 a 6; con `level` debe estar en el rango del nivel (si no, 400). Se buscan en la matrícula vigente del año indicado (por defecto, el activo). Sin año activo no hay coincidencias.
 
 ### Endpoints
 
 | Método y ruta | Cuerpo / query | Respuesta | Errores |
 | --- | --- | --- | --- |
-| `GET /users` | Query: `q?`, `role?`, `status?`, `gradeLevel?`, `sectionId?`, `academicYearId?`, `page?`, `pageSize?` | 200 `{ items: UserListItem[], total, page, pageSize }` | 400 |
+| `GET /users` | Query: `q?`, `role?`, `status?`, `level?`, `gradeLevel?`, `sectionId?`, `academicYearId?`, `page?`, `pageSize?` | 200 `{ items: UserListItem[], total, page, pageSize }` | 400 |
 | `GET /users/:id` | — | 200 `UserView` + `currentEnrollment` (STUDENT: `EnrollmentView` o `null`, año activo) + `guardians` (STUDENT: `GuardianLinkView[]` vigentes) o `students` (GUARDIAN: vigentes) | 400; 404 |
 | `PATCH /users/:id` | `{ fullName?, email? }` (al menos uno) | 200 `UserView`. Sin cambios, 200 sin bitácora | 400; 404; 409 correo en uso; 422 dominio |
 | `PUT /users/:id/status` | `{ status: ACTIVE \| INACTIVE \| WITHDRAWN, reason?: 1..500 }` | 200 `{ user: UserView, closedEnrollments: EnrollmentView[] }`. Mismo estado: 200 con `closedEnrollments: []`, sin bitácora | 400; 404; 409 sobre sí mismo o último ADMIN activo |
@@ -701,10 +701,10 @@ Reglas:
   "sourceYear": { "id": "uuid", "year": 2026 },
   "targetYear": { "id": "uuid", "year": 2027 },
   "fingerprint": "64 caracteres hexadecimales",
-  "targetSections": [{ "id": "uuid", "gradeLevel": 1, "code": "A" }],
+  "targetSections": [{ "id": "uuid", "level": "SECUNDARIA", "gradeLevel": 1, "code": "A" }],
   "items": [{
     "enrollmentId": "uuid", "studentId": "uuid", "fullName": "Nombre", "status": "ACTIVE",
-    "from": { "sectionId": "uuid", "gradeLevel": 2, "code": "A" },
+    "from": { "sectionId": "uuid", "level": "SECUNDARIA", "gradeLevel": 2, "code": "A" },
     "proposed": { "action": "PROMOTE", "sectionId": "uuid" },
     "flags": []
   }],
@@ -714,11 +714,11 @@ Reglas:
 ```
 
 - Entran las matrículas vigentes del año origen. Un retirado con matrícula ya cerrada, o un estudiante sin matrícula vigente, no aparece.
-- Acción propuesta: grados 1 a 4, `PROMOTE` al grado siguiente; grado 5, `GRADUATE`; retirado (`WITHDRAWN`) o ya matriculado en el destino, `EXCLUDE`; inactivo, `PROMOTE` con la marca `INACTIVE`.
-- Sección propuesta: la del mismo código si existe y está activa; si no, la única activa de ese grado; si no, `null` con la marca `NO_TARGET_SECTION`.
-- Marcas (`flags`): `INACTIVE`, `WITHDRAWN`, `NO_TARGET_SECTION`, `ALREADY_ENROLLED`. Las filas se ordenan por grado, código y nombre.
+- Acción propuesta (tres niveles): `PROMOTE` al grado siguiente del nivel; INICIAL 5 años pasa a PRIMARIA 1.° y PRIMARIA 6.° a SECUNDARIA 1.° (también `PROMOTE`); SECUNDARIA 5.°, `GRADUATE`; retirado (`WITHDRAWN`) o ya matriculado en el destino, `EXCLUDE`; inactivo, `PROMOTE` con la marca `INACTIVE`.
+- Sección propuesta: la del mismo código si existe y está activa; si no, la única activa de ese nivel y grado; si no, `null` con la marca `NO_TARGET_SECTION`.
+- Marcas (`flags`): `INACTIVE`, `WITHDRAWN`, `NO_TARGET_SECTION`, `ALREADY_ENROLLED`. Las filas se ordenan por nivel, grado, código y nombre.
 - `canConfirm` es `false` si alguna fila `PROMOTE` o `REPEAT` no tiene sección elegida.
-- `fingerprint`: SHA-256 de las matrículas vigentes del origen, las secciones activas del destino y las matrículas ya existentes en el destino. Se calcula en el servidor.
+- `fingerprint`: SHA-256 de las matrículas vigentes del origen, las secciones activas del destino (con su nivel) y las matrículas ya existentes en el destino. Se calcula en el servidor.
 - 400; 404 (como en la clonación); 409 "El año de destino está cerrado" o "El año de destino es de solo lectura"; 422: "El año de origen y el de destino deben ser distintos", "El año de destino debe ser el siguiente al año de origen", "Cierra todos los períodos del año de origen antes de promover" (origen con algún período abierto) y "El año de destino no tiene secciones activas".
 
 ### Confirmar la promoción (RF-16, RN-15, D-038)
@@ -735,7 +735,7 @@ Cuerpo:
 
 - `action`: `PROMOTE`, `REPEAT`, `GRADUATE` o `EXCLUDE`. `sectionId` es obligatorio en `PROMOTE` y `REPEAT` (sección activa del año destino) y no se admite en `GRADUATE` ni en `EXCLUDE`.
 - Entre 1 y 2000 decisiones, sin matrículas repetidas. Las decisiones deben cubrir **todas** las filas de la propuesta.
-- Correcciones permitidas: `PROMOTE` (grados 1 a 4), `REPEAT` (cualquier grado), `GRADUATE` (solo grado 5) y `EXCLUDE`. Las filas `WITHDRAWN` y `ALREADY_ENROLLED` solo admiten `EXCLUDE`.
+- Correcciones permitidas: `PROMOTE` (todo grado salvo SECUNDARIA 5.°; la sección destino debe ser del nivel y grado siguientes), `REPEAT` (mismo nivel y grado), `GRADUATE` (solo SECUNDARIA 5.°) y `EXCLUDE`. Las filas `WITHDRAWN` y `ALREADY_ENROLLED` solo admiten `EXCLUDE`.
 
 Respuesta 201:
 
@@ -791,7 +791,7 @@ Flujo: intent, subida directa con PUT firmado a MinIO, `complete` y después la 
 
 | Método y ruta | Entrada | Respuesta | Errores |
 | --- | --- | --- | --- |
-| `POST /files/upload-intents` | `{ purpose: MATERIAL \| ASSIGNMENT_ATTACHMENT \| SUBMISSION, courseSectionId, assignmentId? (obligatorio solo en SUBMISSION), fileName (1..255), sizeBytes (entero > 0), contentType: "application/pdf" }` | 201 `{ fileId, uploadUrl, method: "PUT", headers, expiresAt, maxBytes }`. `headers` se envían con el PUT (Content-Type y Content-Length firmados). Vigencia 5 min | 400 (`assignmentId` falta o sobra); 403 (rol o sin permiso de escritura); 404 (sección o tarea); 409 `DEADLINE_PASSED`; 409 sección de solo lectura o período cerrado; 413 `FILE_TOO_LARGE` (mayor que el límite); 429 |
+| `POST /files/upload-intents` | `{ purpose: MATERIAL \| ASSIGNMENT_ATTACHMENT \| SUBMISSION, courseSectionId, assignmentId? (obligatorio solo en SUBMISSION), fileName (1..255), sizeBytes (entero > 0), contentType: "application/pdf" }` | 201 `{ fileId, uploadUrl, method: "PUT", headers, expiresAt, maxBytes }`. `headers` se envían con el PUT (Content-Type y Content-Length firmados). Vigencia 5 min | 400 (`assignmentId` falta o sobra); 403 (rol o sin permiso de escritura); 404 (sección o tarea); 409 `DEADLINE_PASSED`; 409 `NO_SUBMISSIONS_IN_LEVEL` (SUBMISSION en una sección de INICIAL); 409 sección de solo lectura o período cerrado; 413 `FILE_TOO_LARGE` (mayor que el límite); 429 |
 | `POST /files/:id/complete` | Sin cuerpo | 200 `{ fileId, scanStatus: "CLEAN", sizeBytes, sha256, completedAt }`. `completedAt` es la hora del servidor y es el `receivedAt` de la entrega (D-039). Repetida con archivo ya CLEAN: 200 con el mismo cuerpo | 404 `FILE_NOT_FOUND` (también si la subida es de otro usuario); 409 `UPLOAD_NOT_FOUND` (el objeto aún no está en S3; se puede reintentar mientras vive el intent), `UPLOAD_EXPIRED`, `OBJECT_CHANGED` (el objeto cambió entre la lectura y la copia), `DEADLINE_PASSED` y período cerrado; 413 `FILE_TOO_LARGE`; 415 `INVALID_PDF` o `ENCRYPTED_PDF`; 422 `FILE_INFECTED`; 503 `ANTIVIRUS_UNAVAILABLE` o `STORAGE_UNAVAILABLE` (el archivo queda PENDING y se puede reintentar) |
 | `POST /files/:id/download-url` | `{ inline? }` (opcional, boolean) | 200 `{ url, method: "GET", expiresAt }`. Vigencia 60 s | 403 (apoderado o sin permiso); 404 `FILE_NOT_FOUND` (no está CLEAN, está purgado, o es un material en la papelera y lo pide un estudiante) |
 
@@ -823,19 +823,19 @@ Lectura: ADMIN, docente, estudiante (apoderado 403). Escritura: ADMIN o docente 
 
 | Método y ruta | Entrada | Respuesta | Errores |
 | --- | --- | --- | --- |
-| `POST /course-sections/:id/assignments` | `{ periodId, title (1..200), instructions (1..10000), dueAt, maxSizeBytes? (1..52428800; por defecto 20971520), noSubmissionGrade? (0..20, hasta 2 decimales; por defecto "0.00"), allowLate? (por defecto false), attachmentFileId? (PDF de la sección) }` | 201 `AssignmentView`. Publica `assignment.created.v1` | 400; 403; 404 (sección o período); 409 período cerrado o año no activo; 409 adjunto ya usado; 422 período de otro año, `dueAt` pasado o adjunto no usable |
+| `POST /course-sections/:id/assignments` | `{ periodId, title (1..200), instructions (1..10000), dueAt, maxSizeBytes? (1..52428800; por defecto 20971520), noSubmissionGrade? (0..20, hasta 2 decimales; por defecto "0.00"), noSubmissionLiteral? ('AD'\|'A'\|'B'\|'C' o null; por defecto null; solo INICIAL/PRIMARIA, 400 en SECUNDARIA), allowLate? (por defecto false), attachmentFileId? (PDF de la sección) }` | 201 `AssignmentView`. Publica `assignment.created.v1` | 400; 403; 404 (sección o período); 409 período cerrado o año no activo; 409 adjunto ya usado; 422 período de otro año, `dueAt` pasado o adjunto no usable |
 | `GET /course-sections/:id/assignments` | Query `periodId?` | 200 `{ items: AssignmentView[], total }` | 400; 403; 404 |
 | `GET /assignments/:id` | — | 200 `AssignmentView` | 403; 404 (no existe o está borrada) |
-| `PATCH /assignments/:id` | `{ title?, instructions?, dueAt?, maxSizeBytes?, noSubmissionGrade?, allowLate?, attachmentFileId? }` (al menos uno; `null` quita el adjunto). El período no se cambia | 200 `AssignmentView`. Publica `assignment.updated.v1` | 400 (incluye `periodId`); 403; 404; 409 período cerrado o adjunto en uso; 422 `dueAt` pasado o adjunto no usable |
+| `PATCH /assignments/:id` | `{ title?, instructions?, dueAt?, maxSizeBytes?, noSubmissionGrade?, noSubmissionLiteral?, allowLate?, attachmentFileId? }` (al menos uno; `null` quita el adjunto). El período no se cambia | 200 `AssignmentView`. Publica `assignment.updated.v1` | 400 (incluye `periodId`); 403; 404; 409 período cerrado o adjunto en uso; 422 `dueAt` pasado o adjunto no usable |
 | `DELETE /assignments/:id` | — | 204 (borrado lógico; no publica evento; el adjunto queda enlazado) | 403; 404; 409 si ya tiene entregas; 409 si ya tiene notas (RN-10) |
 
-`AssignmentView`: `{ id, courseSectionId, periodId, title, instructions, dueAt, maxSizeBytes, noSubmissionGrade ("12.50"), allowLate, attachmentFileId | null, periodIsOpen, createdAt, updatedAt }`. `periodIsOpen` es `false` si el período o su año están cerrados (la tarea ya no se edita).
+`AssignmentView`: `{ id, courseSectionId, periodId, title, instructions, dueAt, maxSizeBytes, noSubmissionGrade ("12.50"), noSubmissionLiteral ('AD'|'A'|'B'|'C'|null), allowLate, attachmentFileId | null, periodIsOpen, createdAt, updatedAt }`. `periodIsOpen` es `false` si el período o su año están cerrados (la tarea ya no se edita).
 
 ### Entregas (RF-33, RF-36, RF-37, RF-39)
 
 | Método y ruta | Entrada | Respuesta | Errores |
 | --- | --- | --- | --- |
-| `POST /assignments/:id/submissions` | `{ fileId }`. Solo STUDENT con matrícula vigente en la sección | 201 `SubmissionAccepted` (nueva versión). 200 con el mismo cuerpo si ese `fileId` ya era una entrega suya (idempotente). Publica `submission.accepted.v1` solo al crear | 400; 403 (no es estudiante vigente o usuario no activo); 404 (tarea no existe o borrada); 409 período cerrado; 409 plazo vencido sin `allowLate`; 409 archivo ya entregado en otra tarea; 409 conflicto de concurrencia tras 3 intentos; 422 archivo no válido (no CLEAN, de otro alumno, de otra tarea o purgado) |
+| `POST /assignments/:id/submissions` | `{ fileId }`. Solo STUDENT con matrícula vigente en la sección | 201 `SubmissionAccepted` (nueva versión). 200 con el mismo cuerpo si ese `fileId` ya era una entrega suya (idempotente). Publica `submission.accepted.v1` solo al crear | 400; 403 (no es estudiante vigente o usuario no activo); 404 (tarea no existe o borrada); 409 `NO_SUBMISSIONS_IN_LEVEL` (la sección de la tarea es de INICIAL: actividades sin entrega, decisión del usuario 09/11/2026; se revisa antes de la idempotencia); 409 período cerrado; 409 plazo vencido sin `allowLate`; 409 archivo ya entregado en otra tarea; 409 conflicto de concurrencia tras 3 intentos; 422 archivo no válido (no CLEAN, de otro alumno, de otra tarea o purgado) |
 | `GET /assignments/:id/submissions/me` | — | 200 `MySubmissionView`: `{ assignment: { id, dueAt, allowLate, maxSizeBytes }, submissionId | null, displayStatus, isLate, isOverdue, latestVersion | null, versions[] }`. `versions` va de la más nueva a la más antigua | 403 (no es estudiante); 404 |
 | `GET /assignments/:id/submissions` | — | 200 `{ items: TeacherSubmissionItem[], total }`: una fila por matrícula vigente de la sección, con o sin entrega | 403 (no es docente asignado ni ADMIN); 404 |
 | `GET /submissions/:id/versions` | — | 200 `SubmissionVersionsView`: `{ submissionId, assignmentId, enrollmentId, versions[] }` | 403 (no es dueño ACTIVE, docente asignado ni ADMIN; apoderado siempre); 404 |
@@ -889,6 +889,7 @@ Exportado por `SubmissionsModule`. Dev 3 nunca escribe en `Grade`.
 - Prefijo `/api/v1`. Todos los endpoints requieren sesión (401).
 - Roles por método (`@Roles`): registro y calificación, TEACHER asignado a la sección o ADMIN (en modo soporte; queda en la bitácora); Mis notas, STUDENT; apoderado, GUARDIAN con vínculo vigente. Un usuario que no está ACTIVE recibe 403.
 - Notas como texto con 2 decimales (`"13.50"`) y punto decimal. La web acepta la coma y la convierte antes de llamar a la API.
+- **Escala por nivel (tres niveles, 09/11/2026).** La escala sale de `scaleForLevel(Section.level)` (`@aula/shared`): SECUNDARIA → `NUMERIC_0_20` (campo `value`, igual que antes); INICIAL y PRIMARIA → `LITERAL_ADABC` (campo `literal`: `AD`, `A`, `B` o `C`). En escala literal no hay promedio aritmético: `average.status` es `LITERAL_SCALE` y el resumen del período es el **logro del bimestre** (`PeriodAchievement`) que elige el docente; los literales de las tareas son apoyo. Las vistas llevan `gradingScale` y `section.level`.
 - Consultas estrictas: un parámetro desconocido responde 400. Los campos desconocidos del cuerpo se ignoran y no se guardan.
 - `exemptionReason` solo aparece en las vistas del docente y ADMIN (`GradeView`, `GradeSummaryView`). No aparece en `StudentGradesView`, en la bitácora ni en los eventos (D-049). Tampoco `comment` en la bitácora ni en los eventos.
 - Errores con el formato común (`error.code`, `message`, `details`). Los 422 de negocio llevan un `code` propio (ver "Reglas de escritura").
@@ -903,6 +904,7 @@ Exportado por `SubmissionsModule`. Dev 3 nunca escribe en `Grade`.
 | `GET /me/grades` | STUDENT | Query `academicYearId?` (por defecto, el año activo) | 200 `StudentGradesView` | 400; 401; 403; 404 año |
 | `GET /guardian/students` | GUARDIAN | — | 200 `GuardianStudentsView` | 401; 403 |
 | `GET /guardian/students/:studentId/grades` | GUARDIAN con vínculo vigente | Query `academicYearId?` | 200 `StudentGradesView` | 400; 401; 403 si no está vinculado; 404 año |
+| `PUT /course-sections/:id/periods/:periodId/achievements/:enrollmentId` | TEACHER asignado, ADMIN | `{ literal: 'AD'\|'A'\|'B'\|'C', comment?: string \| null }` (estricto; comentario hasta 2000) | 200 `AchievementView` | 400 cuerpo inválido o sección de SECUNDARIA; 401; 403; 404 curso-sección, período o matrícula; 409 período o año cerrado; 422 período de otro año o `ENROLLMENT_OUT_OF_SECTION` |
 
 ### Cuerpo de la calificación (PUT)
 
@@ -910,12 +912,12 @@ Discriminado por `state`:
 
 | `state` | Campos | Reglas |
 | --- | --- | --- |
-| `GRADED` | `value` (obligatorio) | Nota de 0 a 20 con hasta 2 decimales (RN-01). `"05"` se guarda como `"5.00"` (A4). |
-| `NE` | `value` (opcional) | Sin `value`, la API usa la nota NE de la tarea (`noSubmissionGrade`, por defecto `"0.00"`, RN-05). |
-| `EXEMPT` | `exemptionReason` (obligatorio) | Texto de 10 a 500 caracteres tras recortar espacios (RF-46). No lleva `value`. |
+| `GRADED` | `value` (SECUNDARIA) o `literal` (INICIAL/PRIMARIA), obligatorio | Nota de 0 a 20 con hasta 2 decimales (RN-01). `"05"` se guarda como `"5.00"` (A4). Literal: `AD`, `A`, `B` o `C`. |
+| `NE` | `value` o `literal` (opcional) | Sin nota, la API usa la de la tarea: `noSubmissionGrade` (por defecto `"0.00"`, RN-05) o, en escala literal, `noSubmissionLiteral`. Si la tarea no define literal, 422 `NE_LITERAL_REQUIRED`. |
+| `EXEMPT` | `exemptionReason` (obligatorio) | Texto de 10 a 500 caracteres tras recortar espacios (RF-46). No lleva `value` ni `literal`. |
 | todos | `comment` (opcional) | Hasta 2000 caracteres tras recortar; vacío equivale a sin comentario (RF-42). |
 
-Un cuerpo inválido responde 400 `VALIDATION_ERROR` con `details: [{ path, message }]`, donde `path` es el campo (`state`, `value`, `exemptionReason` o `comment`) o vacío.
+Un cuerpo inválido responde 400 `VALIDATION_ERROR` con `details: [{ path, message }]`, donde `path` es el campo (`state`, `value`, `literal`, `exemptionReason` o `comment`) o vacío. Enviar `value` y `literal` a la vez es 400. Usar el campo de la otra escala (`value` en INICIAL/PRIMARIA, `literal` en SECUNDARIA) también es 400 (`path` = el campo enviado); se comprueba después del 404/403 de la matrícula y antes del 409.
 
 ```json
 { "state": "GRADED", "value": "13.5", "comment": "Buen trabajo" }
@@ -935,6 +937,7 @@ Orden de las comprobaciones: 404 tarea → 403 → 404 matrícula → 422 `ENROL
 | `NOT_OVERDUE` | `NE` antes del plazo. |
 | `ENROLLMENT_OUT_OF_SECTION` | La matrícula no es de la sección de la tarea. |
 | `ENROLLMENT_NOT_ELIGIBLE` | `NE` con matrícula que no estaba vigente al vencer la tarea; `EXEMPT` con matrícula que no está vigente ni era elegible. |
+| `NE_LITERAL_REQUIRED` | `NE` en escala literal sin `literal` y la tarea no define `noSubmissionLiteral`. |
 
 - Una escritura que no cambia nada responde 200 con la fila actual y no genera bitácora ni evento.
 - Toda escritura manual queda con `source: "MANUAL"` (A1).
@@ -947,7 +950,8 @@ Orden de las comprobaciones: 404 tarea → 403 → 404 matrícula → 422 `ENROL
 {
   id: string; assignmentId: string; enrollmentId: string;
   state: 'GRADED' | 'NE' | 'EXEMPT';
-  value: string | null;            // "13.50"; null en EXEMPT
+  value: string | null;            // "13.50"; null en EXEMPT y en escala literal
+  literal: 'AD' | 'A' | 'B' | 'C' | null; // escala literal; null en SECUNDARIA y EXEMPT
   comment: string | null;
   exemptionReason: string | null;  // solo docente y ADMIN (D-049)
   source: 'MANUAL' | 'AUTO';
@@ -955,24 +959,34 @@ Orden de las comprobaciones: 404 tarea → 403 → 404 matrícula → 422 `ENROL
 }
 ```
 
-- `GradeSummaryView` (`grade-summary`): `assignment` (`{ id, title, courseSectionId, periodId, dueAt, allowLate, noSubmissionGrade, periodIsOpen }`); `items[]`, una por matrícula visible, con `enrollmentId`, `studentId`, `fullName`, `isCurrent`, `neEligible`, `grade` (`{ id, state, value, virtual, needsRegrade, comment, exemptionReason, source, gradedAt }`), `submission` (`{ submissionId, versionCount, latestVersion }` o `null`), `displayStatus`, `isLate` e `isOverdue`; y `average` y `counts` de la tarea.
-- `GradebookView` (`gradebook`): `courseSection` (`{ id, readOnly, course, section }`); `period` y `periods[]` (`{ id, label, sequence, isOpen }`); `assignments[]` (`{ id, title, dueAt, allowLate, noSubmissionGrade, average, counts }`); `students[]` (`{ enrollmentId, studentId, fullName, isCurrent, average, atRisk, cells[] }`), donde cada celda es `{ assignmentId, state, value, virtual, needsRegrade, source, neEligible, hasSubmission, isLate, displayStatus }`; y `dashboard` (`{ distribution, noGrades, counts, riskLiteral, atRisk }`). `distribution` cuenta estudiantes por literal; `atRisk` son ids de matrícula.
-- `StudentGradesView` (`me/grades` y `guardian/students/:studentId/grades`): `student` (`{ id, fullName }`), `academicYear` (`{ id, year }` o `null`) y `courses[]` (`{ courseSectionId, enrollmentId, isCurrent, course, section, periods[] }`). Cada período tiene `{ id, label, sequence, isOpen, average, assignments[] }` y cada tarea `{ assignmentId, title, dueAt, state, value, comment, displayStatus, isLate }`. No lleva `exemptionReason` ni `source`, ni promedio anual (D-014).
-- `GuardianStudentsView` (`guardian/students`): `{ items: [{ studentId, fullName, currentSection: { id, gradeLevel, code } | null }] }`.
-- `average` tiene dos formas: `{ status: 'OK', rounded, literal, counted, exempt }` o `{ status: 'NO_GRADES', counted: 0, exempt }`. Sin notas que cuenten es `NO_GRADES`, nunca `0` (D-026).
+- `GradeSummaryView` (`grade-summary`): `assignment` (`{ id, title, courseSectionId, periodId, dueAt, allowLate, noSubmissionGrade, noSubmissionLiteral, gradingScale, periodIsOpen }`); `items[]`, una por matrícula visible, con `enrollmentId`, `studentId`, `fullName`, `isCurrent`, `neEligible`, `grade` (`{ id, state, value, literal, virtual, needsRegrade, comment, exemptionReason, source, gradedAt }`), `submission` (`{ submissionId, versionCount, latestVersion }` o `null`), `displayStatus`, `isLate` e `isOverdue`; y `average` y `counts` de la tarea.
+- `GradebookView` (`gradebook`): `courseSection` (`{ id, readOnly, course, section: { id, level, gradeLevel, code }, gradingScale }`); `period` y `periods[]` (`{ id, label, sequence, isOpen }`); `assignments[]` (`{ id, title, dueAt, allowLate, noSubmissionGrade, noSubmissionLiteral, average, counts }`); `students[]` (`{ enrollmentId, studentId, fullName, isCurrent, average, achievement, atRisk, cells[] }`), donde cada celda es `{ assignmentId, state, value, literal, virtual, needsRegrade, source, neEligible, hasSubmission, isLate, displayStatus }`; y `dashboard` (`{ distribution, noGrades, counts, riskLiteral, atRisk }`). `distribution` cuenta estudiantes por literal del promedio (SECUNDARIA) o del logro del bimestre (escala literal: claves `AD`, `A`, `B`, `C`; `noGrades` = sin logro); `atRisk` son ids de matrícula. `achievement` es `PeriodAchievementView` (`{ literal, comment, gradedAt }`) o `null` (siempre `null` en SECUNDARIA).
+- `StudentGradesView` (`me/grades` y `guardian/students/:studentId/grades`): `student` (`{ id, fullName }`), `academicYear` (`{ id, year }` o `null`) y `courses[]` (`{ courseSectionId, enrollmentId, isCurrent, course, section, periods[] }`). Cada curso lleva además `gradingScale` y `section: { id, level, gradeLevel, code }`. Cada período tiene `{ id, label, sequence, isOpen, average, achievement, assignments[] }` y cada tarea `{ assignmentId, title, dueAt, state, value, literal, comment, displayStatus, isLate }`. No lleva `exemptionReason` ni `source`, ni promedio anual (D-014). El comentario del logro sí lo ven el estudiante y su apoderado.
+- `GuardianStudentsView` (`guardian/students`): `{ items: [{ studentId, fullName, currentSection: { id, level, gradeLevel, code } | null }] }`. En inicial los niños no tienen cuenta: esta es su única vista.
+- `AchievementView` (respuesta del PUT de logro): `{ id, enrollmentId, courseSectionId, periodId, literal, comment, gradedAt, updatedAt }`.
+- `average` tiene tres formas: `{ status: 'OK', rounded, literal, counted, exempt }`, `{ status: 'NO_GRADES', counted: 0, exempt }` o, en escala literal, `{ status: 'LITERAL_SCALE', counted: 0, exempt }`. Sin notas que cuenten es `NO_GRADES`, nunca `0` (D-026).
 
 ### Reglas de lectura
 
 - Filas: matrículas vigentes de la sección, más las cerradas con nota o entrega (RN-14). Una matrícula cerrada muestra solo las tareas que le correspondían o que tienen datos.
 - Evaluación efectiva (A2): manda la fila guardada. Sin fila, con tarea vencida sin entrega y matrícula elegible, la NE es virtual y usa la nota NE de la tarea. Una NE con entrega posterior tiene `needsRegrade: true` (RF-45).
 - Promedio (A6): simple, se calcula al leer, con un solo redondeo (.5 hacia arriba, D-026). Los exonerados no cuentan.
-- Riesgo (A5): promedio en el tramo que contiene 0. Con la tabla por defecto, es el literal C.
+- Riesgo (A5): promedio en el tramo que contiene 0. Con la tabla por defecto, es el literal C. En escala literal, logro del bimestre `C`.
+- Escala literal: la NE virtual usa `noSubmissionLiteral` de la tarea; si es nulo queda `state: 'NE'` con `literal: null` (se muestra "NE"). El literal por defecto es configurable en el motor (`DEFAULT_NO_SUBMISSION_LITERAL`, hoy `null`) y está **pendiente de decisión del usuario**.
+
+### Logro del bimestre (`PeriodAchievement`, escala literal)
+
+- Una fila por matrícula, curso-sección y período. Solo INICIAL y PRIMARIA: en SECUNDARIA el PUT responde 400.
+- Reglas de escritura: docente asignado o ADMIN; período y año abiertos (409, con bloqueo `FOR SHARE` del período como en las notas); la matrícula debe ser de la sección (422 `ENROLLMENT_OUT_OF_SECTION`). El PUT crea o actualiza; sin cambios responde 200 sin bitácora.
+- Bitácora: `grading.achievement.create` / `grading.achievement.update`, `entityType: 'PeriodAchievement'`, solo `{ literal }` antes y `{ literal, enrollmentId, courseSectionId, periodId, changedFields }` después. **Nunca el comentario** (dato de un menor).
+- Lectura: en `GradebookView.students[].achievement` y en `StudentGradesView.courses[].periods[].achievement`. Una matrícula cerrada con logro sigue visible (RN-14).
 - Período: por defecto, el actual. Un período de otro año responde 422; uno que no existe, 404.
 
 ### NE automática (`NeMaterializer`, RF-44, U1, A3)
 
 - Escribe filas `Grade` con `source: "AUTO"` y `state: "NE"` en dos momentos: al abrir el registro o el resumen de una tarea (con período y año abiertos), y al recibir `period.closed.v1`.
 - Con el período abierto, una NE `AUTO` sigue la nota NE de la tarea (A3). Si un docente la edita, pasa a `MANUAL` y deja de seguirla.
+- En escala literal escribe `literal = noSubmissionLiteral` y sigue sus cambios igual que A3. Si la tarea no define literal no se materializa (la BD exige `value` o `literal` en una NE) y la lectura muestra la NE virtual sin literal.
 - Cada tarea se escribe en una transacción. Si otro proceso escribe a la vez, reintenta hasta tres veces; si no puede, registra el fallo en el log y la lectura sigue con la NE virtual.
 
 ### Eventos
@@ -1010,6 +1024,43 @@ type GradingEventMap = {
 - Dev 3: integrar `gradeState` en `computeDisplayStatus` de sus listados (hoy pasa `null`) y los rótulos definitivos en pantalla.
 - Promedio anual (D-014): pendiente de la institución.
 - Prueba en navegador real del visor PDF (iframe) y de las pantallas de Dev 4.
+
+## API de anuncios (Dev 5, RF-32)
+
+Alcances: `COURSE_SECTION` (docente asignado o ADMIN), `INSTITUTION` y `GRADE` (solo ADMIN). Solo en el año activo y sin cerrar. Cuerpo y título en texto plano (título ≤ 150, una línea; cuerpo ≤ 5000). Retiro con borrado lógico (RN-14). Tope: 5 POST por minuto por usuario y 20 institucionales / 50 de curso por autor en 24 h (429 `ANNOUNCEMENT_LIMIT`).
+
+| Método y ruta | Rol | Cuerpo / query | Respuesta |
+| --- | --- | --- | --- |
+| `POST /course-sections/:id/announcements` | TEACHER asignado, ADMIN | `{ title, body }` | 201 `AnnouncementView` |
+| `GET /course-sections/:id/announcements` | TEACHER asignado, ADMIN | `?page` | 200 `AnnouncementPage` |
+| `POST /announcements` | ADMIN | `{ scope: 'INSTITUTION', title, body }` o `{ scope: 'GRADE', level, gradeLevel, title, body }` | 201 `AnnouncementView`; 400 si falta `level` o `gradeLevel` no está en el rango del nivel (INICIAL 3..5, PRIMARIA 1..6, SECUNDARIA 1..5) |
+| `GET /announcements` | ADMIN | `?page` | 200 `AnnouncementPage` (INSTITUTION y GRADE del año activo) |
+| `PATCH /announcements/:id` | autor o ADMIN | `{ title?, body? }` | 200 `AnnouncementView` |
+| `DELETE /announcements/:id` | autor o ADMIN | — | 204 |
+| `GET /me/announcements` | STUDENT, TEACHER, GUARDIAN | `?page[&studentId]` (`studentId` solo GUARDIAN y vinculado) | 200 `AnnouncementPage` |
+
+- `AnnouncementView`: `{ id, scope, level, gradeLevel, courseSectionId, course: { id, name } | null, section: { level, gradeLevel, code } | null, title, body, publishedAt, updatedAt, edited, canEdit, students? }`. `level` y `gradeLevel` solo con `GRADE` (tres niveles, 09/11/2026; CHECK `Announcement_scope_chk`). `students` solo para GUARDIAN.
+- Audiencia de `GRADE`: se compara el par (nivel, grado) de la sección de la matrícula vigente: un alumno de 3.° de primaria no ve un anuncio para 3.° de secundaria. El docente ve los pares de las secciones donde enseña; el apoderado, los de sus estudiantes vinculados (incluye niños de inicial sin cuenta).
+- Evento `announcement.published.v1`: `{ announcementId, academicYearId, scope, level, gradeLevel, courseSectionId, publishedAt }` (sin título ni cuerpo). Los destinatarios del aviso (worker) se filtran por nivel y grado.
+
+## API de reportes y datos personales (Dev 5, RF-57..60, RF-63; tres niveles 09/11/2026)
+
+Solo ADMIN. Los datos de notas salen del motor (`buildGradebook` vía `GradebookReadService`): no se recalcula nada. La escala sale de `scaleForLevel(section.level)`: SECUNDARIA `NUMERIC_0_20`, INICIAL y PRIMARIA `LITERAL_ADABC`.
+
+| Método y ruta | Query / cuerpo | Respuesta |
+| --- | --- | --- |
+| `GET /admin/reports/course-sections` | `academicYearId?`, `level?`, `gradeLevel?`, `sectionId?` | 200 `ReportCourseSectionsView`; 400 si `gradeLevel` va sin `level` o fuera del rango del nivel |
+| `GET /admin/reports/dashboard` | `academicYearId`, `periodId`, `level?`, `gradeLevel?` | 200 `ReportsDashboardView`; 400 igual; 422 `REPORT_NEEDS_GRADE_FILTER` (más de 60 cursos-sección sin `gradeLevel`) o `REPORT_TOO_LARGE` |
+| `POST /admin/reports/exports` | `{ type: 'SECTION_EXPORT', courseSectionId, periodId, format }` o `{ type: 'BULK_EXPORT', academicYearId, periodId, format }` | 202 `{ jobId, job }` |
+
+- `ReportCourseSectionsView`: `sections[]` e `items[].section` llevan `{ id, level, gradeLevel, code }`. Orden: nivel (INICIAL, PRIMARIA, SECUNDARIA), grado, código y curso.
+- `ReportsDashboardView`: `{ academicYear, period, literals, riskLiteral, achievementLiterals, achievementRiskLiteral, total, totalByScale, grades[] }` (`totalByScale`: `{ NUMERIC_0_20, LITERAL_ADABC }`, cada uno un `DashboardBucket` o `null`). Cada grupo (`DashboardBucket`) tiene `{ gradingScale, average, distribution, achievements, noGrades, atRiskStudents, atRiskEntries, students, counts, courseSections }`. `grades[]` se agrupa por **(nivel, grado)** con `{ level, gradeLevel, label, sections[] }` y cada sección `{ sectionId, code, label }` (`label`: "3.° Primaria", "5 años C").
+  - Escala numérica: `average` es el promedio del motor y `distribution` cuenta promedios por literal de la tabla de RF-61; `riskLiteral` es el literal en riesgo (null si no hay cursos de SECUNDARIA).
+  - Escala literal: `average.status = 'LITERAL_SCALE'` (sin promedio), `achievements` cuenta logros del bimestre (`PeriodAchievement`) por `AD`/`A`/`B`/`C`, `noGrades` = sin logro y en riesgo = logro `C` (lo decide el motor; sin logro no es riesgo).
+  - `total.gradingScale` es `MIXED` si hay niveles de ambas escalas: su `average` solo usa las notas numéricas.
+- Exportaciones XLSX y PDF (worker): la cabecera muestra la sección con nivel ("Sección: 3.° Primaria A (2026)"). En escala literal cada celda muestra el literal (`AD`, `NE C`, `NE` sin literal, `EXO`) y, en lugar de "Promedio" y "Literal", la columna **Logro** (o "Sin logro") y "En riesgo". En el ZIP masivo la carpeta es la etiqueta de la sección. **Ningún comentario** (ni de nota ni de logro) ni motivo de exoneración entra en reportes institucionales.
+- Exportación de datos personales (RF-63, `datos-personales.json`, `formato: 2`): `matriculas[]` agrega `nivel`; `notas[]` agrega `literal`; nuevo `logrosDelPeriodo[]` con `{ curso, periodo, literal, comentario, calificadoEn, actualizadoEn }` del titular.
+- Purga del año (RF-66): conserva notas y `PeriodAchievement` (RN-14); ninguna `Notification` apunta a un logro.
 
 ## API de autenticación (Dev 1, RF-68 a RF-88; fases A y B)
 
@@ -1060,8 +1111,8 @@ type GradingEventMap = {
 - **`credentials`** es `{ code, initialPassword }` y viaja solo en esa respuesta: no se guarda, no se registra y `GET /users/:id` no la devuelve.
 - **RN-17:** un alumno admite como máximo 2 apoderados vigentes (409) y no se puede revocar al último de un alumno que sigue en el colegio (409). Al revocar al principal, el otro pasa a serlo.
 - **`POST /guardian-links/:id/make-primary`** (RF-86): cambia el apoderado principal. Solo uno por alumno; los vínculos tienen `isPrimary`.
-- **`POST /users/:id/reset-password`** (RF-74): contraseña temporal nueva; cierra las sesiones, levanta el bloqueo y obliga a cambiarla. Si el usuario es anterior al login por código, le asigna código y credencial. Responde `{ user, credentials }`.
-- **`POST /users/:id/correct-dni`** (RF-84): `{ dni, dniConfirm, reason }` (motivo de 10 a 500 caracteres). Genera un código nuevo y una contraseña temporal, cierra las sesiones y deja el código anterior y el motivo en la bitácora. 409 si el DNI es igual al actual o ya es de otra persona.
+- **`POST /users/:id/reset-password`** (RF-74): contraseña temporal nueva; cierra las sesiones, levanta el bloqueo y obliga a cambiarla. Si el usuario es anterior al login por código, le asigna código y credencial. Responde `{ user, credentials }`. 422 `STUDENT_WITHOUT_ACCOUNT` si es un niño de INICIAL sin cuenta (D-065): no se le crea login.
+- **`POST /users/:id/correct-dni`** (RF-84): `{ dni, dniConfirm, reason }` (motivo de 10 a 500 caracteres). Genera un código nuevo y una contraseña temporal, cierra las sesiones y deja el código anterior y el motivo en la bitácora. 409 si el DNI es igual al actual o ya es de otra persona. 422 `STUDENT_WITHOUT_ACCOUNT` para un niño de INICIAL sin cuenta (D-065).
 - **`POST /users/:id/verify-dni`** (RF-69): marca el DNI como verificado contra el documento.
 - **Vistas.** `UserView` suma `code`, `contactEmail`, `emailVerified`, `phone`, `address` y `dniVerified` (el DNI nunca se devuelve). `GET /users/:id` suma `credentialStatus` y `locked`. `GET /users` devuelve por usuario `code`, `credentialStatus` (`NONE`, `PENDING` o `READY`), `emailVerified` y `locked`, y acepta los filtros `credentials` y `emailVerified` (RF-87). La búsqueda `q` también encuentra por código y correo de contacto.
 - **Bajas.** Cambiar a INACTIVE o WITHDRAWN cierra las sesiones del usuario (RF-78).

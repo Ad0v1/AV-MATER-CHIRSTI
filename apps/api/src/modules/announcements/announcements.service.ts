@@ -11,7 +11,7 @@ import { AuditService } from '../../common/audit/audit.service.js';
 import type { AuthenticatedUser } from '../../common/auth/roles.js';
 import { PrismaService } from '../../common/prisma/prisma.service.js';
 import type { Prisma } from '../../generated/prisma/client.js';
-import type { AnnouncementScope } from '../../generated/prisma/enums.js';
+import type { AnnouncementScope, EducationLevel } from '../../generated/prisma/enums.js';
 import { AcademicAccessService } from '../academic/academic-access.service.js';
 import { MSG as ACADEMIC_MSG } from '../academic/academic.errors.js';
 import type { Actor } from '../academic/request-user.js';
@@ -29,7 +29,7 @@ import {
 // Anuncios (RF-32). Alcances: COURSE_SECTION (docente asignado o ADMIN), INSTITUTION y GRADE (solo
 // ADMIN). Se publican al crearse (publishedAt) y se retiran con borrado lógico (RN-14). Solo se
 // escribe en el año activo y sin cerrar. Quién ve qué (GET /me/announcements), en el año activo:
-// - STUDENT: INSTITUTION, GRADE de su grado y COURSE_SECTION de su sección (matrícula vigente).
+// - STUDENT: INSTITUTION, GRADE de su (nivel, grado) y COURSE_SECTION de su sección (matrícula vigente).
 // - TEACHER: INSTITUTION, GRADE de los grados que enseña y COURSE_SECTION de sus cursos.
 // - GUARDIAN: lo mismo que sus estudiantes con vínculo vigente (o solo `studentId`); sin
 //   estudiantes vinculados no ve nada.
@@ -44,10 +44,12 @@ export const MSG = {
 export type AnnouncementView = {
   id: string;
   scope: AnnouncementScope;
+  /** Nivel del grado (solo GRADE). */
+  level: EducationLevel | null;
   gradeLevel: number | null;
   courseSectionId: string | null;
   course: { id: string; name: string } | null;
-  section: { gradeLevel: number; code: string } | null;
+  section: { level: EducationLevel; gradeLevel: number; code: string } | null;
   title: string;
   /** Texto plano: mostrarlo como texto, nunca como HTML. */
   body: string;
@@ -71,6 +73,7 @@ const select = {
   id: true,
   academicYearId: true,
   scope: true,
+  level: true,
   gradeLevel: true,
   courseSectionId: true,
   title: true,
@@ -81,7 +84,7 @@ const select = {
   courseSection: {
     select: {
       course: { select: { id: true, name: true } },
-      section: { select: { gradeLevel: true, code: true } },
+      section: { select: { level: true, gradeLevel: true, code: true } },
     },
   },
 } satisfies Prisma.AnnouncementSelect;
@@ -91,13 +94,25 @@ type Row = Prisma.AnnouncementGetPayload<{ select: typeof select }>;
 type AudienceStudent = {
   id: string;
   fullName: string;
+  level: EducationLevel;
   gradeLevel: number;
   courseSectionIds: Set<string>;
 };
 
 /** A quién alcanza el listado de /me/announcements. */
+type GradeKey = { level: EducationLevel; gradeLevel: number };
+
+/** Pares (nivel, grado) sin repetir. */
+function uniqueGrades(list: GradeKey[]): GradeKey[] {
+  const seen = new Map<string, GradeKey>();
+  for (const g of list)
+    seen.set(`${g.level}:${g.gradeLevel}`, { level: g.level, gradeLevel: g.gradeLevel });
+  return [...seen.values()];
+}
+
 type Audience = {
-  gradeLevels: number[];
+  /** Pares (nivel, grado): un 3.° de primaria no ve anuncios de 3.° de secundaria. */
+  grades: GradeKey[];
   courseSectionIds: string[];
   /** Solo GUARDIAN: sus estudiantes con matrícula vigente. */
   students?: AudienceStudent[];
@@ -173,6 +188,7 @@ export class AnnouncementsService {
       data: {
         academicYearId: active.id,
         scope: dto.scope,
+        level: dto.scope === 'GRADE' ? dto.level : null,
         gradeLevel: dto.scope === 'GRADE' ? dto.gradeLevel : null,
         title: dto.title,
         body: dto.body,
@@ -261,8 +277,8 @@ export class AnnouncementsService {
     if (!audience) return this.empty(query);
 
     const or: Prisma.AnnouncementWhereInput[] = [{ scope: 'INSTITUTION' }];
-    if (audience.gradeLevels.length > 0) {
-      or.push({ scope: 'GRADE', gradeLevel: { in: audience.gradeLevels } });
+    for (const g of audience.grades) {
+      or.push({ scope: 'GRADE', level: g.level, gradeLevel: g.gradeLevel });
     }
     if (audience.courseSectionIds.length > 0) {
       or.push({ scope: 'COURSE_SECTION', courseSectionId: { in: audience.courseSectionIds } });
@@ -312,6 +328,7 @@ export class AnnouncementsService {
   private async afterCreate(actor: Actor, row: Row): Promise<void> {
     await recordAnnouncement(this.audit, actor, 'announcement.create', row.id, {
       scope: row.scope,
+      level: row.level,
       gradeLevel: row.gradeLevel,
       courseSectionId: row.courseSectionId,
     });
@@ -321,6 +338,7 @@ export class AnnouncementsService {
         announcementId: row.id,
         academicYearId: row.academicYearId,
         scope: row.scope,
+        level: row.level,
         gradeLevel: row.gradeLevel,
         courseSectionId: row.courseSectionId,
         publishedAt: row.publishedAt.toISOString(),
@@ -409,6 +427,7 @@ export class AnnouncementsService {
     return {
       id: r.id,
       scope: r.scope,
+      level: r.level,
       gradeLevel: r.gradeLevel,
       courseSectionId: r.courseSectionId,
       course: r.courseSection?.course ?? null,
@@ -431,17 +450,17 @@ export class AnnouncementsService {
       case 'TEACHER': {
         const rows = await this.prisma.courseSection.findMany({
           where: { ...activeCourseSections(academicYearId), teacherId: user.id },
-          select: { id: true, section: { select: { gradeLevel: true } } },
+          select: { id: true, section: { select: { level: true, gradeLevel: true } } },
         });
         return {
           courseSectionIds: rows.map((r) => r.id),
-          gradeLevels: [...new Set(rows.map((r) => r.section.gradeLevel))],
+          grades: uniqueGrades(rows.map((r) => r.section)),
         };
       }
       case 'STUDENT': {
         const [me] = await this.studentsAudience([user.id], academicYearId);
-        if (!me) return { gradeLevels: [], courseSectionIds: [] };
-        return { gradeLevels: [me.gradeLevel], courseSectionIds: [...me.courseSectionIds] };
+        if (!me) return { grades: [], courseSectionIds: [] };
+        return { grades: uniqueGrades([me]), courseSectionIds: [...me.courseSectionIds] };
       }
       case 'GUARDIAN': {
         const linked = await this.access.getLinkedStudentIds(user.id);
@@ -452,7 +471,7 @@ export class AnnouncementsService {
         if (ids.length === 0) return null;
         const students = await this.studentsAudience(ids, academicYearId);
         return {
-          gradeLevels: [...new Set(students.map((s) => s.gradeLevel))],
+          grades: uniqueGrades(students),
           courseSectionIds: [...new Set(students.flatMap((s) => [...s.courseSectionIds]))],
           students,
         };
@@ -477,7 +496,7 @@ export class AnnouncementsService {
       },
       select: {
         sectionId: true,
-        section: { select: { gradeLevel: true } },
+        section: { select: { level: true, gradeLevel: true } },
         student: { select: { id: true, fullName: true } },
       },
       orderBy: { student: { fullName: 'asc' } },
@@ -493,6 +512,7 @@ export class AnnouncementsService {
     return enrollments.map((e) => ({
       id: e.student.id,
       fullName: e.student.fullName,
+      level: e.section.level,
       gradeLevel: e.section.gradeLevel,
       courseSectionIds: new Set(cs.filter((c) => c.sectionId === e.sectionId).map((c) => c.id)),
     }));
@@ -509,10 +529,10 @@ export class AnnouncementsService {
 
 /** El anuncio alcanza al estudiante (para la lista del apoderado). */
 export function reaches(
-  item: Pick<AnnouncementView, 'scope' | 'gradeLevel' | 'courseSectionId'>,
-  s: Pick<AudienceStudent, 'gradeLevel' | 'courseSectionIds'>,
+  item: Pick<AnnouncementView, 'scope' | 'level' | 'gradeLevel' | 'courseSectionId'>,
+  s: Pick<AudienceStudent, 'level' | 'gradeLevel' | 'courseSectionIds'>,
 ): boolean {
   if (item.scope === 'INSTITUTION') return true;
-  if (item.scope === 'GRADE') return s.gradeLevel === item.gradeLevel;
+  if (item.scope === 'GRADE') return s.level === item.level && s.gradeLevel === item.gradeLevel;
   return item.courseSectionId !== null && s.courseSectionIds.has(item.courseSectionId);
 }

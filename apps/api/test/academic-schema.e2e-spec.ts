@@ -50,8 +50,13 @@ describe.skipIf(!process.env.DATABASE_URL)('Esquema academico (e2e, MySQL)', () 
   const newYear = (tx: Tx, year: number, isActive: boolean | null = null) =>
     tx.academicYear.create({ data: { year, isActive } });
 
-  const newSection = (tx: Tx, academicYearId: string, gradeLevel = 3, code = 'Z') =>
-    tx.section.create({ data: { academicYearId, gradeLevel, code } });
+  const newSection = (
+    tx: Tx,
+    academicYearId: string,
+    gradeLevel = 3,
+    code = 'Z',
+    level: 'INICIAL' | 'PRIMARIA' | 'SECUNDARIA' = 'SECUNDARIA',
+  ) => tx.section.create({ data: { academicYearId, gradeLevel, code, level } });
 
   const newGuardian = (tx: Tx, key: string) =>
     tx.user.create({
@@ -168,6 +173,26 @@ describe.skipIf(!process.env.DATABASE_URL)('Esquema academico (e2e, MySQL)', () 
           .catch((e: unknown) => e);
         expect(String(err)).toMatch(/3819/);
         expect(String(err)).toMatch(/AcademicPeriod_sequence_kind_chk/);
+      });
+    });
+
+    it('RF-10: el CHECK de grado depende del nivel (PRIMARIA 7 e INICIAL 2 fallan; INICIAL 3 y PRIMARIA 6 pasan)', async () => {
+      await inRollback(async (tx) => {
+        const year = await newYear(tx, 2091);
+        for (const [level, grade] of [
+          ['PRIMARIA', 7],
+          ['INICIAL', 2],
+          ['INICIAL', 6],
+        ] as const) {
+          const err = await newSection(tx, year.id, grade, 'Z', level).catch((e: unknown) => e);
+          expect(String(err)).toMatch(/3819/);
+        }
+      });
+      await inRollback(async (tx) => {
+        const year = await newYear(tx, 2092);
+        await newSection(tx, year.id, 3, 'I', 'INICIAL');
+        await newSection(tx, year.id, 6, 'P', 'PRIMARIA');
+        await newSection(tx, year.id, 5, 'S', 'SECUNDARIA');
       });
     });
 
@@ -373,12 +398,12 @@ describe.skipIf(!process.env.DATABASE_URL)('Esquema academico (e2e, MySQL)', () 
       expect(counts).toEqual([
         YEARS.length, // 2
         8,
-        SECTIONS.length, // 7
+        SECTIONS.length, // 10
         COURSES.length, // 5
-        30,
-        62,
-        59,
-        GUARDIAN_LINKS.length, // 3
+        40,
+        86,
+        83,
+        GUARDIAN_LINKS.length, // 8
         5,
       ]);
     });
@@ -390,9 +415,9 @@ describe.skipIf(!process.env.DATABASE_URL)('Esquema academico (e2e, MySQL)', () 
         });
       expect(await byRole('STUDENT')).toBe(STUDENTS.length);
       expect(await byRole('TEACHER')).toBe(TEACHERS.length);
-      expect(await byRole('GUARDIAN')).toBe(2);
+      expect(await byRole('GUARDIAN')).toBe(3);
       expect(await byRole('ADMIN')).toBe(1);
-      expect(ALL_USERS).toHaveLength(68);
+      expect(ALL_USERS).toHaveLength(90);
     });
 
     it('RNF-09: todos los correos del seed estan en @colegio.example', async () => {

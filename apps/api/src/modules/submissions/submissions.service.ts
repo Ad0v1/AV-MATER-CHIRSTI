@@ -22,6 +22,7 @@ import {
   toReceipt,
   toReceipts,
   type VersionRow,
+  assertSubmissionsAllowed,
 } from './submissions.policy.js';
 import type {
   MySubmissionView,
@@ -94,6 +95,8 @@ export class SubmissionsService {
     actor: Actor,
   ): Promise<{ created: boolean; body: SubmissionAccepted }> {
     const assignment = await this.findAssignmentOrFail(assignmentId);
+    // INICIAL: actividades sin entrega (409 NO_SUBMISSIONS_IN_LEVEL).
+    assertSubmissionsAllowed(assignment.courseSection?.section.level);
     const enrollmentId = await this.currentEnrollmentOf(user, assignment.courseSectionId);
 
     // Idempotencia antes de RN-10: repetir una entrega ya hecha no falla aunque el período cierre.
@@ -436,6 +439,7 @@ export class SubmissionsService {
         dueAt: true,
         allowLate: true,
         maxSizeBytes: true,
+        courseSection: { select: { section: { select: { level: true } } } },
       },
     });
     if (!assignment) throw new NotFoundException(SUBMISSION_MSG.assignmentNotFound);

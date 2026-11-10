@@ -1,3 +1,4 @@
+import { EDUCATION_LEVELS, isValidGradeForLevel } from '@aula/shared';
 import { z } from 'zod';
 
 // Anuncios (RF-32). El cuerpo es texto plano: la web lo muestra como texto (nunca como HTML).
@@ -40,11 +41,16 @@ export const adminAnnouncementSchema = z.discriminatedUnion('scope', [
   z
     .object({
       scope: z.literal('GRADE'),
-      gradeLevel: z.number().int().min(1).max(5),
+      level: z.enum(EDUCATION_LEVELS),
+      gradeLevel: z.number().int(),
       title,
       body,
     })
-    .strict(),
+    .strict()
+    .refine((v) => isValidGradeForLevel(v.level, v.gradeLevel), {
+      message: 'El grado no existe en el nivel indicado',
+      path: ['gradeLevel'],
+    }),
 ]);
 export type AdminAnnouncementDto = z.output<typeof adminAnnouncementSchema>;
 

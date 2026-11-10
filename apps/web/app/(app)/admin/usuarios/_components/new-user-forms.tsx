@@ -12,7 +12,7 @@ import {
   useFormRefs,
 } from '../../_shared/components/form-bits';
 import { IDLE, type ActionState } from '../../_shared/lib/action-state';
-import { sectionLabel } from '../../_shared/lib/format';
+import { sectionLabel } from '../../estructura/_lib/format';
 import { createGuardianAction, createStudentAction, createTeacherAction } from '../_lib/actions';
 import type { SectionOption, StudentChoice } from '../_lib/types';
 import { DNI_LENGTH, FULL_NAME_MAX, MAX_GUARDIAN_STUDENTS, enrollTargets } from '../_lib/users';
@@ -125,7 +125,10 @@ export function NewStudentForm({ sections, year }: { sections: SectionOption[]; 
           hint="Se matricula desde hoy en esta sección del año activo."
           options={[
             { value: '', label: 'Elige una sección' },
-            ...options.map((s) => ({ value: s.id, label: sectionLabel(s.gradeLevel, s.code) })),
+            ...options.map((s) => ({
+              value: s.id,
+              label: sectionLabel(s.gradeLevel, s.code, s.level),
+            })),
           ]}
         />
       </div>

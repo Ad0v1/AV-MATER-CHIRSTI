@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { Suspense } from 'react';
 import { toUserMessage } from '@/lib/api/errors';
 import { apiServer } from '@/lib/api/server';
-import { isUuid } from '../curso/[id]/registro/_lib/grading-format';
+import { isUuid, sectionText } from '../curso/[id]/registro/_lib/grading-format';
 import type { GuardianStudentsView, StudentGradesView } from '../curso/[id]/registro/_lib/types';
 import { StudentGrades } from '../mis-notas/_components/student-grades';
 
@@ -67,9 +67,7 @@ async function Content({ searchParams }: { searchParams: Search }) {
                 >
                   {s.fullName}
                   <span className="text-xs font-normal">
-                    {s.currentSection
-                      ? `${s.currentSection.gradeLevel}.° ${s.currentSection.code}`
-                      : 'Sin sección vigente'}
+                    {s.currentSection ? sectionText(s.currentSection) : 'Sin sección vigente'}
                   </span>
                 </Link>
               </li>
@@ -89,14 +87,16 @@ async function Content({ searchParams }: { searchParams: Search }) {
         ) : null}
       </section>
 
-      {/* Hueco para Dev 5 (RF-32): anuncios del curso y de la institución para el apoderado. */}
       <section aria-labelledby="ap-anuncios" className="mt-6 rounded-lg border p-4">
         <h2 id="ap-anuncios" className="text-lg font-semibold">
           Anuncios
         </h2>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Pronto verás aquí los anuncios del colegio.
-        </p>
+        <Link
+          href={`/anuncios?studentId=${encodeURIComponent(selected.studentId)}`}
+          className="mt-2 inline-flex min-h-11 items-center rounded-md border px-3 text-sm font-medium underline-offset-4 hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+        >
+          Ver anuncios de {selected.fullName}
+        </Link>
       </section>
     </>
   );
@@ -107,7 +107,8 @@ export default function Page({ searchParams }: { searchParams: Search }) {
     <div className="mx-auto w-full max-w-4xl p-4 md:p-8">
       <h1 className="text-2xl font-semibold">Panel del apoderado</h1>
       <p className="mb-4 mt-1 text-sm text-muted-foreground">
-        Consulta de solo lectura de las notas de tus estudiantes.
+        Consulta de solo lectura de las notas de tus estudiantes. En inicial los niños no tienen
+        cuenta propia: aquí ves sus logros.
       </p>
       <Suspense fallback={<p className="text-sm text-muted-foreground">Cargando…</p>}>
         <Content searchParams={searchParams} />

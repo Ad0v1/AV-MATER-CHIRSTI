@@ -16,6 +16,8 @@ import { createAssignment } from './actions';
 import { AssignmentFields } from './assignment-fields';
 import {
   DEFAULT_MAX_MIB,
+  isLiteralLevel,
+  isNoDeliveryLevel,
   validateAssignment,
   type AssignmentField,
   type NewAssignmentInput,
@@ -25,6 +27,8 @@ export function CreateAssignmentForm(props: {
   courseSectionId: string;
   periods: { id: string; label: string }[];
   defaultPeriodId: string | null;
+  /** Nivel de la sección (context.section.level): decide la escala de la NE. */
+  level?: string | null;
 }) {
   const formRef = useRef<HTMLFormElement>(null);
   const resultRef = useRef<HTMLDivElement>(null);
@@ -36,6 +40,7 @@ export function CreateAssignmentForm(props: {
     noSubmissionGrade: '0',
     maxSizeMiB: String(DEFAULT_MAX_MIB),
     allowLate: false,
+    ...(isLiteralLevel(props.level) ? { literalScale: true, noSubmissionLiteral: '' } : {}),
   });
   const [errors, setErrors] = useState<Partial<Record<AssignmentField, string>>>({});
   const [formError, setFormError] = useState<string | null>(null);
@@ -88,6 +93,7 @@ export function CreateAssignmentForm(props: {
         onChange={(patch) => setValues((v) => ({ ...v, ...patch }))}
         errors={errors}
         periods={props.periods}
+        noDelivery={isNoDeliveryLevel(props.level)}
       />
       <button
         type="submit"

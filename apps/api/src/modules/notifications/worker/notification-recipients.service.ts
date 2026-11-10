@@ -66,6 +66,7 @@ export class NotificationRecipients {
       select: {
         academicYearId: true,
         scope: true,
+        level: true,
         gradeLevel: true,
         courseSection: { select: { sectionId: true, isActive: true } },
       },
@@ -76,11 +77,17 @@ export class NotificationRecipients {
       if (!a.courseSection?.isActive) return [];
       sectionIds = [a.courseSection.sectionId];
     } else {
+      // Fallo cerrado: un anuncio GRADE sin nivel o grado no avisa a nadie.
+      const level = a.level;
+      const gradeLevel = a.gradeLevel;
+      if (a.scope === 'GRADE' && (level == null || gradeLevel == null)) return [];
       const sections = await this.prisma.section.findMany({
         where: {
           academicYearId: a.academicYearId,
           isActive: true,
-          ...(a.scope === 'GRADE' ? { gradeLevel: a.gradeLevel ?? -1 } : {}),
+          ...(a.scope === 'GRADE' && level != null && gradeLevel != null
+            ? { level, gradeLevel }
+            : {}),
         },
         select: { id: true },
       });

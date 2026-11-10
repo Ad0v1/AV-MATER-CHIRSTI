@@ -74,14 +74,19 @@ describe('gradeInputSchema: límites', () => {
     [2001, false],
   ])('RF-42: comentario de %i caracteres → válido=%s', (n, ok) => {
     expect(
-      gradeInputSchema.safeParse({ state: 'GRADED', value: '10', comment: reason(n) }).success,
+      gradeInputSchema.safeParse({
+        state: 'GRADED',
+        value: '10',
+        literal: null,
+        comment: reason(n),
+      }).success,
     ).toBe(ok);
   });
 });
 
 describe('decideManualGrade: límites de tiempo y elegibilidad', () => {
   const base = {
-    input: { state: 'NE' as const, value: null, comment: null },
+    input: { state: 'NE' as const, value: null, literal: null, comment: null },
     hasSubmission: false,
     dueAt,
     noSubmissionGrade: '0.00',
@@ -130,6 +135,7 @@ describe('bitácora y cambios: privacidad (U2/U3)', () => {
   const exempt = {
     state: 'EXEMPT' as const,
     value: null,
+    literal: null,
     comment: 'privado',
     exemptionReason: 'motivo privado largo',
     source: 'MANUAL' as const,
@@ -138,7 +144,12 @@ describe('bitácora y cambios: privacidad (U2/U3)', () => {
   it('U2: auditState de una exoneración no contiene comentario ni motivo', () => {
     const text = JSON.stringify(auditState(exempt));
     expect(text).not.toContain('privado');
-    expect(auditState(exempt)).toEqual({ state: 'EXEMPT', value: null, source: 'MANUAL' });
+    expect(auditState(exempt)).toEqual({
+      state: 'EXEMPT',
+      value: null,
+      literal: null,
+      source: 'MANUAL',
+    });
   });
 
   it('RF-41: cambiar solo el comentario cuenta como cambio; idéntico no', () => {
@@ -151,6 +162,7 @@ describe('bitácora y cambios: privacidad (U2/U3)', () => {
     const auto = {
       state: 'NE' as const,
       value: '0.00',
+      literal: null,
       comment: null,
       exemptionReason: null,
       source: 'AUTO' as const,

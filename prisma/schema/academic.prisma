@@ -50,27 +50,41 @@ model AcademicPeriod {
   academicYear AcademicYear @relation(fields: [academicYearId], references: [id], onDelete: Restrict, onUpdate: Restrict)
 
   // Relación inversa de Dev 3, autorizado por el usuario el 29/10/2026
-  materials   Material[]
-  assignments Assignment[]
+  materials          Material[]
+  assignments        Assignment[]
+  // Relación inversa de Dev 4 (logro del período, tres niveles 09/11/2026)
+  periodAchievements PeriodAchievement[]
 
   @@unique([academicYearId, sequence])
   @@unique([academicYearId, kind])
 }
 
+// Nivel educativo de la seccion (tres niveles, decision del usuario 09/11/2026). gradeLevel es el
+// grado dentro del nivel: INICIAL 3..5 (años de edad), PRIMARIA 1..6, SECUNDARIA 1..5.
+// La escala de notas sale del nivel en codigo (packages/shared): INICIAL/PRIMARIA literal AD/A/B/C,
+// SECUNDARIA vigesimal 0..20. No se persiste para no tener dos fuentes de verdad.
+enum EducationLevel {
+  INICIAL
+  PRIMARIA
+  SECUNDARIA
+}
+
+// CHECK: Section_gradeLevel_chk (rango segun level).
 model Section {
-  id             String   @id @default(uuid(7)) @db.Char(36)
-  academicYearId String   @db.Char(36)
-  gradeLevel     Int      @db.TinyInt
-  code           String   @db.VarChar(8)
-  isActive       Boolean  @default(true)
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  id             String         @id @default(uuid(7)) @db.Char(36)
+  academicYearId String         @db.Char(36)
+  level          EducationLevel @default(SECUNDARIA)
+  gradeLevel     Int            @db.TinyInt
+  code           String         @db.VarChar(8)
+  isActive       Boolean        @default(true)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
 
   academicYear   AcademicYear    @relation(fields: [academicYearId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   courseSections CourseSection[]
   enrollments    Enrollment[]
 
-  @@unique([academicYearId, gradeLevel, code])
+  @@unique([academicYearId, level, gradeLevel, code])
   @@unique([id, academicYearId]) // destino de la FK compuesta de Enrollment
 }
 
@@ -98,11 +112,13 @@ model CourseSection {
   teacher User?   @relation("CourseSectionTeacher", fields: [teacherId], references: [id], onDelete: Restrict, onUpdate: Restrict)
 
   // Relación inversa de Dev 3, autorizado por el usuario el 29/10/2026
-  materials     Material[]
-  assignments   Assignment[]
-  storedFiles   StoredFile[]
+  materials          Material[]
+  assignments        Assignment[]
+  storedFiles        StoredFile[]
   // Relación inversa de Dev 5, autorizado por el usuario el 30/10/2026
-  announcements Announcement[]
+  announcements      Announcement[]
+  // Relación inversa de Dev 4 (logro del período, tres niveles 09/11/2026)
+  periodAchievements PeriodAchievement[]
 
   @@unique([sectionId, courseId])
   @@index([teacherId])
@@ -126,9 +142,10 @@ model Enrollment {
   section Section @relation(fields: [sectionId, academicYearId], references: [id, academicYearId], onDelete: Restrict, onUpdate: Restrict)
 
   // Relación inversa de Dev 3, autorizado por el usuario el 29/10/2026
-  submissions Submission[]
+  submissions        Submission[]
   // Relación inversa de Dev 4, autorizado por el usuario el 30/10/2026
-  grades      Grade[]
+  grades             Grade[]
+  periodAchievements PeriodAchievement[]
 
   @@unique([academicYearId, studentId, isCurrent])
   @@index([studentId, effectiveFrom])

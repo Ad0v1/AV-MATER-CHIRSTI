@@ -107,6 +107,7 @@ describe('NotificationEventsListener (RF-53, U2)', () => {
         announcementId: N,
         academicYearId: 'y',
         scope: 'INSTITUTION',
+        level: null,
         gradeLevel: null,
         courseSectionId: null,
         publishedAt: '2026-05-01T05:00:00.000Z',

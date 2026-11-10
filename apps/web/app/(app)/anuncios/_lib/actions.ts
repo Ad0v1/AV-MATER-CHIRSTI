@@ -8,6 +8,7 @@ import { apiServer } from '@/lib/api/server';
 import {
   isUuid,
   parseGradeLevel,
+  parseLevel,
   validateAnnouncement,
   type AnnouncementField,
 } from './announcements';
@@ -25,7 +26,12 @@ async function send(fn: () => Promise<unknown>): Promise<ActionResult> {
     const errors: Partial<Record<AnnouncementField, string>> = {};
     if (error instanceof ApiError) {
       for (const d of error.details) {
-        if (d.path === 'title' || d.path === 'body' || d.path === 'gradeLevel') {
+        if (
+          d.path === 'title' ||
+          d.path === 'body' ||
+          d.path === 'level' ||
+          d.path === 'gradeLevel'
+        ) {
           errors[d.path] ??= d.message;
         }
       }
@@ -49,20 +55,25 @@ export async function createCourseAnnouncement(
 
 export async function createAdminAnnouncement(
   scope: unknown,
+  level: unknown,
   gradeLevel: unknown,
   title: unknown,
   body: unknown,
 ): Promise<ActionResult> {
   if (scope !== 'INSTITUTION' && scope !== 'GRADE') return INVALID;
   const v = validateAnnouncement({ title, body });
-  const level = scope === 'GRADE' ? parseGradeLevel(gradeLevel) : null;
+  const lvl = scope === 'GRADE' ? parseLevel(level) : null;
+  const grade = lvl ? parseGradeLevel(lvl, gradeLevel) : null;
   const errors = v.ok ? {} : { ...v.errors };
-  if (scope === 'GRADE' && level === null) errors.gradeLevel = 'Elige un grado.';
+  if (scope === 'GRADE' && lvl === null) errors.level = 'Elige un nivel.';
+  else if (scope === 'GRADE' && grade === null) errors.gradeLevel = 'Elige un grado.';
   if (!v.ok || Object.keys(errors).length > 0) {
     return { ok: false, message: 'Revisa los campos marcados.', errors };
   }
   const payload =
-    scope === 'GRADE' ? { scope, gradeLevel: level, ...v.value } : { scope, ...v.value };
+    scope === 'GRADE'
+      ? { scope, level: lvl, gradeLevel: grade, ...v.value }
+      : { scope, ...v.value };
   return send(() => apiServer.post('/announcements', payload));
 }
 

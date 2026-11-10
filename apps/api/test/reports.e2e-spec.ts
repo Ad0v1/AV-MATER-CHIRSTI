@@ -318,10 +318,16 @@ describe.skipIf(!process.env.DATABASE_URL)('Reportes 5f (e2e, MySQL + MinIO)', (
       expect(bySection.body.items).toHaveLength(1);
       const byGrade = await get(
         'admin',
-        `/admin/reports/course-sections?academicYearId=${yearId}&gradeLevel=2`,
+        `/admin/reports/course-sections?academicYearId=${yearId}&level=SECUNDARIA&gradeLevel=2`,
       ).expect(200);
       expect(byGrade.body.items).toHaveLength(0);
       await get('admin', '/admin/reports/course-sections?gradeLevel=x').expect(400);
+      // Tres niveles: el grado exige el nivel y debe existir en él.
+      await get('admin', '/admin/reports/course-sections?gradeLevel=2').expect(400);
+      await get('admin', '/admin/reports/course-sections?level=SECUNDARIA&gradeLevel=6').expect(
+        400,
+      );
+      await get('admin', '/admin/reports/course-sections?level=INICIAL&gradeLevel=5').expect(200);
     });
 
     it('el ADMIN ve el registro de cualquier curso-sección (endpoint de Dev 4)', async () => {
@@ -342,7 +348,7 @@ describe.skipIf(!process.env.DATABASE_URL)('Reportes 5f (e2e, MySQL + MinIO)', (
       expect(res.body.literals).toEqual(['AD', 'A', 'B', 'C']);
       expect(res.body.grades).toHaveLength(1);
       const [grade] = res.body.grades;
-      expect(grade.gradeLevel).toBe(1);
+      expect(grade).toMatchObject({ level: 'SECUNDARIA', gradeLevel: 1, label: '1.° Secundaria' });
       const a = grade.sections.find((s: { code: string }) => s.code === 'A');
       // 18 de estudiante01 (AD) y NE virtual 0 de estudiante02 (C, en riesgo).
       expect(a.distribution).toMatchObject({ AD: 1, C: 1 });
@@ -391,7 +397,7 @@ describe.skipIf(!process.env.DATABASE_URL)('Reportes 5f (e2e, MySQL + MinIO)', (
       const ws = wb.getWorksheet(XLSX_SHEET)!;
       expect(ws.getCell('B2').value).toBe(`Curso: ${courseName}`);
       expect(ws.getCell('B3').value as string).toMatch(/^Docente: /);
-      expect(ws.getCell('B4').value).toBe(`Sección: 1.º A (${QA_YEAR})`);
+      expect(ws.getCell('B4').value).toBe(`Sección: 1.° Secundaria A (${QA_YEAR})`);
       expect(ws.getCell('B5').value).toBe('Período: I Bimestre');
       expect(ws.getRow(XLSX_TABLE_ROW).getCell(3).value).toBe(`'=${PREFIX}Tarea`);
       const values = [1, 2].map((i) => ws.getRow(XLSX_TABLE_ROW + i).getCell(3).value);
@@ -460,7 +466,7 @@ describe.skipIf(!process.env.DATABASE_URL)('Reportes 5f (e2e, MySQL + MinIO)', (
       const entries = readZip(await download(res.body.jobId));
       expect(entries.size).toBe(3);
       const names = [...entries.keys()];
-      expect(names.filter((n) => n.startsWith('1.º A/'))).toHaveLength(2);
+      expect(names.filter((n) => n.startsWith('1.° Secundaria A/'))).toHaveLength(2);
       expect(names.every((n) => n.endsWith(' - I Bimestre.xlsx'))).toBe(true);
       const wb = new ExcelJS.Workbook();
       await wb.xlsx.load(entries.get(names[0])! as unknown as ExcelJS.Buffer);

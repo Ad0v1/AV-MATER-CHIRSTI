@@ -73,9 +73,13 @@ function StudentItem({ item, view }: { item: GradeSummaryItem; view: GradeSummar
             studentName={item.fullName}
             hasSubmission={item.submission !== null}
             noSubmissionGrade={a.noSubmissionGrade}
+            scale={a.gradingScale}
+            noSubmissionLiteral={a.noSubmissionLiteral}
+            noDelivery={a.level === 'INICIAL'}
             initial={{
               state: item.grade.virtual ? null : item.grade.state,
               value: item.grade.virtual ? null : item.grade.value,
+              literal: item.grade.virtual ? null : item.grade.literal,
               comment: item.grade.comment,
               exemptionReason: item.grade.exemptionReason,
             }}
@@ -105,8 +109,11 @@ async function Content({ params }: { params: Params }) {
     <>
       <h1 className="text-2xl font-semibold break-words">{a.title}</h1>
       <p className="mt-1 text-sm text-muted-foreground">
-        Plazo: {formatDateTime(a.dueAt)} · Nota NE: {a.noSubmissionGrade} ·{' '}
-        {a.allowLate ? 'Admite tardías' : 'No admite tardías'}
+        Plazo: {formatDateTime(a.dueAt)} ·{' '}
+        {a.gradingScale === 'LITERAL_ADABC'
+          ? `Escala literal (AD, A, B, C) · Literal NE: ${a.noSubmissionLiteral ?? 'sin definir'}`
+          : `Nota NE: ${a.noSubmissionGrade}`}{' '}
+        · {a.allowLate ? 'Admite tardías' : 'No admite tardías'}
       </p>
       {!a.periodIsOpen && (
         <p role="status" className="mt-3 rounded-md border p-3 text-sm">

@@ -7,6 +7,7 @@ import { describedBy, FieldError, INVALID_FIELD } from '../_materials/form-feedb
 import {
   DEFAULT_MAX_MIB,
   MAX_MIB_CAP,
+  NO_SUBMISSION_LITERALS,
   type AssignmentField,
   type NewAssignmentInput,
 } from './assignment-format';
@@ -20,6 +21,8 @@ export function AssignmentFields(props: {
   errors: Partial<Record<AssignmentField, string>>;
   /** Sin períodos no se muestra el selector (en la edición el período no se cambia). */
   periods?: { id: string; label: string }[];
+  /** INICIAL: actividad sin entrega en PDF (sin tamaño ni tardías). */
+  noDelivery?: boolean;
 }) {
   const { prefix: p, values: v, onChange, errors } = props;
   const errorId = (f: AssignmentField) => `${p}-${f}-error`;
@@ -96,54 +99,84 @@ export function AssignmentFields(props: {
       </p>
 
       <div className="mt-3 grid grid-cols-1 gap-3 min-[400px]:grid-cols-2">
-        <div>
-          <label className="block text-sm font-medium" htmlFor={`${p}-grade`}>
-            Nota si no entrega (NE)
-          </label>
-          <input
-            id={`${p}-grade`}
-            inputMode="decimal"
-            className={field}
-            value={v.noSubmissionGrade}
-            onChange={(e) => onChange({ noSubmissionGrade: e.target.value })}
-            {...a11y('noSubmissionGrade', `${p}-grade-hint`)}
-          />
-          <FieldError id={errorId('noSubmissionGrade')} message={errors.noSubmissionGrade} />
-          <p id={`${p}-grade-hint`} className="mt-1 text-xs text-muted-foreground">
-            NE = no entregó. Es la nota de quien no entrega: de 0 a 20, por defecto 0.
-          </p>
-        </div>
-        <div>
-          <label className="block text-sm font-medium" htmlFor={`${p}-size`}>
-            Tamaño máximo (MiB)
-          </label>
-          <input
-            id={`${p}-size`}
-            type="number"
-            min={1}
-            max={MAX_MIB_CAP}
-            step={1}
-            className={field}
-            value={v.maxSizeMiB}
-            onChange={(e) => onChange({ maxSizeMiB: e.target.value })}
-            {...a11y('maxSizeMiB', `${p}-size-hint`)}
-          />
-          <FieldError id={errorId('maxSizeMiB')} message={errors.maxSizeMiB} />
-          <p id={`${p}-size-hint`} className="mt-1 text-xs text-muted-foreground">
-            Del PDF de cada entrega: de 1 a {MAX_MIB_CAP} MiB, por defecto {DEFAULT_MAX_MIB}.
-          </p>
-        </div>
+        {v.literalScale ? (
+          <div>
+            <label className="block text-sm font-medium" htmlFor={`${p}-literal`}>
+              Calificación si no entrega (NE)
+            </label>
+            <select
+              id={`${p}-literal`}
+              className={field}
+              value={v.noSubmissionLiteral ?? ''}
+              onChange={(e) => onChange({ noSubmissionLiteral: e.target.value })}
+              {...a11y('noSubmissionGrade', `${p}-literal-hint`)}
+            >
+              <option value="">Sin calificación</option>
+              {NO_SUBMISSION_LITERALS.map((l) => (
+                <option key={l} value={l}>
+                  {l}
+                </option>
+              ))}
+            </select>
+            <FieldError id={errorId('noSubmissionGrade')} message={errors.noSubmissionGrade} />
+            <p id={`${p}-literal-hint`} className="mt-1 text-xs text-muted-foreground">
+              NE = no entregó. Escala AD, A, B, C; es opcional.
+            </p>
+          </div>
+        ) : (
+          <div>
+            <label className="block text-sm font-medium" htmlFor={`${p}-grade`}>
+              Nota si no entrega (NE)
+            </label>
+            <input
+              id={`${p}-grade`}
+              inputMode="decimal"
+              className={field}
+              value={v.noSubmissionGrade}
+              onChange={(e) => onChange({ noSubmissionGrade: e.target.value })}
+              {...a11y('noSubmissionGrade', `${p}-grade-hint`)}
+            />
+            <FieldError id={errorId('noSubmissionGrade')} message={errors.noSubmissionGrade} />
+            <p id={`${p}-grade-hint`} className="mt-1 text-xs text-muted-foreground">
+              NE = no entregó. Es la nota de quien no entrega: de 0 a 20, por defecto 0.
+            </p>
+          </div>
+        )}
+        {!props.noDelivery && (
+          <div>
+            <label className="block text-sm font-medium" htmlFor={`${p}-size`}>
+              Tamaño máximo (MiB)
+            </label>
+            <input
+              id={`${p}-size`}
+              type="number"
+              min={1}
+              max={MAX_MIB_CAP}
+              step={1}
+              className={field}
+              value={v.maxSizeMiB}
+              onChange={(e) => onChange({ maxSizeMiB: e.target.value })}
+              {...a11y('maxSizeMiB', `${p}-size-hint`)}
+            />
+            <FieldError id={errorId('maxSizeMiB')} message={errors.maxSizeMiB} />
+            <p id={`${p}-size-hint`} className="mt-1 text-xs text-muted-foreground">
+              Del PDF de cada entrega: de 1 a {MAX_MIB_CAP} MiB, por defecto {DEFAULT_MAX_MIB}.
+            </p>
+          </div>
+        )}
       </div>
 
-      <label className="mt-3 flex min-h-11 items-center gap-2 text-sm">
-        <input
-          type="checkbox"
-          className="size-4"
-          checked={v.allowLate}
-          onChange={(e) => onChange({ allowLate: e.target.checked })}
-        />
-        Permitir entregas tardías (se marcan, sin descuento)
-      </label>
+      {!props.noDelivery && (
+        <label className="mt-3 flex min-h-11 items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            className="size-4"
+            checked={v.allowLate}
+            onChange={(e) => onChange({ allowLate: e.target.checked })}
+          />
+          Permitir entregas tardías (se marcan, sin descuento)
+        </label>
+      )}
     </>
   );
 }

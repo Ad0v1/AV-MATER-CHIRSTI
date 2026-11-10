@@ -9,7 +9,10 @@ import {
   buildGradebook,
   DEFAULT_LITERAL_SCALE,
   isNeEligible,
+  scaleForLevel,
   type GradebookCell,
+  type GradeLiteralCode,
+  type GradingScale,
   type GradebookEntry,
   type LiteralScale,
 } from '@aula/shared';
@@ -32,6 +35,7 @@ import type {
   GradebookView,
   GradeSummaryView,
   GuardianStudentsView,
+  PeriodAchievementView,
   PeriodRef,
   StudentGradesView,
 } from './grading.types.js';
@@ -52,6 +56,14 @@ type AssignmentLite = {
   dueAt: Date;
   allowLate: boolean;
   noSubmissionGrade: { toFixed(d: number): string };
+  noSubmissionLiteral: GradeLiteralCode | null;
+};
+
+type AchievementRow = {
+  enrollmentId: string;
+  literal: GradeLiteralCode;
+  comment: string | null;
+  gradedAt: Date;
 };
 
 type EnrollmentLite = {
@@ -76,7 +88,14 @@ const assignmentSelect = {
   dueAt: true,
   allowLate: true,
   noSubmissionGrade: true,
+  noSubmissionLiteral: true,
 } as const;
+
+const achievementView = (a: AchievementRow): PeriodAchievementView => ({
+  literal: a.literal,
+  comment: a.comment,
+  gradedAt: a.gradedAt.toISOString(),
+});
 
 const key = (assignmentId: string, enrollmentId: string) => `${assignmentId}:${enrollmentId}`;
 
@@ -86,6 +105,9 @@ const periodRef = (p: {
   sequence: number;
   isOpen: boolean;
 }): PeriodRef => ({ id: p.id, label: p.label, sequence: p.sequence, isOpen: p.isOpen });
+
+const achievementOf = (a: AchievementRow | null | undefined): PeriodAchievementView | null =>
+  a ? achievementView(a) : null;
 
 @Injectable()
 export class GradebookReadService {
@@ -138,8 +160,21 @@ export class GradebookReadService {
       assignments.map((a) => a.id),
       enrollments.map((e) => e.id),
     );
-    const rows = this.visibleEnrollments(enrollments, assignments, cells);
-    const book = this.build(assignments, rows, cells, now, await this.scale());
+    const gradingScale = scaleForLevel(ctx.section.level);
+    const achievements =
+      gradingScale === 'LITERAL_ADABC' ? await this.loadAchievements(ctx.id, periodId) : [];
+    const byEnrollment = new Map(achievements.map((a) => [a.enrollmentId, a]));
+    const rows = this.visibleEnrollments(enrollments, assignments, cells, byEnrollment);
+    const shownIds = new Set(rows.map((r) => r.id));
+    const book = this.build(
+      assignments,
+      rows,
+      cells,
+      now,
+      await this.scale(),
+      gradingScale,
+      achievements.filter((a) => shownIds.has(a.enrollmentId)),
+    );
 
     return {
       courseSection: {
@@ -148,9 +183,11 @@ export class GradebookReadService {
         course: ctx.course,
         section: {
           id: ctx.section.id,
+          level: ctx.section.level,
           gradeLevel: ctx.section.gradeLevel,
           code: ctx.section.code,
         },
+        gradingScale,
       },
       period: periodRef(period),
       periods: ctx.periods.map(periodRef),
@@ -160,6 +197,7 @@ export class GradebookReadService {
         dueAt: a.dueAt.toISOString(),
         allowLate: a.allowLate,
         noSubmissionGrade: decimalText(a.noSubmissionGrade)!,
+        noSubmissionLiteral: a.noSubmissionLiteral,
         average: book.columns[i].average,
         counts: book.columns[i].counts,
       })),
@@ -169,6 +207,7 @@ export class GradebookReadService {
         fullName: e.student.fullName,
         isCurrent: e.isCurrent === true,
         average: book.rows[i].average,
+        achievement: achievementOf(byEnrollment.get(e.id)),
         atRisk: book.rows[i].atRisk,
         cells: book.rows[i].entries.map((entry, j) =>
           this.cellView(entry, assignments[j], cells.get(key(assignments[j].id, e.id)), now),
@@ -187,8 +226,12 @@ export class GradebookReadService {
 
     const assignment = await this.prisma.assignment.findUniqueOrThrow({
       where: { id: assignmentId },
-      select: { ...assignmentSelect, courseSection: { select: { sectionId: true } } },
+      select: {
+        ...assignmentSelect,
+        courseSection: { select: { sectionId: true, section: { select: { level: true } } } },
+      },
     });
+    const gradingScale = scaleForLevel(assignment.courseSection.section.level);
     const [periodOpen, enrollments, summaries] = await Promise.all([
       this.access.isPeriodOpen(assignment.periodId),
       this.sectionEnrollments(assignment.courseSection.sectionId),
@@ -199,7 +242,7 @@ export class GradebookReadService {
       enrollments.map((e) => e.id),
     );
     const rows = this.visibleEnrollments(enrollments, [assignment], cells);
-    const book = this.build([assignment], rows, cells, now, await this.scale());
+    const book = this.build([assignment], rows, cells, now, await this.scale(), gradingScale);
     const bySubmission = new Map(summaries.map((s) => [s.enrollmentId, s]));
 
     return {
@@ -211,6 +254,9 @@ export class GradebookReadService {
         dueAt: assignment.dueAt.toISOString(),
         allowLate: assignment.allowLate,
         noSubmissionGrade: decimalText(assignment.noSubmissionGrade)!,
+        noSubmissionLiteral: assignment.noSubmissionLiteral,
+        gradingScale,
+        level: assignment.courseSection.section.level,
         periodIsOpen: periodOpen,
       },
       items: rows.map((e, i) => {
@@ -234,6 +280,7 @@ export class GradebookReadService {
             id: stored?.id ?? null,
             state: entry.state,
             value: entry.value,
+            literal: entry.literal,
             virtual: entry.virtual,
             needsRegrade: entry.needsRegrade,
             comment: stored?.comment ?? null,
@@ -277,7 +324,9 @@ export class GradebookReadService {
         fullName: true,
         enrollments: {
           where: { isCurrent: true, academicYearId: active?.id ?? '' },
-          select: { section: { select: { id: true, gradeLevel: true, code: true } } },
+          select: {
+            section: { select: { id: true, level: true, gradeLevel: true, code: true } },
+          },
         },
       },
       orderBy: { fullName: 'asc' },
@@ -345,6 +394,7 @@ export class GradebookReadService {
           section: {
             select: {
               id: true,
+              level: true,
               gradeLevel: true,
               code: true,
               courseSections: {
@@ -377,6 +427,21 @@ export class GradebookReadService {
         assignments.map((a) => a.id),
         [e.id],
       );
+      const gradingScale = scaleForLevel(e.section.level);
+      const achievements =
+        gradingScale === 'LITERAL_ADABC'
+          ? await this.prisma.periodAchievement.findMany({
+              where: { enrollmentId: e.id, courseSectionId: { in: csIds } },
+              select: {
+                enrollmentId: true,
+                courseSectionId: true,
+                periodId: true,
+                literal: true,
+                comment: true,
+                gradedAt: true,
+              },
+            })
+          : [];
       for (const cs of e.section.courseSections) {
         const coursePeriods: StudentGradesView['courses'][number]['periods'] = [];
         for (const p of periodRefs) {
@@ -386,11 +451,22 @@ export class GradebookReadService {
               a.periodId === p.id &&
               (e.isCurrent === true || isNeEligible(e, a.dueAt) || cells.has(key(a.id, e.id))),
           );
-          if (shown.length === 0 && e.isCurrent !== true) continue;
-          const book = this.build(shown, [e], cells, now, scale);
+          const achievement =
+            achievements.find((a) => a.courseSectionId === cs.id && a.periodId === p.id) ?? null;
+          if (shown.length === 0 && e.isCurrent !== true && achievement === null) continue;
+          const book = this.build(
+            shown,
+            [e],
+            cells,
+            now,
+            scale,
+            gradingScale,
+            achievement ? [achievement] : [],
+          );
           coursePeriods.push({
             ...p,
             average: book.rows[0].average,
+            achievement: achievementOf(achievement),
             assignments: shown.map((a, j) => {
               const entry = book.rows[0].entries[j];
               const stored = cells.get(key(a.id, e.id))?.grade ?? null;
@@ -400,6 +476,7 @@ export class GradebookReadService {
                 dueAt: a.dueAt.toISOString(),
                 state: entry.state,
                 value: entry.value,
+                literal: entry.literal,
                 comment: stored?.comment ?? null,
                 displayStatus: this.display(entry, a, now),
                 isLate: entry.isLate,
@@ -413,7 +490,13 @@ export class GradebookReadService {
           enrollmentId: e.id,
           isCurrent: e.isCurrent === true,
           course: cs.course,
-          section: { id: e.section.id, gradeLevel: e.section.gradeLevel, code: e.section.code },
+          section: {
+            id: e.section.id,
+            level: e.section.level,
+            gradeLevel: e.section.gradeLevel,
+            code: e.section.code,
+          },
+          gradingScale,
           periods: coursePeriods,
         });
       }
@@ -452,15 +535,27 @@ export class GradebookReadService {
     });
   }
 
-  /** Vigentes + cerradas con nota o entrega en alguna de las tareas (RN-14). */
+  /** Vigentes + cerradas con nota, entrega o logro del período (RN-14). */
   private visibleEnrollments(
     enrollments: EnrollmentLite[],
     assignments: { id: string }[],
     cells: Map<string, StoredCell>,
+    achievements: Map<string, unknown> = new Map(),
   ): EnrollmentLite[] {
     return enrollments.filter(
-      (e) => e.isCurrent === true || assignments.some((a) => cells.has(key(a.id, e.id))),
+      (e) =>
+        e.isCurrent === true ||
+        achievements.has(e.id) ||
+        assignments.some((a) => cells.has(key(a.id, e.id))),
     );
+  }
+
+  /** Logros del período de un curso-sección (escala literal). */
+  private loadAchievements(courseSectionId: string, periodId: string): Promise<AchievementRow[]> {
+    return this.prisma.periodAchievement.findMany({
+      where: { courseSectionId, periodId },
+      select: { enrollmentId: true, literal: true, comment: true, gradedAt: true },
+    });
   }
 
   /** Notas y entrega oficial (isLate de la última versión) por celda. Solo celdas con datos. */
@@ -480,6 +575,7 @@ export class GradebookReadService {
           enrollmentId: true,
           state: true,
           value: true,
+          literal: true,
           comment: true,
           exemptionReason: true,
           source: true,
@@ -518,6 +614,8 @@ export class GradebookReadService {
     cells: Map<string, StoredCell>,
     now: Date,
     scale: LiteralScale,
+    gradingScale: GradingScale = 'NUMERIC_0_20',
+    achievements: readonly { enrollmentId: string; literal: GradeLiteralCode }[] = [],
   ) {
     const input: GradebookCell[] = [];
     for (const a of assignments) {
@@ -537,6 +635,7 @@ export class GradebookReadService {
         id: a.id,
         dueAt: a.dueAt,
         noSubmissionGrade: decimalText(a.noSubmissionGrade),
+        noSubmissionLiteral: a.noSubmissionLiteral,
       })),
       students: enrollments.map((e) => ({
         enrollmentId: e.id,
@@ -546,6 +645,8 @@ export class GradebookReadService {
       cells: input,
       now,
       scale,
+      gradingScale,
+      achievements: achievements.map((a) => ({ enrollmentId: a.enrollmentId, literal: a.literal })),
     });
   }
 
@@ -559,6 +660,7 @@ export class GradebookReadService {
       assignmentId: entry.assignmentId,
       state: entry.state,
       value: entry.value,
+      literal: entry.literal,
       virtual: entry.virtual,
       needsRegrade: entry.needsRegrade,
       source: stored?.grade?.source ?? null,

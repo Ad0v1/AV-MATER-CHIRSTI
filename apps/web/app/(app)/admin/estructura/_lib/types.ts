@@ -1,5 +1,6 @@
 // Formas de respuesta de la API académica (docs/03, "API académica (Dev 2)").
 // Si cambia el contrato, se actualiza aquí y en docs/03.
+import type { EducationLevel } from './levels';
 
 export type PeriodKind =
   'FIRST_BIMESTER' | 'SECOND_BIMESTER' | 'THIRD_TRIMESTER' | 'FOURTH_TRIMESTER';
@@ -29,6 +30,7 @@ export type YearDetail = YearSummary & { periods: PeriodView[] };
 export type SectionView = {
   id: string;
   academicYearId: string;
+  level: EducationLevel;
   gradeLevel: number;
   code: string;
   isActive: boolean;

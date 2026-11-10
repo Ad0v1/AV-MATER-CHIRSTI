@@ -38,6 +38,7 @@ function filterEntries(filters: UserFilters): [string, string][] {
   if (filters.status) entries.push(['status', filters.status]);
   if (filters.credentials) entries.push(['credentials', filters.credentials]);
   if (filters.emailVerified) entries.push(['emailVerified', filters.emailVerified]);
+  if (filters.level) entries.push(['level', filters.level]);
   if (filters.gradeLevel !== undefined) entries.push(['gradeLevel', String(filters.gradeLevel)]);
   if (filters.sectionId) entries.push(['sectionId', filters.sectionId]);
   return entries;

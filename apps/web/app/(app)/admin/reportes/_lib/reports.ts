@@ -2,6 +2,14 @@
 // apps/api/src/modules/reports/reports.service.ts y dashboard-aggregate.ts.
 import { isUuid } from '../../_shared/lib/validation';
 import type { JobView } from '../../almacenamiento/_lib/storage';
+import {
+  isEducationLevel,
+  isValidGradeForLevel,
+  type EducationLevel,
+} from '../../estructura/_lib/levels';
+
+export type { EducationLevel };
+export type GradingScale = 'NUMERIC_0_20' | 'LITERAL_ADABC';
 
 export const REPORTS_PATH = '/admin/reportes';
 
@@ -13,23 +21,28 @@ export interface ReportCourseSectionsView {
   academicYear: { id: string; year: number; isActive: boolean; closedAt: string | null } | null;
   years: { id: string; year: number; isActive: boolean }[];
   periods: { id: string; label: string; sequence: number }[];
-  sections: { id: string; gradeLevel: number; code: string }[];
+  sections: { id: string; level: EducationLevel; gradeLevel: number; code: string }[];
   items: {
     courseSectionId: string;
     isActive: boolean;
     course: { id: string; name: string };
-    section: { id: string; gradeLevel: number; code: string };
+    section: { id: string; level: EducationLevel; gradeLevel: number; code: string };
     teacher: { id: string; fullName: string } | null;
   }[];
 }
 
 export type AverageSummary =
   | { status: 'OK'; rounded: number; literal: string; counted: number; exempt: number }
-  | { status: 'NO_GRADES'; counted: 0; exempt: number };
+  | { status: 'NO_GRADES'; counted: 0; exempt: number }
+  /** Escala literal (INICIAL, PRIMARIA): sin promedio. */
+  | { status: 'LITERAL_SCALE'; counted: 0; exempt: number };
 
 export interface DashboardBucket {
+  gradingScale: GradingScale | 'MIXED';
   average: AverageSummary;
   distribution: Record<string, number>;
+  /** Logros del bimestre por AD/A/B/C (escala literal). */
+  achievements: Record<string, number>;
   noGrades: number;
   atRiskStudents: number;
   atRiskEntries: number;
@@ -43,10 +56,15 @@ export interface ReportsDashboardView {
   period: { id: string; label: string; sequence: number };
   literals: string[];
   riskLiteral: string | null;
+  achievementLiterals: string[];
+  achievementRiskLiteral: string | null;
   total: DashboardBucket;
+  totalByScale: Record<GradingScale, DashboardBucket | null>;
   grades: (DashboardBucket & {
+    level: EducationLevel;
     gradeLevel: number;
-    sections: (DashboardBucket & { sectionId: string; code: string })[];
+    label: string;
+    sections: (DashboardBucket & { sectionId: string; code: string; label: string })[];
   })[];
 }
 
@@ -59,6 +77,8 @@ export type ExportAccepted = { jobId: string; job: JobView };
 export interface ReportFilters {
   yearId: string | null;
   periodId: string | null;
+  level: EducationLevel | null;
+  /** Solo con nivel y dentro de su rango. */
   gradeLevel: number | null;
   sectionId: string | null;
 }
@@ -67,16 +87,20 @@ type Params = Record<string, string | string[] | undefined>;
 
 const first = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
 
-/** Filtros de la URL (?anio, ?periodo, ?grado, ?seccion); lo inválido se ignora. */
+/** Filtros de la URL (?anio, ?periodo, ?nivel, ?grado, ?seccion); lo inválido se ignora. */
 export function parseFilters(params: Params): ReportFilters {
   const year = first(params.anio);
   const period = first(params.periodo);
   const section = first(params.seccion);
-  const grade = Number(first(params.grado));
+  const rawLevel = first(params.nivel);
+  const level = isEducationLevel(rawLevel) ? rawLevel : null;
+  const rawGrade = first(params.grado);
+  const grade = rawGrade ? Number(rawGrade) : NaN;
   return {
     yearId: isUuid(year) ? year : null,
     periodId: isUuid(period) ? period : null,
-    gradeLevel: Number.isInteger(grade) && grade >= 1 && grade <= 12 ? grade : null,
+    level,
+    gradeLevel: level !== null && isValidGradeForLevel(level, grade) ? grade : null,
     sectionId: isUuid(section) ? section : null,
   };
 }
@@ -85,7 +109,8 @@ export function parseFilters(params: Params): ReportFilters {
 export function courseSectionsQuery(f: ReportFilters): string {
   const q = new URLSearchParams();
   if (f.yearId) q.set('academicYearId', f.yearId);
-  if (f.gradeLevel !== null) q.set('gradeLevel', String(f.gradeLevel));
+  if (f.level !== null) q.set('level', f.level);
+  if (f.level !== null && f.gradeLevel !== null) q.set('gradeLevel', String(f.gradeLevel));
   if (f.sectionId) q.set('sectionId', f.sectionId);
   const s = q.toString();
   return s ? `?${s}` : '';
@@ -100,9 +125,21 @@ export function pickPeriod(
   return periods[0]?.id ?? null;
 }
 
-/** Grados distintos de las secciones del año, en orden. */
-export function gradeLevels(sections: ReportCourseSectionsView['sections']): number[] {
-  return [...new Set(sections.map((s) => s.gradeLevel))].sort((a, b) => a - b);
+/** Niveles presentes en las secciones del año, en orden (INICIAL, PRIMARIA, SECUNDARIA). */
+export function levelsOf(sections: ReportCourseSectionsView['sections']): EducationLevel[] {
+  const order: EducationLevel[] = ['INICIAL', 'PRIMARIA', 'SECUNDARIA'];
+  const present = new Set(sections.map((s) => s.level));
+  return order.filter((l) => present.has(l));
+}
+
+/** Grados distintos de las secciones del nivel, en orden. */
+export function gradeLevels(
+  sections: ReportCourseSectionsView['sections'],
+  level: EducationLevel,
+): number[] {
+  return [...new Set(sections.filter((s) => s.level === level).map((s) => s.gradeLevel))].sort(
+    (a, b) => a - b,
+  );
 }
 
 /** Enlace al registro del curso-sección (RF-57, pantalla de Dev 4 que admite ADMIN). */
@@ -112,6 +149,7 @@ export function gradebookHref(courseSectionId: string, periodId: string | null):
 }
 
 export function averageText(a: AverageSummary): string {
+  if (a.status === 'LITERAL_SCALE') return 'Escala literal';
   return a.status === 'OK' ? `${a.rounded} (${a.literal})` : 'Sin notas';
 }
 
@@ -121,9 +159,10 @@ export function percent(part: number, total: number): string {
   return `${Math.round((part / total) * 100)} %`;
 }
 
-/** Suma de la distribución más los que no tienen notas. */
+/** Suma de la distribución (promedios o logros según la escala) más los que no tienen notas. */
 export function distributionTotal(b: DashboardBucket): number {
-  return Object.values(b.distribution).reduce((s, n) => s + n, 0) + b.noGrades;
+  const counts = b.gradingScale === 'LITERAL_ADABC' ? b.achievements : b.distribution;
+  return Object.values(counts ?? {}).reduce((s, n) => s + n, 0) + b.noGrades;
 }
 
 /** Valida el cuerpo antes de enviarlo a la API (ids del navegador). */

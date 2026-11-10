@@ -4,6 +4,8 @@ import {
   assignmentToInput,
   buildAssignmentPatch,
   isAssignmentInput,
+  isLiteralLevel,
+  isNoDeliveryLevel,
   isoToLocal,
   isSafeHttpUrl,
   buildAssignmentBody,
@@ -202,5 +204,58 @@ describe('isAssignmentInput', () => {
     expect(isAssignmentInput({ ...base, allowLate: 'true' })).toBe(false);
     expect(isAssignmentInput({ ...base, title: undefined })).toBe(false);
     expect(isAssignmentInput(null)).toBe(false);
+  });
+});
+
+describe('escala literal de la NE (INICIAL/PRIMARIA)', () => {
+  const lit: NewAssignmentInput = { ...base, literalScale: true, noSubmissionLiteral: 'B' };
+  it('isLiteralLevel / isNoDeliveryLevel', () => {
+    expect(isLiteralLevel('INICIAL')).toBe(true);
+    expect(isLiteralLevel('PRIMARIA')).toBe(true);
+    expect(isLiteralLevel('SECUNDARIA')).toBe(false);
+    expect(isNoDeliveryLevel('INICIAL')).toBe(true);
+    expect(isNoDeliveryLevel('PRIMARIA')).toBe(false);
+  });
+  it('envía el literal y no valida la nota numérica', () => {
+    const r = buildAssignmentBody({ ...lit, noSubmissionGrade: 'xx' }, NOW);
+    expect(r).toMatchObject({
+      ok: true,
+      body: { noSubmissionLiteral: 'B', noSubmissionGrade: '0' },
+    });
+  });
+  it('vacío = null (opcional)', () => {
+    const r = buildAssignmentBody({ ...lit, noSubmissionLiteral: '' }, NOW);
+    expect(r).toMatchObject({ ok: true, body: { noSubmissionLiteral: null } });
+  });
+  it('rechaza un literal fuera de AD/A/B/C', () => {
+    expect(validateAssignment({ ...lit, noSubmissionLiteral: 'E' }, NOW).ok).toBe(false);
+    expect(isAssignmentInput({ ...lit, noSubmissionLiteral: 'E' })).toBe(false);
+    expect(isAssignmentInput(lit)).toBe(true);
+  });
+  it('SECUNDARIA no envía noSubmissionLiteral', () => {
+    const r = buildAssignmentBody(base, NOW);
+    expect(r.ok && 'noSubmissionLiteral' in r.body).toBe(false);
+  });
+  it('edición: PATCH solo con el literal cambiado', () => {
+    const o = assignmentToInput(
+      {
+        periodId: base.periodId,
+        title: 'T',
+        instructions: 'I',
+        dueAt: '2026-11-06T04:59:00.000Z',
+        noSubmissionGrade: '0.00',
+        noSubmissionLiteral: null,
+        maxSizeBytes: 20 * 1024 * 1024,
+        allowLate: false,
+      },
+      true,
+    );
+    expect(o).toMatchObject({ literalScale: true, noSubmissionLiteral: '' });
+    expect(buildAssignmentPatch(o, o, NOW)).toMatchObject({ changed: false });
+    expect(buildAssignmentPatch(o, { ...o, noSubmissionLiteral: 'AD' }, NOW)).toEqual({
+      ok: true,
+      patch: { noSubmissionLiteral: 'AD' },
+      changed: true,
+    });
   });
 });

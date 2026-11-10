@@ -55,7 +55,7 @@ const envSchema = z
       .min(1)
       .default(15 * 60),
     // Version vigente de la politica y terminos que debe aceptar cada usuario (RF-07).
-    POLICY_VERSION: z.string().default('2026-1'),
+    POLICY_VERSION: z.string().default('2026-2'),
     // Limite global de peticiones por IP en una ventana de 60 s (RNF-08).
     RATE_LIMIT_PER_MINUTE: z.coerce.number().int().min(1).default(100),
     // Trabajos en segundo plano (Dev 5, RNF-19), autorizado por el usuario el 30/10/2026.

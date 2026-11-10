@@ -1,6 +1,25 @@
 import type { GradeEntry, GradeState } from './average';
 import { GradingError } from './errors';
 import { formatGrade, resolveNoSubmissionGrade, type GradeInput } from './grade-value';
+import type { GradingScale } from '../academic/levels';
+import {
+  isGradeLiteral,
+  isLiteralScale,
+  resolveNoSubmissionLiteral,
+  type GradeLiteralCode,
+} from './literal-grade';
+
+/**
+ * Nota guardada en escala literal (INICIAL y PRIMARIA). La BD exige literal en GRADED y NE,
+ * pero el motor tolera `null` en NE (NE sin literal, se muestra "NE").
+ */
+export type LiteralGradeEntry =
+  | { readonly state: 'GRADED'; readonly literal: GradeLiteralCode }
+  | { readonly state: 'NE'; readonly literal: GradeLiteralCode | null }
+  | { readonly state: 'EXEMPT' };
+
+/** Nota guardada en cualquiera de las dos escalas. */
+export type StoredGradeEntry = GradeEntry | LiteralGradeEntry;
 
 /**
  * Evaluación efectiva de un estudiante en una tarea, tal como se lee (A2, A6).
@@ -12,8 +31,10 @@ import { formatGrade, resolveNoSubmissionGrade, type GradeInput } from './grade-
  */
 export interface EffectiveEntry {
   readonly state: GradeState | null;
-  /** Nota con 2 decimales (`"13.50"`); `null` en `EXEMPT` y sin nota. */
+  /** Nota con 2 decimales (`"13.50"`); `null` en `EXEMPT`, sin nota y en escala literal. */
   readonly value: string | null;
+  /** Literal AD/A/B/C en escala literal; `null` en escala numérica, EXEMPT, sin nota o NE sin literal. */
+  readonly literal: GradeLiteralCode | null;
   readonly virtual: boolean;
   readonly needsRegrade: boolean;
 }
@@ -21,7 +42,7 @@ export interface EffectiveEntry {
 /** Datos de una celda para resolver su evaluación efectiva. */
 export interface ResolveEffectiveEntryInput {
   /** Fila `Grade` guardada, o `null`/`undefined` si no hay. */
-  readonly grade?: GradeEntry | null;
+  readonly grade?: StoredGradeEntry | null;
   /** Hay al menos una versión de entrega aceptada. */
   readonly hasSubmission: boolean;
   readonly dueAt: Date;
@@ -34,11 +55,18 @@ export interface ResolveEffectiveEntryInput {
    * `false` no se genera NE virtual. Por defecto `true`.
    */
   readonly neEligible?: boolean;
+  /** Escala del nivel de la sección (`scaleForLevel`). Por defecto `NUMERIC_0_20`. */
+  readonly scale?: GradingScale;
+  /** `Assignment.noSubmissionLiteral` (escala literal). */
+  readonly noSubmissionLiteral?: GradeLiteralCode | null;
+  /** Literal si la tarea no define uno; por defecto `DEFAULT_NO_SUBMISSION_LITERAL` (pendiente). */
+  readonly defaultNoSubmissionLiteral?: GradeLiteralCode | null;
 }
 
 const NO_GRADE: EffectiveEntry = Object.freeze({
   state: null,
   value: null,
+  literal: null,
   virtual: false,
   needsRegrade: false,
 });
@@ -68,6 +96,7 @@ export function isOverdue(dueAt: Date, now: Date): boolean {
 export function resolveEffectiveEntry(input: ResolveEffectiveEntryInput): EffectiveEntry {
   const { grade, hasSubmission, dueAt, now, noSubmissionGrade, neEligible = true } = input;
   const overdue = isOverdue(dueAt, now);
+  if (isLiteralScale(input.scale)) return resolveLiteralEntry(input, overdue);
 
   if (grade !== null && grade !== undefined) {
     const state = (grade as { state?: unknown }).state;
@@ -76,6 +105,7 @@ export function resolveEffectiveEntry(input: ResolveEffectiveEntryInput): Effect
         return {
           state: 'GRADED',
           value: formatGrade((grade as { value: GradeInput }).value),
+          literal: null,
           virtual: false,
           needsRegrade: false,
         };
@@ -83,11 +113,12 @@ export function resolveEffectiveEntry(input: ResolveEffectiveEntryInput): Effect
         return {
           state: 'NE',
           value: formatGrade((grade as { value: GradeInput }).value),
+          literal: null,
           virtual: false,
           needsRegrade: hasSubmission,
         };
       case 'EXEMPT':
-        return { state: 'EXEMPT', value: null, virtual: false, needsRegrade: false };
+        return EXEMPT_ENTRY;
       default:
         throw new GradingError('INVALID_STATE', `Estado de nota desconocido: ${String(state)}`);
     }
@@ -97,11 +128,64 @@ export function resolveEffectiveEntry(input: ResolveEffectiveEntryInput): Effect
     return {
       state: 'NE',
       value: resolveNoSubmissionGrade(noSubmissionGrade),
+      literal: null,
       virtual: true,
       needsRegrade: false,
     };
   }
 
+  return NO_GRADE;
+}
+
+const EXEMPT_ENTRY: EffectiveEntry = Object.freeze({
+  state: 'EXEMPT',
+  value: null,
+  literal: null,
+  virtual: false,
+  needsRegrade: false,
+});
+
+/** Escala literal: mismas reglas de A2/RF-44/RF-45, con literal en vez de número y sin promedio. */
+function resolveLiteralEntry(input: ResolveEffectiveEntryInput, overdue: boolean): EffectiveEntry {
+  const { grade, hasSubmission, neEligible = true } = input;
+  if (grade !== null && grade !== undefined) {
+    const state = (grade as { state?: unknown }).state;
+    const literal = (grade as { literal?: unknown }).literal;
+    switch (state) {
+      case 'GRADED':
+        if (!isGradeLiteral(literal)) {
+          throw new GradingError('INVALID_GRADE', 'Una nota literal debe ser AD, A, B o C.');
+        }
+        return { state: 'GRADED', value: null, literal, virtual: false, needsRegrade: false };
+      case 'NE':
+        if (literal !== null && literal !== undefined && !isGradeLiteral(literal)) {
+          throw new GradingError('INVALID_GRADE', 'Una nota literal debe ser AD, A, B o C.');
+        }
+        return {
+          state: 'NE',
+          value: null,
+          literal: (literal as GradeLiteralCode | null | undefined) ?? null,
+          virtual: false,
+          needsRegrade: hasSubmission,
+        };
+      case 'EXEMPT':
+        return EXEMPT_ENTRY;
+      default:
+        throw new GradingError('INVALID_STATE', `Estado de nota desconocido: ${String(state)}`);
+    }
+  }
+  if (!hasSubmission && overdue && neEligible) {
+    return {
+      state: 'NE',
+      value: null,
+      literal: resolveNoSubmissionLiteral(
+        input.noSubmissionLiteral,
+        input.defaultNoSubmissionLiteral,
+      ),
+      virtual: true,
+      needsRegrade: false,
+    };
+  }
   return NO_GRADE;
 }
 

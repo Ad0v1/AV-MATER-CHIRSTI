@@ -102,22 +102,24 @@ model Material {
 
 // Tarea (RF-28/29). noSubmissionGrade es la nota NE por defecto (RN-05; nombre del contrato
 // de Dev 4, docs/03). maxSizeBytes 20 MiB por defecto, tope 50 MiB (RN-08).
-// CHECK: Assignment_maxSize_chk, Assignment_neGrade_chk.
+// CHECK: Assignment_maxSize_chk, Assignment_neGrade_chk. noSubmissionLiteral: el servicio decide
+// cual de los dos usa segun Section.level (un CHECK no puede leer otra tabla).
 model Assignment {
-  id                String    @id @default(uuid(7)) @db.Char(36)
-  courseSectionId   String    @db.Char(36)
-  periodId          String    @db.Char(36)
-  title             String    @db.VarChar(200)
-  instructions      String    @db.Text
-  dueAt             DateTime  @db.DateTime(3)
-  maxSizeBytes      Int       @default(20971520)
-  noSubmissionGrade Decimal   @default(0) @db.Decimal(4, 2)
-  allowLate         Boolean   @default(false)
-  attachmentFileId  String?   @unique @db.Char(36)
-  deletedAt         DateTime?
-  createdById       String    @db.Char(36)
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
+  id                  String        @id @default(uuid(7)) @db.Char(36)
+  courseSectionId     String        @db.Char(36)
+  periodId            String        @db.Char(36)
+  title               String        @db.VarChar(200)
+  instructions        String        @db.Text
+  dueAt               DateTime      @db.DateTime(3)
+  maxSizeBytes        Int           @default(20971520)
+  noSubmissionGrade   Decimal       @default(0) @db.Decimal(4, 2) // NE en secciones de SECUNDARIA
+  noSubmissionLiteral GradeLiteral? // NE en INICIAL/PRIMARIA (el servicio lo exige segun el nivel)
+  allowLate           Boolean       @default(false)
+  attachmentFileId    String?       @unique @db.Char(36)
+  deletedAt           DateTime?
+  createdById         String        @db.Char(36)
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
 
   courseSection  CourseSection  @relation(fields: [courseSectionId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   period         AcademicPeriod @relation(fields: [periodId], references: [id], onDelete: Restrict, onUpdate: Restrict)

@@ -18,6 +18,8 @@ function sample(overrides: Partial<SectionReportData> = {}): SectionReportData {
     year: 2026,
     course: '=HYPERLINK("http://x")',
     teacher: '+Docente Uno',
+    level: 'SECUNDARIA',
+    gradingScale: 'NUMERIC_0_20',
     gradeLevel: 3,
     sectionCode: 'A',
     period: 'Bimestre 1',
@@ -90,7 +92,7 @@ describe('buildSectionXlsx', () => {
     expect(ws.getCell('B1').value).toBe('I.E. <Mater> Christi');
     expect(ws.getCell('B2').value).toBe('Curso: =HYPERLINK("http://x")');
     expect(ws.getCell('B3').value).toBe('Docente: +Docente Uno');
-    expect(ws.getCell('B4').value).toBe('Sección: 3.º A (2026)');
+    expect(ws.getCell('B4').value).toBe('Sección: 3.° Secundaria A (2026)');
     expect(ws.getCell('B5').value).toBe('Período: Bimestre 1');
 
     const header = ws.getRow(XLSX_TABLE_ROW);

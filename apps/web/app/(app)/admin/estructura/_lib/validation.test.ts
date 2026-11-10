@@ -226,7 +226,9 @@ describe('formatos', () => {
   });
 
   it('sectionLabel y yearStatus', () => {
-    expect(sectionLabel(3, 'A')).toBe('3.º A');
+    expect(sectionLabel(3, 'A')).toBe('3.° Secundaria A');
+    expect(sectionLabel(3, 'A', 'PRIMARIA')).toBe('3.° Primaria A');
+    expect(sectionLabel(5, 'C', 'INICIAL')).toBe('5 años C');
     expect(yearStatus({ isActive: true, closedAt: null, readOnly: false }).label).toBe('Activo');
     expect(
       yearStatus({ isActive: false, closedAt: '2025-12-31T00:00:00Z', readOnly: true }).label,

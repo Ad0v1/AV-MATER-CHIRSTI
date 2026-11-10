@@ -88,9 +88,9 @@ describe('Mis cursos', () => {
   ];
   it('TEACHER: curso · sección ordenado', () => {
     expect(myCourseItems('TEACHER', items).map((i) => i.label)).toEqual([
-      'Arte · 3°A',
-      'Matemática · 3°A',
-      'Matemática · 3°B',
+      'Arte · 3.° Secundaria A',
+      'Matemática · 3.° Secundaria A',
+      'Matemática · 3.° Secundaria B',
     ]);
   });
   it('STUDENT: un item por curso', () => {
@@ -106,7 +106,10 @@ describe('Mis cursos', () => {
     });
     const cur = find(tree, (e) => e.props['aria-current'] === 'page');
     expect(cur).toHaveLength(1);
-    expect(cur[0].props).toMatchObject({ href: '/curso/c/clases', title: 'Matemática · 3°A' });
+    expect(cur[0].props).toMatchObject({
+      href: '/curso/c/clases',
+      title: 'Matemática · 3.° Secundaria A',
+    });
   });
   it('lista vacía y error', () => {
     expect(text(MyCoursesListView({ items: [], error: false, pathname: null }))).toEqual([
@@ -131,7 +134,7 @@ describe('Mis cursos', () => {
     get.mockRejectedValueOnce(new Error('x'));
     expect(await loadMyCourses('STUDENT')).toEqual({ items: [], error: true });
     get.mockResolvedValueOnce({ items: [cs('a', 'Arte', 'ar', 1, 'A')], total: 1 });
-    expect((await loadMyCourses('TEACHER'))?.items[0].label).toBe('Arte · 1°A');
+    expect((await loadMyCourses('TEACHER'))?.items[0].label).toBe('Arte · 1.° Secundaria A');
     expect(get).toHaveBeenCalledWith('/me/course-sections');
   });
 });

@@ -91,7 +91,12 @@ describe('RF-08: pestañas por rol, orden y etiquetas', () => {
     expect(courseTabsFor('GUARDIAN', 'c1')).toEqual([]);
   });
   it('sectionLabel formatea grado y código', () => {
-    expect(sectionLabel({ gradeLevel: 5, code: 'B' })).toBe('5°B');
+    expect(sectionLabel({ gradeLevel: 5, code: 'B' })).toBe('5.° Secundaria B');
+    expect(sectionLabel({ level: 'SECUNDARIA', gradeLevel: 3, code: 'A' })).toBe(
+      '3.° Secundaria A',
+    );
+    expect(sectionLabel({ level: 'PRIMARIA', gradeLevel: 4, code: 'C' })).toBe('4.° Primaria C');
+    expect(sectionLabel({ level: 'INICIAL', gradeLevel: 5, code: 'C' })).toBe('5 años C');
   });
 });
 

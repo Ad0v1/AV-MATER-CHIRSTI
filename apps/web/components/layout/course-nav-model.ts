@@ -7,7 +7,7 @@ import type { Role } from '@/lib/roles';
 export type MyCourseSection = {
   id: string;
   course: { id: string; name: string };
-  section: { id: string; gradeLevel: number; code: string };
+  section: { id: string; level?: EducationLevel; gradeLevel: number; code: string };
   academicYear?: { id: string; year: number };
   teacher?: { id: string; fullName: string } | null;
   enrollmentId?: string;
@@ -20,15 +20,33 @@ export function hasMyCourses(role: Role): boolean {
   return role === 'TEACHER' || role === 'STUDENT';
 }
 
-export function sectionLabel(s: { gradeLevel: number; code: string }): string {
-  return `${s.gradeLevel}°${s.code}`;
+/** Tres niveles (09/11/2026). Sin `level` se asume SECUNDARIA (datos previos a la migración). */
+export type EducationLevel = 'INICIAL' | 'PRIMARIA' | 'SECUNDARIA';
+
+const LEVEL_LABELS: Record<EducationLevel, string> = {
+  INICIAL: 'Inicial',
+  PRIMARIA: 'Primaria',
+  SECUNDARIA: 'Secundaria',
+};
+const LEVEL_ORDER: Record<EducationLevel, number> = { INICIAL: 0, PRIMARIA: 1, SECUNDARIA: 2 };
+
+/** "3.° Secundaria A", "4.° Primaria C", "5 años C". */
+export function sectionLabel(s: {
+  level?: EducationLevel;
+  gradeLevel: number;
+  code: string;
+}): string {
+  const level = s.level ?? 'SECUNDARIA';
+  if (level === 'INICIAL') return `${s.gradeLevel} años ${s.code}`;
+  return `${s.gradeLevel}.° ${LEVEL_LABELS[level]} ${s.code}`;
 }
 
-/** TEACHER: "Curso · 3°A" por curso-sección. STUDENT: un item por curso. Orden curso y sección. */
+/** TEACHER: "Curso · 3.° Secundaria A" por curso-sección. STUDENT: un item por curso. Orden curso y sección. */
 export function myCourseItems(role: Role, items: MyCourseSection[]): NavLinkItem[] {
   const sorted = [...items].sort(
     (a, b) =>
       a.course.name.localeCompare(b.course.name, 'es') ||
+      LEVEL_ORDER[a.section.level ?? 'SECUNDARIA'] - LEVEL_ORDER[b.section.level ?? 'SECUNDARIA'] ||
       a.section.gradeLevel - b.section.gradeLevel ||
       a.section.code.localeCompare(b.section.code, 'es'),
   );

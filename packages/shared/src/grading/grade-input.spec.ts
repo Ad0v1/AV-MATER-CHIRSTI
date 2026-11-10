@@ -15,7 +15,7 @@ describe('normalizeGradeInput', () => {
   it('RF-41/A4: GRADED normaliza la nota ("05" → "5.00", 13.5 → "13.50")', () => {
     expect(normalizeGradeInput({ state: 'GRADED', value: '05' })).toEqual({
       ok: true,
-      data: { state: 'GRADED', value: '5.00', comment: null },
+      data: { state: 'GRADED', value: '5.00', literal: null, comment: null },
     });
     expect(normalizeGradeInput({ state: 'GRADED', value: 13.5 })).toMatchObject({
       ok: true,
@@ -52,11 +52,11 @@ describe('normalizeGradeInput', () => {
   it('RF-45/RN-05: NE con nota opcional; sin nota queda null para usar la de la tarea', () => {
     expect(normalizeGradeInput({ state: 'NE' })).toEqual({
       ok: true,
-      data: { state: 'NE', value: null, comment: null },
+      data: { state: 'NE', value: null, literal: null, comment: null },
     });
     expect(normalizeGradeInput({ state: 'NE', value: '7', comment: 'No entregó' })).toEqual({
       ok: true,
-      data: { state: 'NE', value: '7.00', comment: 'No entregó' },
+      data: { state: 'NE', value: '7.00', literal: null, comment: 'No entregó' },
     });
     expect(paths({ state: 'NE', value: '25' })).toEqual(['value']);
   });
@@ -100,7 +100,7 @@ describe('normalizeGradeInput', () => {
   it('RF-41: ignora campos desconocidos', () => {
     expect(normalizeGradeInput({ state: 'GRADED', value: '10', source: 'AUTO' })).toEqual({
       ok: true,
-      data: { state: 'GRADED', value: '10.00', comment: null },
+      data: { state: 'GRADED', value: '10.00', literal: null, comment: null },
     });
   });
 });

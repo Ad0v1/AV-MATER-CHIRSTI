@@ -15,15 +15,26 @@ import { AssignmentFields } from './assignment-fields';
 import {
   assignmentToInput,
   buildAssignmentPatch,
+  isLiteralLevel,
+  isNoDeliveryLevel,
   type AssignmentField,
   type NewAssignmentInput,
 } from './assignment-format';
 import type { AssignmentItem } from './types';
 
-export function EditAssignmentForm({ assignment }: { assignment: AssignmentItem }) {
+export function EditAssignmentForm({
+  assignment,
+  level,
+}: {
+  assignment: AssignmentItem;
+  /** Nivel de la sección (context.section.level): decide la escala de la NE. */
+  level?: string | null;
+}) {
   const formRef = useRef<HTMLFormElement>(null);
   const resultRef = useRef<HTMLDivElement>(null);
-  const [original, setOriginal] = useState<NewAssignmentInput>(() => assignmentToInput(assignment));
+  const [original, setOriginal] = useState<NewAssignmentInput>(() =>
+    assignmentToInput(assignment, isLiteralLevel(level)),
+  );
   const [values, setValues] = useState<NewAssignmentInput>(original);
   const [errors, setErrors] = useState<Partial<Record<AssignmentField, string>>>({});
   const [formError, setFormError] = useState<string | null>(null);
@@ -65,6 +76,7 @@ export function EditAssignmentForm({ assignment }: { assignment: AssignmentItem 
         values={values}
         onChange={(patch) => setValues((v) => ({ ...v, ...patch }))}
         errors={errors}
+        noDelivery={isNoDeliveryLevel(level)}
       />
       <button
         type="submit"

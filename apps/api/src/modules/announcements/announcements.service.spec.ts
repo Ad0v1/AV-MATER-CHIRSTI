@@ -17,6 +17,7 @@ const row = (over: Record<string, unknown> = {}) => ({
   id: 'ann-1',
   academicYearId: YEAR,
   scope: 'COURSE_SECTION',
+  level: null,
   gradeLevel: null,
   courseSectionId: 'cs-1',
   title: 'Título',
@@ -26,7 +27,7 @@ const row = (over: Record<string, unknown> = {}) => ({
   updatedAt: new Date('2026-05-01T10:00:00Z'),
   courseSection: {
     course: { id: 'c-1', name: 'Matemática' },
-    section: { gradeLevel: 3, code: 'A' },
+    section: { level: 'SECUNDARIA', gradeLevel: 3, code: 'A' },
   },
   ...over,
 });
@@ -72,7 +73,7 @@ function setup(
         Promise.resolve([
           {
             sectionId: 'sec-1',
-            section: { gradeLevel: 3 },
+            section: { level: 'SECUNDARIA', gradeLevel: 3 },
             student: { id: 'st-1', fullName: 'Ana' },
           },
         ]),
@@ -130,6 +131,7 @@ describe('AnnouncementsService (RF-32)', () => {
         announcementId: 'ann-1',
         academicYearId: YEAR,
         scope: 'COURSE_SECTION',
+        level: null,
         gradeLevel: null,
         courseSectionId: 'cs-1',
         publishedAt: '2026-05-01T10:00:00.000Z',
@@ -186,13 +188,19 @@ describe('AnnouncementsService (RF-32)', () => {
     const { service, prisma, published } = setup();
     await service.createInstitutional(admin, actor, {
       scope: 'GRADE',
+      level: 'PRIMARIA',
       gradeLevel: 4,
       title: 't',
       body: 'b',
     });
     expect(prisma.announcement.create).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({ scope: 'GRADE', gradeLevel: 4, authorId: admin.id }),
+        data: expect.objectContaining({
+          scope: 'GRADE',
+          level: 'PRIMARIA',
+          gradeLevel: 4,
+          authorId: admin.id,
+        }),
       }),
     );
     expect(published).toHaveLength(1);
@@ -282,7 +290,7 @@ describe('AnnouncementsService (RF-32)', () => {
           deletedAt: null,
           OR: [
             { scope: 'INSTITUTION' },
-            { scope: 'GRADE', gradeLevel: { in: [3] } },
+            { scope: 'GRADE', level: 'SECUNDARIA', gradeLevel: 3 },
             { scope: 'COURSE_SECTION', courseSectionId: { in: ['cs-1'] } },
           ],
         },
@@ -306,15 +314,15 @@ describe('AnnouncementsService (RF-32)', () => {
   });
 
   it('reaches: INSTITUTION a todos, GRADE por grado y COURSE_SECTION por curso', () => {
-    const s = { gradeLevel: 3, courseSectionIds: new Set(['cs-1']) };
-    expect(reaches({ scope: 'INSTITUTION', gradeLevel: null, courseSectionId: null }, s)).toBe(
-      true,
-    );
-    expect(reaches({ scope: 'GRADE', gradeLevel: 3, courseSectionId: null }, s)).toBe(true);
-    expect(reaches({ scope: 'GRADE', gradeLevel: 4, courseSectionId: null }, s)).toBe(false);
-    expect(reaches({ scope: 'COURSE_SECTION', gradeLevel: null, courseSectionId: 'cs-2' }, s)).toBe(
-      false,
-    );
+    const s = { level: 'SECUNDARIA' as const, gradeLevel: 3, courseSectionIds: new Set(['cs-1']) };
+    const none = { level: null, gradeLevel: null };
+    expect(reaches({ scope: 'INSTITUTION', ...none, courseSectionId: null }, s)).toBe(true);
+    const grade = (level: 'PRIMARIA' | 'SECUNDARIA', gradeLevel: number) =>
+      reaches({ scope: 'GRADE', level, gradeLevel, courseSectionId: null }, s);
+    expect(grade('SECUNDARIA', 3)).toBe(true);
+    expect(grade('SECUNDARIA', 4)).toBe(false);
+    expect(grade('PRIMARIA', 3)).toBe(false);
+    expect(reaches({ scope: 'COURSE_SECTION', ...none, courseSectionId: 'cs-2' }, s)).toBe(false);
   });
 
   it('listForCourseSection: estudiante → 403', async () => {

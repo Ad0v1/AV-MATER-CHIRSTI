@@ -465,6 +465,42 @@ describe.skipIf(!process.env.DATABASE_URL)('Entregas de Dev 3, fase 3d (e2e, MyS
     });
   });
 
+  describe('INICIAL sin entregas (decisión del usuario 09/11/2026)', () => {
+    it('409 NO_SUBMISSIONS_IN_LEVEL al entregar y al pedir URL de subida; nada se crea', async () => {
+      const assignmentId = await makeAssignment();
+      const fileId = await makeFile(assignmentId);
+      const cs = await prisma.courseSection.findUniqueOrThrow({
+        where: { id: cs3AMath },
+        select: { section: { select: { id: true, level: true, code: true } } },
+      });
+      // Código temporal para no chocar con una sección de INICIAL del seed (@@unique).
+      await prisma.section.update({
+        where: { id: cs.section.id },
+        data: { level: 'INICIAL', code: 'QZ' },
+      });
+      try {
+        const res = await submit('estudiante01', assignmentId, fileId).expect(409);
+        expect(res.body).toMatchObject({ error: { code: 'NO_SUBMISSIONS_IN_LEVEL' } });
+        const intent = await post('estudiante01', '/files/upload-intents', {
+          purpose: 'SUBMISSION',
+          courseSectionId: cs3AMath,
+          assignmentId,
+          fileName: 'tarea.pdf',
+          sizeBytes: 1024,
+          contentType: 'application/pdf',
+        }).expect(409);
+        expect(intent.body).toMatchObject({ error: { code: 'NO_SUBMISSIONS_IN_LEVEL' } });
+      } finally {
+        await prisma.section.update({
+          where: { id: cs.section.id },
+          data: { level: cs.section.level, code: cs.section.code },
+        });
+      }
+      expect(await prisma.submission.count({ where: { assignmentId } })).toBe(0);
+      expect(accepted()).toHaveLength(0);
+    });
+  });
+
   // ---------------------------------------------------------------------------
   describe('Tardías (RF-37, RN-06, D-006)', () => {
     it('QA-008: con tardías permitidas se acepta, marcada y con el atraso informado', async () => {
