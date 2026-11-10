@@ -10,6 +10,21 @@ export default function LoginPage() {
       <aside className="relative isolate hidden min-h-0 flex-col overflow-hidden bg-brand px-5 py-3 text-ink-inverse lg:flex lg:px-12 lg:py-10">
         <LoginCarousel />
 
+        <div className="flex items-center gap-3.5">
+          <Image
+            src="/brand/escudo.webp"
+            alt=""
+            width={60}
+            height={72}
+            unoptimized
+            className="h-12 w-10 object-contain sm:h-[68px] sm:w-14"
+          />
+          <div>
+            <p className="text-xl font-semibold tracking-tight sm:text-2xl">Mater Christi</p>
+            <p className="mt-0.5 text-sm text-ink-inverse/80 sm:text-base">Aula virtual</p>
+          </div>
+        </div>
+
         <div className="motion-in mt-auto max-w-xl pt-4 lg:pb-5 lg:pt-16">
           <span className="mb-3 block h-1 w-12 rounded-full bg-gold lg:mb-5" />
           <p className="max-w-lg text-2xl leading-tight font-semibold tracking-tight text-balance sm:text-4xl lg:text-5xl">

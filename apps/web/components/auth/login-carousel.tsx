@@ -1,24 +1,34 @@
 'use client';
 
-// Carrusel de fotos del colegio en el login (motion-design, arquetipo Corporate).
-// - Capa primaria: fundido cruzado de 700 ms ease-in-out cada 7 s (cambio en pantalla).
-// - Capa ambiente: acercamiento lento de 1 a 1,04 mientras la foto está visible.
-// - Accesible: se pausa al pasar el mouse o con el foco, tiene botón de pausa (WCAG 2.2.2) y
-//   con prefers-reduced-motion no avanza solo ni hace zoom.
-// Para agregar fotos del colegio, súmalas a SLIDES (webp, sin rostros identificables de menores).
+// Carrusel de fotos del colegio en el login (skill motion-design, arquetipo Corporate).
+// El panel es más alto que ancho, así que una foto horizontal no cabe entera: cada foto se
+// desplaza despacio de izquierda a derecha (ease-in-out) para mostrarla completa, y al terminar
+// pasa a la siguiente con un fundido cruzado de 700 ms. La fachada queda fija, centrada.
+// - Empieza solo al cargar y no tiene botón de pausa (decisión del usuario, 10/11/2026; queda
+//   fuera de WCAG 2.2.2). Con reduced motion no avanza ni se desplaza.
+// - Con prefers-reduced-motion no avanza solo ni se desplaza: queda cada foto centrada.
+// Solo fotos del colegio (decisión del usuario, 10/11/2026), en public/brand/colegio/.
 import Image, { type StaticImageData } from 'next/image';
-import { useEffect, useState } from 'react';
-import { Pause, Play } from 'lucide-react';
+import { useEffect, useState, type CSSProperties } from 'react';
 import fachada from '../../assets/fondo_login_av.webp';
 
-type Slide = { src: StaticImageData | string; position: string };
+type Slide = {
+  src: StaticImageData | string;
+  /** Recorrido horizontal: la foto se desplaza para verse entera. */
+  pan: boolean;
+  /** Tiempo en pantalla, incluido el desplazamiento. */
+  ms: number;
+  /** Encuadre vertical. */
+  y: string;
+};
 
 const SLIDES: Slide[] = [
-  { src: fachada, position: 'center 46%' },
-  { src: '/brand/login-aula.webp', position: 'center 55%' },
+  { src: fachada, pan: false, ms: 3500, y: '46%' },
+  { src: '/brand/colegio/patio-evento.webp', pan: true, ms: 7000, y: '50%' },
+  { src: '/brand/colegio/premiacion.webp', pan: true, ms: 7000, y: '45%' },
+  { src: '/brand/colegio/docentes.webp', pan: true, ms: 6500, y: '40%' },
+  { src: '/brand/colegio/jardin.webp', pan: true, ms: 6000, y: '50%' },
 ];
-
-const INTERVAL_MS = 7000;
 
 function prefersReducedMotion(): boolean {
   return (
@@ -28,28 +38,24 @@ function prefersReducedMotion(): boolean {
 
 export function LoginCarousel() {
   const [index, setIndex] = useState(0);
-  const [paused, setPaused] = useState(false);
-  const [hovered, setHovered] = useState(false);
   const many = SLIDES.length > 1;
 
   useEffect(() => {
-    if (!many || paused || hovered || prefersReducedMotion()) return;
-    const t = window.setTimeout(() => setIndex((i) => (i + 1) % SLIDES.length), INTERVAL_MS);
+    if (!many || prefersReducedMotion()) return;
+    const t = window.setTimeout(() => setIndex((i) => (i + 1) % SLIDES.length), SLIDES[index]!.ms);
     return () => window.clearTimeout(t);
-  }, [index, paused, hovered, many]);
+  }, [index, many]);
 
   return (
-    <div
-      className="absolute inset-0 -z-10 overflow-hidden"
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-    >
+    <div className="absolute inset-0 -z-10 overflow-hidden">
       {SLIDES.map((s, i) => (
         <div
-          key={i}
+          key={typeof s.src === 'string' ? s.src : 'fachada'}
           aria-hidden="true"
           className="login-slide absolute inset-0"
           data-active={i === index ? '' : undefined}
+          data-pan={s.pan ? '' : undefined}
+          style={{ '--pan-ms': `${s.ms}ms`, '--pan-y': s.y } as CSSProperties}
         >
           <Image
             src={s.src}
@@ -59,7 +65,6 @@ export function LoginCarousel() {
             unoptimized={typeof s.src === 'string'}
             sizes="(min-width: 1024px) 54vw, 100vw"
             className="login-slide-img object-cover"
-            style={{ objectPosition: s.position }}
           />
         </div>
       ))}
@@ -68,9 +73,9 @@ export function LoginCarousel() {
         className="absolute inset-0 bg-gradient-to-b from-brand-dark/80 via-brand-dark/15 to-brand-dark/90"
       />
       {many && (
-        <div className="absolute right-5 bottom-5 flex items-center gap-2 lg:right-12 lg:bottom-10">
+        <div className="absolute right-5 bottom-5 lg:right-12 lg:bottom-10">
           <div className="flex gap-1.5" aria-hidden="true">
-            {SLIDES.map((_, i) => (
+            {SLIDES.map((s, i) => (
               <span
                 key={i}
                 className="login-dot h-1.5 rounded-full bg-white/50"
@@ -78,15 +83,6 @@ export function LoginCarousel() {
               />
             ))}
           </div>
-          <button
-            type="button"
-            onClick={() => setPaused((p) => !p)}
-            aria-label={paused ? 'Reanudar fotos del colegio' : 'Pausar fotos del colegio'}
-            aria-pressed={paused}
-            className="grid size-9 place-items-center rounded-full bg-black/30 text-white transition-colors hover:bg-black/45 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold"
-          >
-            {paused ? <Play className="size-4" /> : <Pause className="size-4" />}
-          </button>
         </div>
       )}
     </div>

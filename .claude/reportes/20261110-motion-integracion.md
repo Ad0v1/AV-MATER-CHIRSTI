@@ -64,3 +64,27 @@ Lee https://github.com/lottiefiles/motion-design-skill (README y el SKILL.md o a
 - La integración y el motion aún no van al repo del grupo.
 
 Expediente: `.claude/tareas/20261108-diseno-web.md`.
+
+## Actualización: fotos del colegio y escudo (10/11/2026)
+
+- **Pedido:** "el escudo haz que sea de fondo traslucido en todas las pestañas, la imagen que esta actualmente en la web permanecera, (…) las fotos que estan horizontales tenga un desplazamiento para que se muestre todo y seguiras a la siguiente imagen". Después: "Quítalo" (el botón de pausa) y "Sí, commit y push".
+- **Resultado:**
+  - Carrusel con la fachada fija y 4 fotos entregadas por el usuario, que se recorren de izquierda a derecha.
+  - Tiempos más cortos y sin pausa con el mouse ni botón de pausa.
+  - Escudo con fondo transparente en favicon, icon, apple-icon y `escudo.webp`.
+  - Se restauró el encabezado del panel, que una edición anterior había borrado.
+- **Agentes:** ninguno, lo hizo el orquestador.
+- **Decisiones:**
+  - Las fotos se convirtieron con sharp a webp de 1600 px.
+  - El fondo blanco del escudo se volvió transparente por umbral.
+  - Quitar la pausa deja la web fuera de WCAG 2.2.2, por decisión del usuario.
+  - Las fotos muestran menores: hace falta la autorización del colegio antes de publicarlas (Ley 29733).
+- **Archivos:**
+  - `apps/web/public/brand/colegio/*.webp`
+  - `apps/web/app/{favicon.ico,icon.png,apple-icon.png}`
+  - `apps/web/public/brand/escudo.webp`
+  - `apps/web/components/auth/login-carousel.tsx`
+  - `apps/web/app/login/page.tsx`
+  - `apps/web/app/globals.css`
+  - se eliminó `public/brand/login-aula.webp`
+- **Verificación:** tsc 0 y eslint 0. El usuario confirmó en su navegador que el carrusel avanza.

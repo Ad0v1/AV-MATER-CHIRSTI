@@ -59,3 +59,18 @@ Vueltas de corrección: 0/2
   - reduced motion: solo opacidad, la mitad de duración, sin avance automático ni zoom.
 - Fotos del carrusel: la fachada real (asset de David) y el aula de Pexels (`public/brand/login-aula.webp`, pública porque `/maqueta` exige sesión). Faltan las fotos del colegio.
 - Verificación: tsc 0, lint 0, web 560 ok, build 5/5 (antes del motion), y en el navegador el carrusel avanza y pausa.
+
+## 10/11/2026 — Fotos del colegio y escudo transparente
+
+- El usuario entregó 4 fotos del colegio y el escudo. Fotos en `public/brand/colegio/` (webp, 67–104 KB): patio-evento, premiacion, docentes y jardin. La fachada de David sigue como primera.
+- El escudo tiene el fondo blanco transparente: `public/brand/escudo.webp`, `app/icon.png`, `app/apple-icon.png` y `app/favicon.ico` (16/32/48), así que se ve en todas las pestañas.
+- Carrusel: las fotos horizontales recorren de izquierda a derecha (`object-position` 0→100 %, ease-in-out, 9–11 s) y luego hay un fundido a la siguiente. La fachada queda fija 6 s. Se pausa con el mouse encima o con el botón. Con reduced motion no hay desplazamiento ni avance automático.
+- Se corrigió que una edición anterior había borrado el encabezado del panel (escudo + "Mater Christi").
+- Las fotos muestran rostros de menores: el usuario las entregó, pero publicarlas requiere la autorización del colegio (Ley 29733).
+- Verificación: tsc 0 y eslint 0. En el navegador cargan las 5 fotos, el desplazamiento corre y el encabezado aparece.
+
+## 10/11/2026 — Ajustes del carrusel
+
+- El carrusel ya no se pausa con el mouse encima. Tiempos más cortos: fachada 3,5 s y fotos de 6 a 7 s.
+- El usuario pidió quitar el botón de pausa (queda fuera de WCAG 2.2.2, anotado en el código).
+- El usuario confirmó en su navegador que el carrusel avanza solo. El navegador de la app no hidrataba porque su panel estaba oculto (rAF bloqueado); no era un fallo del código.
