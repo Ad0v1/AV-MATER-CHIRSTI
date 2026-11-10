@@ -1,3 +1,4 @@
+import type { EducationLevel } from '@aula/shared';
 import {
   ConflictException,
   Injectable,
@@ -30,7 +31,7 @@ export type CourseSectionView = {
 export type MyCourseSection = {
   id: string;
   course: { id: string; name: string };
-  section: { id: string; gradeLevel: number; code: string };
+  section: { id: string; level: EducationLevel; gradeLevel: number; code: string };
   academicYear: { id: string; year: number };
   teacher: Person | null;
   enrollmentId?: string;
@@ -185,6 +186,7 @@ export class CourseSectionsService {
       },
       include: { ...viewInclude, section: true },
       orderBy: [
+        { section: { level: 'asc' } },
         { section: { gradeLevel: 'asc' } },
         { section: { code: 'asc' } },
         { course: { name: 'asc' } },
@@ -193,7 +195,12 @@ export class CourseSectionsService {
     const items = rows.map((cs): MyCourseSection => ({
       id: cs.id,
       course: cs.course,
-      section: { id: cs.section.id, gradeLevel: cs.section.gradeLevel, code: cs.section.code },
+      section: {
+        id: cs.section.id,
+        level: cs.section.level,
+        gradeLevel: cs.section.gradeLevel,
+        code: cs.section.code,
+      },
       academicYear: { id: active.id, year: active.year },
       teacher: cs.teacher,
       ...(enrollmentId ? { enrollmentId } : {}),

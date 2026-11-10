@@ -1,3 +1,4 @@
+import type { EducationLevel } from '@aula/shared';
 import {
   ConflictException,
   ForbiddenException,
@@ -34,7 +35,13 @@ export type CourseSectionContext = {
   isActive: boolean;
   readOnly: boolean;
   academicYear: { id: string; year: number; isActive: boolean; closedAt: string | null };
-  section: { id: string; gradeLevel: number; code: string; isActive: boolean };
+  section: {
+    id: string;
+    level: EducationLevel;
+    gradeLevel: number;
+    code: string;
+    isActive: boolean;
+  };
   course: { id: string; name: string };
   teacher: { id: string; fullName: string } | null;
   periods: PeriodView[];
@@ -151,6 +158,7 @@ export class AcademicAccessService {
       },
       section: {
         id: cs.section.id,
+        level: cs.section.level,
         gradeLevel: cs.section.gradeLevel,
         code: cs.section.code,
         isActive: cs.section.isActive,

@@ -6,3 +6,4 @@ export * from './literal-scale';
 export * from './effective-entry';
 export * from './gradebook';
 export * from './grade-input';
+export * from './literal-grade';

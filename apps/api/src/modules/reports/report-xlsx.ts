@@ -1,9 +1,12 @@
 import ExcelJS from 'exceljs';
 import { spreadsheetText } from './report-text.js';
 import {
+  achievementText,
   averageLiteral,
   averageValue,
   cellValue,
+  isLiteralReport,
+  legendText,
   limaTimestamp,
   sectionText,
   type SectionReportData,
@@ -28,16 +31,11 @@ export async function buildSectionXlsx(data: SectionReportData): Promise<Buffer>
     views: [{ state: 'frozen', xSplit: 2, ySplit: XLSX_TABLE_ROW }],
   });
 
-  const headerCols = [
-    'N.º',
-    'Estudiante',
-    ...data.assignments.map((a) => a.title),
-    'Promedio',
-    'Literal',
-    'En riesgo',
-  ];
+  const literal = isLiteralReport(data);
+  const summaryCols = literal ? ['Logro', 'En riesgo'] : ['Promedio', 'Literal', 'En riesgo'];
+  const headerCols = ['N.º', 'Estudiante', ...data.assignments.map((a) => a.title), ...summaryCols];
   ws.columns = headerCols.map((_, i) => ({
-    width: i === 0 ? 10 : i === 1 ? 38 : i < headerCols.length - 3 ? 14 : 11,
+    width: i === 0 ? 10 : i === 1 ? 38 : i < headerCols.length - summaryCols.length ? 14 : 11,
   }));
 
   if (data.institution.logo) {
@@ -52,7 +50,7 @@ export async function buildSectionXlsx(data: SectionReportData): Promise<Buffer>
     ['', data.institution.name],
     ['Curso', data.course],
     ['Docente', data.teacher ?? 'Sin docente asignado'],
-    ['Sección', `${sectionText(data.gradeLevel, data.sectionCode)} (${data.year})`],
+    ['Sección', `${sectionText(data.level, data.gradeLevel, data.sectionCode)} (${data.year})`],
     ['Período', data.period],
     ['Generado', limaTimestamp(data.generatedAt)],
   ];
@@ -80,15 +78,18 @@ export async function buildSectionXlsx(data: SectionReportData): Promise<Buffer>
       row.getCell(3 + j).value = typeof v === 'number' ? v : t(v);
     });
     const base = 3 + data.assignments.length;
-    row.getCell(base).value = averageValue(s.average);
-    row.getCell(base + 1).value = t(averageLiteral(s.average));
-    row.getCell(base + 2).value = s.atRisk ? 'Sí' : 'No';
+    if (literal) {
+      row.getCell(base).value = t(achievementText(s.achievement));
+      row.getCell(base + 1).value = s.atRisk ? 'Sí' : 'No';
+    } else {
+      row.getCell(base).value = averageValue(s.average);
+      row.getCell(base + 1).value = t(averageLiteral(s.average));
+      row.getCell(base + 2).value = s.atRisk ? 'Sí' : 'No';
+    }
   });
 
   const legendRow = XLSX_TABLE_ROW + data.students.length + 2;
-  ws.getRow(legendRow).getCell(2).value = t(
-    `NE: no entregó. EXO: exonerado. En riesgo: promedio con literal ${data.riskLiteral}.`,
-  );
+  ws.getRow(legendRow).getCell(2).value = t(legendText(data));
 
   const out = await workbook.xlsx.writeBuffer();
   return Buffer.from(out as ArrayBuffer);

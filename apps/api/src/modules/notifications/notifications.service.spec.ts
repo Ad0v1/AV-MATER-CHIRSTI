@@ -18,7 +18,9 @@ const course = { courseSection: { sectionId: 'sec-1', course: { name: 'Matemáti
 function setup(opts: { rows?: ReturnType<typeof n>[]; linked?: string[] } = {}) {
   const prisma = {
     enrollment: {
-      findMany: vi.fn(() => Promise.resolve([{ sectionId: 'sec-1', section: { gradeLevel: 3 } }])),
+      findMany: vi.fn(() =>
+        Promise.resolve([{ sectionId: 'sec-1', section: { level: 'SECUNDARIA', gradeLevel: 3 } }]),
+      ),
     },
     notification: {
       count: vi.fn(() => Promise.resolve(3)),
@@ -73,6 +75,7 @@ function setup(opts: { rows?: ReturnType<typeof n>[]; linked?: string[] } = {}) 
             title: 'Feria',
             deletedAt: null,
             scope: 'INSTITUTION',
+            level: null,
             gradeLevel: null,
             courseSectionId: null,
             courseSection: null,
@@ -82,6 +85,7 @@ function setup(opts: { rows?: ReturnType<typeof n>[]; linked?: string[] } = {}) 
             title: 'Retirado',
             deletedAt: created,
             scope: 'INSTITUTION',
+            level: null,
             gradeLevel: null,
             courseSectionId: null,
             courseSection: null,

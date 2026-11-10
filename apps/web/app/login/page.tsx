@@ -24,12 +24,13 @@ export default function LoginPage() {
           <p className="text-4xl leading-tight font-semibold text-balance">
             Tu aula, tus cursos y tus notas en un solo lugar.
           </p>
-          <p className="mt-4 text-base leading-relaxed text-ink-inverse/80">
-            Plataforma institucional de nivel secundaria para estudiantes, docentes y familias.
+          <p className="mt-4 text-base leading-relaxed text-ink-inverse">
+            Plataforma del colegio para estudiantes, docentes y familias de inicial, primaria y
+            secundaria.
           </p>
         </div>
 
-        <p className="hidden text-sm text-ink-inverse/70 lg:block">Nivel Secundaria</p>
+        <p className="hidden text-sm text-ink-inverse lg:block">Inicial · Primaria · Secundaria</p>
       </aside>
 
       <section className="flex items-center justify-center bg-canvas px-4 py-10 sm:px-8">

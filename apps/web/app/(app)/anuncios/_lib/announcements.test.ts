@@ -9,6 +9,7 @@ import {
   TITLE_MAX,
   pageCount,
   parseGradeLevel,
+  parseLevel,
   parsePage,
   scopeLabel,
   validateAnnouncement,
@@ -38,9 +39,13 @@ describe('validateAnnouncement (RF-32)', () => {
 
 describe('utilidades', () => {
   it('parseGradeLevel y parsePage', () => {
-    expect(parseGradeLevel('3')).toBe(3);
-    expect(parseGradeLevel('6')).toBeNull();
-    expect(parseGradeLevel('')).toBeNull();
+    expect(parseGradeLevel('SECUNDARIA', '3')).toBe(3);
+    expect(parseGradeLevel('SECUNDARIA', '6')).toBeNull();
+    expect(parseGradeLevel('PRIMARIA', '6')).toBe(6);
+    expect(parseGradeLevel('INICIAL', '2')).toBeNull();
+    expect(parseGradeLevel('SECUNDARIA', '')).toBeNull();
+    expect(parseLevel('INICIAL')).toBe('INICIAL');
+    expect(parseLevel('BASICA')).toBeNull();
     expect(parsePage('2')).toBe(2);
     expect(parsePage(['2'])).toBe(1);
     expect(parsePage('0')).toBe(1);
@@ -49,19 +54,28 @@ describe('utilidades', () => {
 
   it('scopeLabel y pageCount', () => {
     expect(
-      scopeLabel({ scope: 'INSTITUTION', gradeLevel: null, course: null, section: null }),
+      scopeLabel({
+        scope: 'INSTITUTION',
+        level: null,
+        gradeLevel: null,
+        course: null,
+        section: null,
+      }),
     ).toBe('Toda la institución');
-    expect(scopeLabel({ scope: 'GRADE', gradeLevel: 2, course: null, section: null })).toBe(
-      '2.° grado',
-    );
+    const grade = (level: 'INICIAL' | 'PRIMARIA' | 'SECUNDARIA', gradeLevel: number) =>
+      scopeLabel({ scope: 'GRADE', level, gradeLevel, course: null, section: null });
+    expect(grade('SECUNDARIA', 2)).toBe('2.° Secundaria');
+    expect(grade('PRIMARIA', 3)).toBe('3.° Primaria');
+    expect(grade('INICIAL', 5)).toBe('5 años');
     expect(
       scopeLabel({
         scope: 'COURSE_SECTION',
+        level: null,
         gradeLevel: null,
         course: { id: 'c', name: 'Arte' },
-        section: { gradeLevel: 3, code: 'A' },
+        section: { level: 'PRIMARIA', gradeLevel: 3, code: 'A' },
       }),
-    ).toBe('Arte · 3.° A');
+    ).toBe('Arte · 3.° Primaria A');
     expect(pageCount({ total: 0, pageSize: 20 })).toBe(1);
     expect(pageCount({ total: 41, pageSize: 20 })).toBe(3);
   });

@@ -38,6 +38,7 @@ import type {
   UploadIntentDto,
   UploadIntentResponse,
 } from './files.dto.js';
+import { assertSubmissionsAllowed } from '../submissions/submissions.policy.js';
 import { inspectPdfStream, verdictOf } from './pdf-inspector.js';
 
 // Flujo de archivos de Dev 3 (RF-33..35, RF-40, RNF-03/18), fase 3b:
@@ -508,6 +509,7 @@ export class FilesService {
             allowLate: true,
             maxSizeBytes: true,
             deletedAt: true,
+            courseSection: { select: { section: { select: { level: true } } } },
           },
         })
       : null;
@@ -518,6 +520,8 @@ export class FilesService {
     ) {
       throw new NotFoundException({ code: 'NOT_FOUND', message: 'La tarea no existe' });
     }
+    // INICIAL: actividades sin entrega (409 NO_SUBMISSIONS_IN_LEVEL).
+    assertSubmissionsAllowed(assignment.courseSection?.section.level);
     // Período cerrado bloquea entregas (decisión 2 del usuario), también las tardías.
     await this.access.assertCourseSectionWritable(target.courseSectionId, assignment.periodId);
     if (now.getTime() > assignment.dueAt.getTime() && !assignment.allowLate) {

@@ -1,10 +1,38 @@
-import type { AverageSummary, DeliveryCounts, GradebookDashboard } from '@aula/shared';
+import type {
+  AverageSummary,
+  DeliveryCounts,
+  EducationLevel,
+  GradebookDashboard,
+  GradeLiteralCode,
+  GradingScale,
+} from '@aula/shared';
 import type { DisplayStatus } from '../submissions/display-status.js';
 import type { LatestVersionSummary } from '../submissions/submissions.types.js';
 import type { GradeSourceValue, GradeStateValue } from './grading.policy.js';
 
 // Contratos HTTP de calificaciones (INFORME 1, sección 3). Fechas en ISO UTC; notas como texto
 // con 2 decimales ("13.50"). exemptionReason solo en las vistas del docente y ADMIN (U2).
+// Tres niveles (09/11/2026): SECUNDARIA usa value (0..20); INICIAL y PRIMARIA usan literal
+// (AD/A/B/C), sin promedio (average.status = 'LITERAL_SCALE') y con logro del período.
+
+/** Sección con su nivel. */
+export type SectionRef = { id: string; level: EducationLevel; gradeLevel: number; code: string };
+
+/** Logro del período (escala literal). comment solo para el docente, el estudiante y su apoderado. */
+export type PeriodAchievementView = {
+  literal: GradeLiteralCode;
+  comment: string | null;
+  gradedAt: string;
+};
+
+/** Respuesta de PUT /course-sections/:id/periods/:periodId/achievements/:enrollmentId. */
+export type AchievementView = PeriodAchievementView & {
+  id: string;
+  enrollmentId: string;
+  courseSectionId: string;
+  periodId: string;
+  updatedAt: string;
+};
 
 /** Respuesta de PUT /grades/:assignmentId/:enrollmentId. */
 export type GradeView = {
@@ -13,6 +41,7 @@ export type GradeView = {
   enrollmentId: string;
   state: GradeStateValue;
   value: string | null;
+  literal: GradeLiteralCode | null;
   comment: string | null;
   exemptionReason: string | null;
   source: GradeSourceValue;
@@ -24,6 +53,8 @@ export type GradeView = {
 export type EffectiveGradeView = {
   state: GradeStateValue | null;
   value: string | null;
+  /** Literal en escala literal; null en NE sin literal ("NE"). */
+  literal: GradeLiteralCode | null;
   /** NE calculada al leer, aún sin fila Grade. */
   virtual: boolean;
   /** NE con entrega posterior: hay que recalificar (RF-45). */
@@ -47,7 +78,8 @@ export type GradebookView = {
     id: string;
     readOnly: boolean;
     course: { id: string; name: string };
-    section: { id: string; gradeLevel: number; code: string };
+    section: SectionRef;
+    gradingScale: GradingScale;
   };
   period: PeriodRef;
   periods: PeriodRef[];
@@ -57,6 +89,7 @@ export type GradebookView = {
     dueAt: string;
     allowLate: boolean;
     noSubmissionGrade: string;
+    noSubmissionLiteral: GradeLiteralCode | null;
     average: AverageSummary;
     counts: DeliveryCounts;
   }[];
@@ -66,6 +99,8 @@ export type GradebookView = {
     fullName: string;
     isCurrent: boolean;
     average: AverageSummary;
+    /** Logro del período (escala literal); null sin logro o en SECUNDARIA. */
+    achievement: PeriodAchievementView | null;
     atRisk: boolean;
     cells: GradebookCellView[];
   }[];
@@ -82,6 +117,10 @@ export type GradeSummaryView = {
     dueAt: string;
     allowLate: boolean;
     noSubmissionGrade: string;
+    noSubmissionLiteral: GradeLiteralCode | null;
+    gradingScale: GradingScale;
+    /** Nivel de la sección: en INICIAL no hay entregas (la web adapta el formulario). */
+    level: EducationLevel;
     periodIsOpen: boolean;
   };
   items: {
@@ -119,15 +158,18 @@ export type StudentGradesView = {
     enrollmentId: string;
     isCurrent: boolean;
     course: { id: string; name: string };
-    section: { id: string; gradeLevel: number; code: string };
+    section: SectionRef;
+    gradingScale: GradingScale;
     periods: (PeriodRef & {
       average: AverageSummary;
+      achievement: PeriodAchievementView | null;
       assignments: {
         assignmentId: string;
         title: string;
         dueAt: string;
         state: GradeStateValue | null;
         value: string | null;
+        literal: GradeLiteralCode | null;
         comment: string | null;
         displayStatus: DisplayStatus;
         isLate: boolean;
@@ -141,6 +183,6 @@ export type GuardianStudentsView = {
   items: {
     studentId: string;
     fullName: string;
-    currentSection: { id: string; gradeLevel: number; code: string } | null;
+    currentSection: SectionRef | null;
   }[];
 };

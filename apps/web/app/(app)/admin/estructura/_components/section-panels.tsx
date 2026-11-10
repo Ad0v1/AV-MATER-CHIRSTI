@@ -2,7 +2,15 @@
 
 // Secciones de un año (RF-13): crear, cambiar código y activar/desactivar.
 import Link from 'next/link';
-import { useActionState } from 'react';
+import { useActionState, useState } from 'react';
+import {
+  EDUCATION_LEVELS,
+  LEVEL_LABELS,
+  gradeLabel,
+  gradesForLevel,
+  isEducationLevel,
+  type EducationLevel,
+} from '../_lib/levels';
 import { buttonVariants } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import {
@@ -13,7 +21,6 @@ import {
 import { sectionLabel } from '../_lib/format';
 import { focusIds } from '../_lib/focus';
 import { IDLE, type SectionView } from '../_lib/types';
-import { GRADE_LEVELS } from '../_lib/validation';
 import { ConfirmAction, InlineAction } from '@/app/(app)/admin/_shared/components/confirm-action';
 import {
   FormMessage,
@@ -29,6 +36,13 @@ const CODE_HINT = 'De 1 a 8 letras o dígitos, sin tildes ni ñ (por ejemplo, A 
 export function CreateSectionForm({ yearId }: { yearId: string }) {
   const [state, formAction] = useActionState(createSectionAction.bind(null, yearId), IDLE);
   const { formRef, alertRef } = useFormRefs(state);
+  const initialLevel = state.values?.level;
+  const [level, setLevel] = useState<EducationLevel>(
+    isEducationLevel(initialLevel) ? initialLevel : 'SECUNDARIA',
+  );
+  const grades = gradesForLevel(level);
+  const savedGrade = Number(state.values?.gradeLevel);
+  const defaultGrade = grades.includes(savedGrade) ? savedGrade : grades[0];
   return (
     <form
       ref={formRef}
@@ -38,14 +52,27 @@ export function CreateSectionForm({ yearId }: { yearId: string }) {
       aria-label="Nueva sección"
     >
       <p className="text-sm font-medium">Nueva sección</p>
-      <div className="grid gap-3 sm:grid-cols-2">
+      <div className="grid gap-3 sm:grid-cols-3">
         <SelectField
+          name="level"
+          label="Nivel"
+          required
+          value={level}
+          onChange={(e) => {
+            const next = e.target.value;
+            if (isEducationLevel(next)) setLevel(next);
+          }}
+          error={state.fieldErrors?.level}
+          options={EDUCATION_LEVELS.map((l) => ({ value: l, label: LEVEL_LABELS[l] }))}
+        />
+        <SelectField
+          key={level}
           name="gradeLevel"
           label="Grado"
           required
-          defaultValue={state.values?.gradeLevel ?? '1'}
+          defaultValue={String(defaultGrade)}
           error={state.fieldErrors?.gradeLevel}
-          options={GRADE_LEVELS.map((g) => ({ value: String(g), label: `${g}.º grado` }))}
+          options={grades.map((g) => ({ value: String(g), label: gradeLabel(level, g) }))}
         />
         <TextField
           name="code"
@@ -75,7 +102,7 @@ export function SectionItem({
   yearId: string;
   readOnly: boolean;
 }) {
-  const label = sectionLabel(section.gradeLevel, section.code);
+  const label = sectionLabel(section.gradeLevel, section.code, section.level);
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap gap-2">

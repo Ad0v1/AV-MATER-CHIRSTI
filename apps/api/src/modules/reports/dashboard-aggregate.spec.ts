@@ -31,6 +31,8 @@ function courseSection(
     now,
   });
   return {
+    level: 'SECUNDARIA',
+    gradingScale: 'NUMERIC_0_20',
     gradeLevel,
     sectionId,
     code,

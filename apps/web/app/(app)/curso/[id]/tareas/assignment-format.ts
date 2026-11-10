@@ -58,7 +58,29 @@ export type NewAssignmentInput = {
   noSubmissionGrade: string;
   maxSizeMiB: string;
   allowLate: boolean;
+  /** Escala literal (INICIAL/PRIMARIA): la NE es un literal AD/A/B/C opcional, no un número. */
+  literalScale?: boolean;
+  /** '' = sin literal de NE (null en la API). Solo se usa con `literalScale`. */
+  noSubmissionLiteral?: string;
 };
+
+/** Literales de NE que acepta la API (escala AD/A/B/C). */
+export const NO_SUBMISSION_LITERALS = ['AD', 'A', 'B', 'C'] as const;
+export type NoSubmissionLiteral = (typeof NO_SUBMISSION_LITERALS)[number];
+
+function isLiteralOption(v: unknown): boolean {
+  return v === '' || NO_SUBMISSION_LITERALS.includes(v as NoSubmissionLiteral);
+}
+
+/** INICIAL y PRIMARIA califican con AD/A/B/C; SECUNDARIA con 0-20. */
+export function isLiteralLevel(level: string | null | undefined): boolean {
+  return level === 'INICIAL' || level === 'PRIMARIA';
+}
+
+/** Decisión del usuario: en INICIAL los niños no entregan PDF (actividad sin entrega). */
+export function isNoDeliveryLevel(level: string | null | undefined): boolean {
+  return level === 'INICIAL';
+}
 
 export type NewAssignmentBody = {
   periodId: string;
@@ -66,6 +88,8 @@ export type NewAssignmentBody = {
   instructions: string;
   dueAt: string;
   noSubmissionGrade: string;
+  /** Solo en escala literal; en SECUNDARIA no se envía. */
+  noSubmissionLiteral?: NoSubmissionLiteral | null;
   maxSizeBytes: number;
   allowLate: boolean;
 };
@@ -104,8 +128,11 @@ export function validateAssignment(
   else if (Date.parse(dueAt) <= now.getTime()) {
     errors.dueLocal = 'El plazo debe ser una fecha y hora futura.';
   }
-  const grade = input.noSubmissionGrade.trim().replace(',', '.') || '0';
-  if (!/^\d{1,2}(\.\d{1,2})?$/.test(grade) || Number(grade) > 20) {
+  const literal = input.literalScale === true;
+  const grade = literal ? '0' : input.noSubmissionGrade.trim().replace(',', '.') || '0';
+  if (literal && !isLiteralOption(input.noSubmissionLiteral ?? '')) {
+    errors.noSubmissionGrade = 'Elige AD, A, B, C o «Sin calificación».';
+  } else if ((!literal && !/^\d{1,2}(\.\d{1,2})?$/.test(grade)) || Number(grade) > 20) {
     errors.noSubmissionGrade =
       'Escribe una nota de 0 a 20, con hasta 2 decimales (por ejemplo, 0 o 10.5).';
   }
@@ -123,6 +150,9 @@ export function validateAssignment(
       instructions,
       dueAt,
       noSubmissionGrade: grade,
+      ...(literal
+        ? { noSubmissionLiteral: (input.noSubmissionLiteral || null) as NoSubmissionLiteral | null }
+        : {}),
       maxSizeBytes: mib * MIB,
       allowLate: input.allowLate,
     },
@@ -157,15 +187,19 @@ export function isoToLocal(iso: string): string {
 }
 
 /** Valores iniciales del formulario de edición a partir de la tarea publicada. */
-export function assignmentToInput(a: {
-  periodId: string;
-  title: string;
-  instructions: string;
-  dueAt: string;
-  noSubmissionGrade: string;
-  maxSizeBytes: number;
-  allowLate: boolean;
-}): NewAssignmentInput {
+export function assignmentToInput(
+  a: {
+    periodId: string;
+    title: string;
+    instructions: string;
+    dueAt: string;
+    noSubmissionGrade: string;
+    noSubmissionLiteral?: string | null;
+    maxSizeBytes: number;
+    allowLate: boolean;
+  },
+  literalScale = false,
+): NewAssignmentInput {
   return {
     periodId: a.periodId,
     title: a.title,
@@ -174,6 +208,9 @@ export function assignmentToInput(a: {
     noSubmissionGrade: String(Number(a.noSubmissionGrade)),
     maxSizeMiB: String(Math.max(1, Math.round(a.maxSizeBytes / MIB))),
     allowLate: a.allowLate,
+    ...(literalScale
+      ? { literalScale: true, noSubmissionLiteral: a.noSubmissionLiteral ?? '' }
+      : {}),
   };
 }
 
@@ -200,7 +237,11 @@ export function buildAssignmentPatch(
   if (!o || b.title !== o.title) patch.title = b.title;
   if (!o || b.instructions !== o.instructions) patch.instructions = b.instructions;
   if (!same) patch.dueAt = b.dueAt;
-  if (!o || Number(b.noSubmissionGrade) !== Number(o.noSubmissionGrade)) {
+  if (input.literalScale) {
+    if ((b.noSubmissionLiteral ?? null) !== (original.noSubmissionLiteral || null)) {
+      patch.noSubmissionLiteral = b.noSubmissionLiteral ?? null;
+    }
+  } else if (!o || Number(b.noSubmissionGrade) !== Number(o.noSubmissionGrade)) {
     patch.noSubmissionGrade = b.noSubmissionGrade;
   }
   if (!o || b.maxSizeBytes !== o.maxSizeBytes) patch.maxSizeBytes = b.maxSizeBytes;
@@ -225,5 +266,10 @@ export function isAssignmentInput(v: unknown): v is NewAssignmentInput {
     'noSubmissionGrade',
     'maxSizeMiB',
   ];
-  return strings.every((k) => typeof o[k] === 'string') && typeof o.allowLate === 'boolean';
+  return (
+    strings.every((k) => typeof o[k] === 'string') &&
+    typeof o.allowLate === 'boolean' &&
+    (o.literalScale === undefined || typeof o.literalScale === 'boolean') &&
+    (o.noSubmissionLiteral === undefined || isLiteralOption(o.noSubmissionLiteral))
+  );
 }

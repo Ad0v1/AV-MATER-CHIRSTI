@@ -206,3 +206,69 @@ describe('ReceiptView (RF-39)', () => {
     expect(texts.join('')).toContain('Con retraso de 2 h 5 min.');
   });
 });
+
+describe('Tareas por nivel (escala literal e INICIAL sin entrega)', () => {
+  const ctx = (level: string) => (path: string) =>
+    path.endsWith('/context')
+      ? { periods: [], currentPeriodId: null, section: { level } }
+      : undefined;
+
+  it('PRIMARIA: el formulario recibe el nivel y la NE se muestra en literal', async () => {
+    const r = await renderPage(
+      'TEACHER',
+      [{ ...assignment(true), noSubmissionLiteral: 'B' }],
+      ctx('PRIMARIA'),
+    );
+    const f = r.out.find((x) => x.type === leaves.CreateAssignmentForm);
+    expect(f?.props).toMatchObject({ level: 'PRIMARIA' });
+    expect(r.texts.join('')).toContain('Nota si no entrega (NE = no entregó): B');
+  });
+
+  it('INICIAL: el estudiante no ve el formulario de entrega', async () => {
+    const r = await renderPage('STUDENT', [assignment(true)], ctx('INICIAL'));
+    expect(r.has(leaves.SubmitForm)).toBe(false);
+    expect(r.texts.join('')).toContain('Actividad sin entrega');
+  });
+
+  it('SECUNDARIA: el estudiante sí ve el formulario de entrega', async () => {
+    const r = await renderPage('STUDENT', [assignment(true)], ctx('SECUNDARIA'));
+    expect(r.has(leaves.SubmitForm)).toBe(true);
+  });
+});
+
+describe('INICIAL: el docente no ve la tabla de entregas', () => {
+  it('no consulta /submissions ni muestra «Entregas»', async () => {
+    const r = await renderPage('TEACHER', [assignment(true)], (path) =>
+      path.endsWith('/context')
+        ? { periods: [], currentPeriodId: null, section: { level: 'INICIAL' } }
+        : undefined,
+    );
+    expect(api.get.mock.calls.some(([p]) => String(p).endsWith('/submissions'))).toBe(false);
+    expect(r.texts.join('')).not.toContain('Entregas');
+  });
+});
+
+describe('Subtítulo por nivel', () => {
+  const ctx = (level: string) => (path: string) =>
+    path.endsWith('/context')
+      ? { periods: [], currentPeriodId: null, section: { level } }
+      : undefined;
+
+  it('INICIAL: «Actividades del curso» sin PDF ni hora del servidor', async () => {
+    for (const role of ['TEACHER', 'STUDENT']) {
+      const text = (await renderPage(role, [], ctx('INICIAL'))).texts.join('');
+      expect(text).toContain('Actividades del curso.');
+      expect(text).not.toContain('PDF');
+      expect(text).not.toContain('hora de entrega');
+    }
+  });
+
+  it('PRIMARIA y SECUNDARIA: mantienen el subtítulo con entrega en PDF', async () => {
+    for (const level of ['PRIMARIA', 'SECUNDARIA']) {
+      const text = (await renderPage('STUDENT', [], ctx(level))).texts.join('');
+      expect(text).toContain(
+        'Tareas del curso con entrega en PDF. La hora de entrega es la del servidor.',
+      );
+    }
+  });
+});

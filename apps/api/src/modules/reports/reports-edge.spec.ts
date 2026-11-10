@@ -34,6 +34,8 @@ function data(over: Partial<SectionReportData> = {}): SectionReportData {
     year: 2026,
     course: 'Matemática',
     teacher: 'Docente',
+    level: 'SECUNDARIA',
+    gradingScale: 'NUMERIC_0_20',
     gradeLevel: 3,
     sectionCode: 'A',
     period: 'Bimestre 1',
@@ -64,7 +66,11 @@ function book(over: { students?: unknown[]; assignments?: unknown[]; teacher?: u
     year: 2026,
     teacher: over.teacher === undefined ? { id: 't', fullName: 'Profe' } : over.teacher,
     view: {
-      courseSection: { course: { name: 'Matemática' }, section: { gradeLevel: 3, code: 'A' } },
+      courseSection: {
+        gradingScale: 'NUMERIC_0_20',
+        course: { name: 'Matemática' },
+        section: { level: 'SECUNDARIA', gradeLevel: 3, code: 'A' },
+      },
       period: { label: 'Bimestre 1' },
       dashboard: {
         riskLiteral: 'C',
@@ -340,7 +346,10 @@ describe('XLSX: NE, EXO y vacías; nunca comentario ni motivo', () => {
 
   it('D-049: toSectionReportData y los archivos no llevan comentario ni exemptionReason', async () => {
     const view = {
-      courseSection: { course: { name: 'Mat' }, section: { gradeLevel: 1, code: 'A' } },
+      courseSection: {
+        course: { name: 'Mat' },
+        section: { level: 'SECUNDARIA', gradeLevel: 1, code: 'A' },
+      },
       period: { label: 'P1' },
       dashboard: { riskLiteral: 'C' },
       assignments: [{ title: 'T' }],
@@ -483,7 +492,7 @@ describe('RF-59: ZIP masivo', () => {
   const refs = (n: number) =>
     Array.from({ length: n }, (_, i) => ({
       id: `c${i}`,
-      section: { gradeLevel: 1 + (i % 5), code: `S${Math.floor(i / 5)}` },
+      section: { level: 'SECUNDARIA', gradeLevel: 1 + (i % 5), code: `S${Math.floor(i / 5)}` },
     }));
   const started = (format: string) =>
     ({
@@ -523,8 +532,8 @@ describe('RF-59: ZIP masivo', () => {
     );
     const entries = readZip(c.out.buf!);
     expect([...entries.keys()].sort()).toEqual([
-      '1.º S0/Matemática - Bimestre 1.pdf',
-      '2.º S0/Matemática - Bimestre 1.pdf',
+      '1.° Secundaria S0/Matemática - Bimestre 1.pdf',
+      '2.° Secundaria S0/Matemática - Bimestre 1.pdf',
     ]);
     for (const f of entries.values()) expect(f.subarray(0, 5).toString()).toBe('%PDF-');
     expect(res.bytes).toBe(c.out.buf!.length);
@@ -595,6 +604,8 @@ describe('RF-59: ZIP masivo', () => {
 describe('RF-60: dashboard', () => {
   function item(grade: number, sectionId: string, code: string, ne: number): DashboardInput {
     return {
+      level: 'SECUNDARIA',
+      gradingScale: 'NUMERIC_0_20',
       gradeLevel: grade,
       sectionId,
       code,

@@ -2,6 +2,7 @@
 // de la propuesta (INFORME 1 de F6, regla B). Lógica pura (sin Prisma), probada en
 // promotion-policy.spec.ts.
 import { createHash } from 'node:crypto';
+import { gradeLabel, nextGrade, type EducationLevel } from '@aula/shared';
 import type { UserStatus } from '../../../generated/prisma/enums.js';
 
 export const PROMOTION_ACTIONS = ['PROMOTE', 'REPEAT', 'GRADUATE', 'EXCLUDE'] as const;
@@ -9,7 +10,21 @@ export type PromotionAction = (typeof PROMOTION_ACTIONS)[number];
 
 export type PromotionFlag = 'INACTIVE' | 'WITHDRAWN' | 'NO_TARGET_SECTION' | 'ALREADY_ENROLLED';
 
-export const MAX_GRADE = 5;
+/**
+ * Tres niveles (09/11/2026): el tope sale del catálogo de @aula/shared. INICIAL 5 años → PRIMARIA 1.°,
+ * PRIMARIA 6.° → SECUNDARIA 1.° (PROMOTE cambia de nivel) y SECUNDARIA 5.° egresa (GRADUATE).
+ * Si una sección no trae `level` se asume SECUNDARIA (valor por defecto del esquema).
+ */
+export type LevelGrade = { level: EducationLevel; gradeLevel: number };
+
+const levelOf = (s: { level?: EducationLevel }): EducationLevel => s.level ?? 'SECUNDARIA';
+const sameLevelGrade = (s: { level?: EducationLevel; gradeLevel: number }, t: LevelGrade) =>
+  levelOf(s) === t.level && s.gradeLevel === t.gradeLevel;
+
+/** Verdadero si desde este grado se egresa (último grado de secundaria). */
+export function isFinalGrade(from: { level?: EducationLevel; gradeLevel: number }): boolean {
+  return nextGrade(levelOf(from), from.gradeLevel) === null;
+}
 
 /** Matrícula vigente del año origen, con su estudiante y su sección. */
 export type SourceEnrollment = {
@@ -17,18 +32,23 @@ export type SourceEnrollment = {
   studentId: string;
   fullName: string;
   status: UserStatus;
-  section: { id: string; gradeLevel: number; code: string };
+  section: { id: string; level?: EducationLevel; gradeLevel: number; code: string };
 };
 
 /** Sección activa del año destino. */
-export type TargetSection = { id: string; gradeLevel: number; code: string };
+export type TargetSection = {
+  id: string;
+  level?: EducationLevel;
+  gradeLevel: number;
+  code: string;
+};
 
 export type PromotionItem = {
   enrollmentId: string;
   studentId: string;
   fullName: string;
   status: UserStatus;
-  from: { sectionId: string; gradeLevel: number; code: string };
+  from: { sectionId: string; level: EducationLevel; gradeLevel: number; code: string };
   proposed: { action: PromotionAction; sectionId: string | null };
   flags: PromotionFlag[];
 };
@@ -44,18 +64,22 @@ export type PromotionSummary = {
 
 export type Proposal = { items: PromotionItem[]; summary: PromotionSummary; canConfirm: boolean };
 
+const LEVEL_ORDER: Record<EducationLevel, number> = { INICIAL: 0, PRIMARIA: 1, SECUNDARIA: 2 };
+
 const compareText = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
 
 /**
- * Sección propuesta en `grade`: la del mismo código si existe; si no, la única de ese grado;
- * si hay varias (o ninguna), null.
+ * Sección propuesta en `grade` (número de SECUNDARIA o nivel+grado): la del mismo código si
+ * existe; si no, la única de ese nivel y grado; si hay varias (o ninguna), null.
  */
 export function pickSection(
   sections: readonly TargetSection[],
-  grade: number,
+  grade: number | LevelGrade,
   code: string,
 ): string | null {
-  const ofGrade = sections.filter((s) => s.gradeLevel === grade);
+  const target: LevelGrade =
+    typeof grade === 'number' ? { level: 'SECUNDARIA', gradeLevel: grade } : grade;
+  const ofGrade = sections.filter((s) => sameLevelGrade(s, target));
   const same = ofGrade.find((s) => s.code === code);
   if (same) return same.id;
   return ofGrade.length === 1 ? ofGrade[0].id : null;
@@ -63,20 +87,24 @@ export function pickSection(
 
 /** Acciones permitidas para una fila (regla B6). */
 export function allowedActions(
-  item: Pick<PromotionItem, 'flags'> & { from: { gradeLevel: number } },
+  item: Pick<PromotionItem, 'flags'> & { from: { level?: EducationLevel; gradeLevel: number } },
 ): PromotionAction[] {
   if (item.flags.includes('WITHDRAWN') || item.flags.includes('ALREADY_ENROLLED')) {
     return ['EXCLUDE'];
   }
-  return item.from.gradeLevel >= MAX_GRADE
+  return isFinalGrade(item.from)
     ? ['GRADUATE', 'REPEAT', 'EXCLUDE']
     : ['PROMOTE', 'REPEAT', 'EXCLUDE'];
 }
 
-/** Grado de la sección destino que exige la acción, o null si la acción no lleva sección. */
-export function targetGradeFor(action: PromotionAction, fromGrade: number): number | null {
-  if (action === 'PROMOTE') return fromGrade + 1;
-  if (action === 'REPEAT') return fromGrade;
+/** Nivel y grado de la sección destino que exige la acción, o null si no lleva sección. */
+export function targetGradeFor(
+  action: PromotionAction,
+  from: { level?: EducationLevel; gradeLevel: number },
+): LevelGrade | null {
+  const level = levelOf(from);
+  if (action === 'PROMOTE') return nextGrade(level, from.gradeLevel);
+  if (action === 'REPEAT') return { level, gradeLevel: from.gradeLevel };
   return null;
 }
 
@@ -103,8 +131,8 @@ export function summarize(
 }
 
 /**
- * Propuesta (regla B5): grados 1..4 → PROMOTE a grado+1 (sección por pickSection o null con
- * NO_TARGET_SECTION); grado 5 → GRADUATE; WITHDRAWN o ALREADY_ENROLLED → EXCLUDE; INACTIVE →
+ * Propuesta (regla B5): PROMOTE al grado siguiente según el nivel (sección por pickSection o null
+ * con NO_TARGET_SECTION); SECUNDARIA 5.° → GRADUATE; WITHDRAWN o ALREADY_ENROLLED → EXCLUDE; INACTIVE →
  * igual que un activo, con la marca. Orden: grado, código de sección y nombre.
  */
 export function proposePromotion(
@@ -119,18 +147,22 @@ export function proposePromotion(
     if (alreadyEnrolledStudentIds.has(e.studentId)) flags.push('ALREADY_ENROLLED');
     const from = {
       sectionId: e.section.id,
+      level: levelOf(e.section),
       gradeLevel: e.section.gradeLevel,
       code: e.section.code,
     };
     let proposed: PromotionItem['proposed'];
     if (flags.includes('WITHDRAWN') || flags.includes('ALREADY_ENROLLED')) {
       proposed = { action: 'EXCLUDE', sectionId: null };
-    } else if (from.gradeLevel >= MAX_GRADE) {
-      proposed = { action: 'GRADUATE', sectionId: null };
     } else {
-      const sectionId = pickSection(targetSections, from.gradeLevel + 1, from.code);
-      if (sectionId === null) flags.push('NO_TARGET_SECTION');
-      proposed = { action: 'PROMOTE', sectionId };
+      const next = nextGrade(from.level, from.gradeLevel);
+      if (next === null) {
+        proposed = { action: 'GRADUATE', sectionId: null };
+      } else {
+        const sectionId = pickSection(targetSections, next, from.code);
+        if (sectionId === null) flags.push('NO_TARGET_SECTION');
+        proposed = { action: 'PROMOTE', sectionId };
+      }
     }
     return {
       enrollmentId: e.enrollmentId,
@@ -144,6 +176,7 @@ export function proposePromotion(
   });
   items.sort(
     (a, b) =>
+      LEVEL_ORDER[a.from.level] - LEVEL_ORDER[b.from.level] ||
       a.from.gradeLevel - b.from.gradeLevel ||
       compareText(a.from.code, b.from.code) ||
       a.fullName.localeCompare(b.fullName, 'es') ||
@@ -201,7 +234,7 @@ export function validateDecisions(
       issues.push({ path, message: 'La acción no está permitida para esta matrícula' });
       return;
     }
-    const grade = targetGradeFor(d.action, item.from.gradeLevel);
+    const grade = targetGradeFor(d.action, item.from);
     if (grade === null) {
       if (d.sectionId !== undefined) {
         issues.push({ path, message: 'Esta acción no lleva sección de destino' });
@@ -224,8 +257,11 @@ export function validateDecisions(
       issues.push({ path, message: 'La sección de destino no es una sección activa del año' });
       return;
     }
-    if (section.gradeLevel !== grade) {
-      issues.push({ path, message: `La sección de destino debe ser de ${grade}.º grado` });
+    if (!sameLevelGrade(section, grade)) {
+      issues.push({
+        path,
+        message: `La sección de destino debe ser de ${gradeLabel(grade.level, grade.gradeLevel)}`,
+      });
       return;
     }
     valid.push({
@@ -248,7 +284,7 @@ export function validateDecisions(
 
 /**
  * Huella de la propuesta (SHA-256 en hex): matrículas vigentes del origen (enrollmentId,
- * studentId, sectionId, status), secciones activas del destino (id, gradeLevel) y estudiantes
+ * studentId, sectionId, status), secciones activas del destino (id, level, gradeLevel) y estudiantes
  * que ya tienen matrícula vigente en el destino. Independiente del orden de entrada.
  */
 export function promotionFingerprint(
@@ -256,14 +292,14 @@ export function promotionFingerprint(
     SourceEnrollment,
     'enrollmentId' | 'studentId' | 'status' | 'section'
   >[],
-  targetSections: readonly Pick<TargetSection, 'id' | 'gradeLevel'>[],
+  targetSections: readonly Pick<TargetSection, 'id' | 'level' | 'gradeLevel'>[],
   alreadyEnrolledStudentIds: ReadonlySet<string> = new Set(),
 ): string {
   const lines = [
     ...enrollments
       .map((e) => `E|${e.enrollmentId}|${e.studentId}|${e.section.id}|${e.status}`)
       .sort(),
-    ...targetSections.map((s) => `S|${s.id}|${s.gradeLevel}`).sort(),
+    ...targetSections.map((s) => `S|${s.id}|${levelOf(s)}|${s.gradeLevel}`).sort(),
     ...[...alreadyEnrolledStudentIds].map((id) => `A|${id}`).sort(),
   ];
   return createHash('sha256').update(lines.join('\n')).digest('hex');

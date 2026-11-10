@@ -645,12 +645,15 @@ describe('NotificationRecipients (RF-53)', () => {
     prisma.announcement.findFirst.mockResolvedValueOnce({
       academicYearId: 'y',
       scope: 'GRADE',
+      level: 'PRIMARIA',
       gradeLevel: 3,
       courseSection: null,
     } as never);
     await r.forAnnouncement('x');
     expect(prisma.section.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { academicYearId: 'y', isActive: true, gradeLevel: 3 } }),
+      expect.objectContaining({
+        where: { academicYearId: 'y', isActive: true, level: 'PRIMARIA', gradeLevel: 3 },
+      }),
     );
     prisma.announcement.findFirst.mockResolvedValueOnce({
       academicYearId: 'y',
@@ -668,5 +671,24 @@ describe('NotificationRecipients (RF-53)', () => {
     await r.forAnnouncement('x');
     const last = prisma.enrollment.findMany.mock.calls.at(-1) as unknown as [Where];
     expect(last[0].where.sectionId).toEqual({ in: ['s9'] });
+  });
+
+  it('forAnnouncement GRADE con level o gradeLevel nulo → audiencia vacía sin consultar (fallo cerrado)', async () => {
+    const { r, prisma } = build();
+    for (const bad of [
+      { level: null, gradeLevel: 3 },
+      { level: 'PRIMARIA', gradeLevel: null },
+      { level: null, gradeLevel: null },
+    ]) {
+      prisma.announcement.findFirst.mockResolvedValueOnce({
+        academicYearId: 'y',
+        scope: 'GRADE',
+        ...bad,
+        courseSection: null,
+      } as never);
+      expect(await r.forAnnouncement('x')).toEqual([]);
+    }
+    expect(prisma.section.findMany).not.toHaveBeenCalled();
+    expect(prisma.enrollment.findMany).not.toHaveBeenCalled();
   });
 });

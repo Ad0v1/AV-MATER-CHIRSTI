@@ -6,6 +6,7 @@ import {
   distributionTotal,
   gradebookHref,
   gradeLevels,
+  levelsOf,
   literalMeaning,
   isExportRequest,
   parseFilters,
@@ -19,27 +20,51 @@ const S = '0190a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5d';
 
 describe('filtros de /admin/reportes', () => {
   it('acepta solo ids y grados válidos', () => {
-    expect(parseFilters({ anio: Y, periodo: P, grado: '3', seccion: S })).toEqual({
+    expect(
+      parseFilters({ anio: Y, periodo: P, nivel: 'PRIMARIA', grado: '3', seccion: S }),
+    ).toEqual({
       yearId: Y,
       periodId: P,
+      level: 'PRIMARIA',
       gradeLevel: 3,
       sectionId: S,
     });
     expect(parseFilters({ anio: 'x', periodo: ['<s>'], grado: '13', seccion: '' })).toEqual({
       yearId: null,
       periodId: null,
+      level: null,
       gradeLevel: null,
       sectionId: null,
     });
-    expect(parseFilters({ grado: '2.5' }).gradeLevel).toBeNull();
+    expect(parseFilters({ nivel: 'SECUNDARIA', grado: '2.5' }).gradeLevel).toBeNull();
+    // Tres niveles: sin nivel no hay grado; el grado debe existir en el nivel.
+    expect(parseFilters({ grado: '3' }).gradeLevel).toBeNull();
+    expect(parseFilters({ nivel: 'SECUNDARIA', grado: '6' }).gradeLevel).toBeNull();
+    expect(parseFilters({ nivel: 'INICIAL', grado: '5' })).toMatchObject({
+      level: 'INICIAL',
+      gradeLevel: 5,
+    });
+    expect(parseFilters({ nivel: 'superior' }).level).toBeNull();
   });
 
   it('arma la query del listado sin el período', () => {
-    expect(courseSectionsQuery({ yearId: Y, periodId: P, gradeLevel: 1, sectionId: S })).toBe(
-      `?academicYearId=${Y}&gradeLevel=1&sectionId=${S}`,
-    );
     expect(
-      courseSectionsQuery({ yearId: null, periodId: null, gradeLevel: null, sectionId: null }),
+      courseSectionsQuery({
+        yearId: Y,
+        periodId: P,
+        level: 'SECUNDARIA',
+        gradeLevel: 1,
+        sectionId: S,
+      }),
+    ).toBe(`?academicYearId=${Y}&level=SECUNDARIA&gradeLevel=1&sectionId=${S}`);
+    expect(
+      courseSectionsQuery({
+        yearId: null,
+        periodId: null,
+        level: null,
+        gradeLevel: null,
+        sectionId: null,
+      }),
     ).toBe('');
   });
 
@@ -53,14 +78,17 @@ describe('filtros de /admin/reportes', () => {
     expect(pickPeriod(null, [])).toBeNull();
   });
 
-  it('grados distintos en orden', () => {
-    expect(
-      gradeLevels([
-        { id: '1', gradeLevel: 3, code: 'A' },
-        { id: '2', gradeLevel: 1, code: 'B' },
-        { id: '3', gradeLevel: 3, code: 'B' },
-      ]),
-    ).toEqual([1, 3]);
+  it('grados distintos del nivel, en orden, y niveles presentes', () => {
+    const sections = [
+      { id: '1', level: 'SECUNDARIA' as const, gradeLevel: 3, code: 'A' },
+      { id: '2', level: 'SECUNDARIA' as const, gradeLevel: 1, code: 'B' },
+      { id: '3', level: 'SECUNDARIA' as const, gradeLevel: 3, code: 'B' },
+      { id: '4', level: 'INICIAL' as const, gradeLevel: 5, code: 'C' },
+    ];
+    expect(gradeLevels(sections, 'SECUNDARIA')).toEqual([1, 3]);
+    expect(gradeLevels(sections, 'INICIAL')).toEqual([5]);
+    expect(gradeLevels(sections, 'PRIMARIA')).toEqual([]);
+    expect(levelsOf(sections)).toEqual(['INICIAL', 'SECUNDARIA']);
   });
 
   it('enlace al registro con el período codificado', () => {
@@ -79,6 +107,15 @@ describe('presentación del dashboard', () => {
     expect(percent(0, 0)).toBe('0 %');
     const b = { distribution: { AD: 1, A: 2 }, noGrades: 1 } as unknown as DashboardBucket;
     expect(distributionTotal(b)).toBe(4);
+    // Escala literal: sin promedio; el total cuenta logros.
+    expect(averageText({ status: 'LITERAL_SCALE', counted: 0, exempt: 0 })).toBe('Escala literal');
+    const lit = {
+      gradingScale: 'LITERAL_ADABC',
+      distribution: { AD: 9 },
+      achievements: { AD: 1, C: 2 },
+      noGrades: 1,
+    } as unknown as DashboardBucket;
+    expect(distributionTotal(lit)).toBe(4);
   });
 });
 
@@ -116,11 +153,11 @@ describe('isExportRequest', () => {
 });
 
 describe('límites de reports.ts (RF-57..60)', () => {
-  it('parseFilters: grados 1 y 12 pasan; 0, 13, -1, vacío, NaN y decimales se ignoran', () => {
-    expect(parseFilters({ grado: '1' }).gradeLevel).toBe(1);
-    expect(parseFilters({ grado: '12' }).gradeLevel).toBe(12);
-    for (const g of ['0', '13', '-1', '', 'abc', '1.5', '1e1x', ' ']) {
-      expect(parseFilters({ grado: g }).gradeLevel).toBeNull();
+  it('parseFilters: con PRIMARIA pasan 1 y 6; 0, 7, 12, -1, vacío, NaN y decimales se ignoran', () => {
+    expect(parseFilters({ nivel: 'PRIMARIA', grado: '1' }).gradeLevel).toBe(1);
+    expect(parseFilters({ nivel: 'PRIMARIA', grado: '6' }).gradeLevel).toBe(6);
+    for (const g of ['0', '7', '12', '13', '-1', '', 'abc', '1.5', '1e1x', ' ']) {
+      expect(parseFilters({ nivel: 'PRIMARIA', grado: g }).gradeLevel).toBeNull();
     }
     expect(parseFilters({}).gradeLevel).toBeNull();
     expect(parseFilters({ grado: undefined }).gradeLevel).toBeNull();
@@ -142,10 +179,31 @@ describe('límites de reports.ts (RF-57..60)', () => {
 
   it('courseSectionsQuery: solo con filtros presentes y el grado incluido', () => {
     expect(
-      courseSectionsQuery({ yearId: null, periodId: P, gradeLevel: 12, sectionId: null }),
-    ).toBe('?gradeLevel=12');
+      courseSectionsQuery({
+        yearId: null,
+        periodId: P,
+        level: 'PRIMARIA',
+        gradeLevel: 6,
+        sectionId: null,
+      }),
+    ).toBe('?level=PRIMARIA&gradeLevel=6');
     expect(
-      courseSectionsQuery({ yearId: Y, periodId: null, gradeLevel: null, sectionId: null }),
+      courseSectionsQuery({
+        yearId: null,
+        periodId: P,
+        level: null,
+        gradeLevel: 3,
+        sectionId: null,
+      }),
+    ).toBe('');
+    expect(
+      courseSectionsQuery({
+        yearId: Y,
+        periodId: null,
+        level: null,
+        gradeLevel: null,
+        sectionId: null,
+      }),
     ).toBe(`?academicYearId=${Y}`);
   });
 
@@ -155,12 +213,15 @@ describe('límites de reports.ts (RF-57..60)', () => {
   });
 
   it('gradeLevels: vacío y repetidos', () => {
-    expect(gradeLevels([])).toEqual([]);
+    expect(gradeLevels([], 'SECUNDARIA')).toEqual([]);
     expect(
-      gradeLevels([
-        { id: '1', gradeLevel: 2, code: 'A' },
-        { id: '2', gradeLevel: 2, code: 'B' },
-      ]),
+      gradeLevels(
+        [
+          { id: '1', level: 'SECUNDARIA', gradeLevel: 2, code: 'A' },
+          { id: '2', level: 'SECUNDARIA', gradeLevel: 2, code: 'B' },
+        ],
+        'SECUNDARIA',
+      ),
     ).toEqual([2]);
   });
 

@@ -1,3 +1,4 @@
+import type { EducationLevel } from '@aula/shared';
 // Vistas HTTP del módulo users (Decisión 3). Solo ADMIN las recibe (incluyen el correo).
 import type { EnrollmentEndReason, UserRole, UserStatus } from '../../generated/prisma/enums.js';
 import { marker, toIso } from '../academic/academic.mappers.js';
@@ -24,7 +25,7 @@ export type UserView = {
 // RF-87: NONE = sin contraseña, PENDING = no cambió la inicial, READY = ya cambió la contraseña.
 export type CredentialStatus = 'NONE' | 'PENDING' | 'READY';
 
-export type SectionRef = { id: string; gradeLevel: number; code: string };
+export type SectionRef = { id: string; level: EducationLevel; gradeLevel: number; code: string };
 
 export type UserListItem = Omit<UserView, 'createdAt' | 'updatedAt' | 'phone' | 'address'> & {
   currentSection: SectionRef | null;
@@ -90,6 +91,7 @@ export const toUserView = (u: UserRow): UserView => ({
 
 export const sectionRef = (s: SectionRef): SectionRef => ({
   id: s.id,
+  level: s.level,
   gradeLevel: s.gradeLevel,
   code: s.code,
 });
@@ -99,6 +101,7 @@ export const enrollmentInclude = {
   section: {
     select: {
       id: true,
+      level: true,
       gradeLevel: true,
       code: true,
       academicYear: { select: { id: true, year: true } },

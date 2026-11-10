@@ -352,9 +352,9 @@ describe.skipIf(!process.env.DATABASE_URL)('API usuarios y matriculas F3 (e2e, M
       expect(res.body.items.every((u: Json) => u.currentSection.code === 'A')).toBe(true);
     });
 
-    it('RF-25: q=docente devuelve los 5 docentes del seed (sin distinguir mayusculas)', async () => {
+    it('RF-25: q=docente devuelve los 6 docentes del seed (sin distinguir mayusculas)', async () => {
       const res = await get('admin', '/users?q=DOCENTE').expect(200);
-      expect(res.body.total).toBe(5);
+      expect(res.body.total).toBe(6);
       expect(res.body.items.every((u: Json) => u.role === 'TEACHER')).toBe(true);
     });
 
@@ -390,7 +390,9 @@ describe.skipIf(!process.env.DATABASE_URL)('API usuarios y matriculas F3 (e2e, M
       await get('admin', '/users?q=a').expect(400);
       await get('admin', '/users?role=TEACHER&gradeLevel=3').expect(400);
       await get('admin', '/users?gradeLevel=3').expect(400);
-      await get('admin', '/users?role=STUDENT&gradeLevel=6').expect(400);
+      await get('admin', '/users?role=STUDENT&gradeLevel=6').expect(200);
+      await get('admin', '/users?level=SECUNDARIA&gradeLevel=6').expect(400);
+      await get('admin', '/users?level=INICIAL&gradeLevel=2').expect(400);
       await get('admin', '/users?role=NADIE').expect(400);
       await get('admin', '/users?foo=1').expect(400);
       await get('admin', '/users?role=STUDENT&sectionId=no-uuid').expect(400);
@@ -408,13 +410,50 @@ describe.skipIf(!process.env.DATABASE_URL)('API usuarios y matriculas F3 (e2e, M
       expect(res.body.guardians[0].guardian.id).toBe(ids.get('apoderado01'));
     });
 
-    it('RF-25: GET /users/:id de apoderado01 trae sus 2 estudiantes; docente sin extras', async () => {
+    it('RF-25: GET /users/:id de apoderado01 trae sus 3 estudiantes (uno es inicial03); docente sin extras', async () => {
       const g = await get('admin', `/users/${ids.get('apoderado01')}`).expect(200);
-      expect(g.body.students).toHaveLength(2);
+      expect(g.body.students).toHaveLength(3);
       const t = await get('admin', `/users/${ids.get('docente01')}`).expect(200);
       expect(t.body.students).toBeUndefined();
       expect(t.body.guardians).toBeUndefined();
       expect(t.body.currentEnrollment).toBeUndefined();
+    });
+
+    it('RF-18: los 4 niños de inicial no tienen correo, código ni credencial y no pueden iniciar sesión', async () => {
+      const kids = await prisma.user.findMany({
+        where: { fullName: { startsWith: 'Niño Ficticio de Inicial' } },
+        include: { localCredential: true },
+      });
+      expect(kids).toHaveLength(4);
+      for (const k of kids) {
+        expect(k).toMatchObject({
+          role: 'STUDENT',
+          email: null,
+          code: null,
+          localCredential: null,
+        });
+      }
+      await http()
+        .post(`${API}/auth/login`)
+        .send({ code: '0000000000', password: 'x' })
+        .expect(401);
+    });
+
+    it('Seguridad (tres niveles): reset de clave y corrección de DNI de un niño de inicial dan 422 sin crear login', async () => {
+      const kid = await prisma.user.findFirstOrThrow({
+        where: { fullName: { startsWith: 'Niño Ficticio de Inicial' } },
+      });
+      const r = await post('admin', `/users/${kid.id}/reset-password`).expect(422);
+      expect(r.body.error.code).toBe('STUDENT_WITHOUT_ACCOUNT');
+      await post('admin', `/users/${kid.id}/correct-dni`, { dni: '70000001' }).expect((res) =>
+        expect([400, 422]).toContain(res.status),
+      );
+      const after = await prisma.user.findUniqueOrThrow({
+        where: { id: kid.id },
+        include: { localCredential: true },
+      });
+      expect(after.code).toBeNull();
+      expect(after.localCredential).toBeNull();
     });
 
     it('RF-25: GET /users/:id con id invalido 400 y desconocido 404', async () => {
@@ -481,12 +520,12 @@ describe.skipIf(!process.env.DATABASE_URL)('API usuarios y matriculas F3 (e2e, M
       expect(a.body.total).toBe(1);
       expect(a.body.items[0]).toMatchObject({ isActive: true, revokedAt: null });
       const b = await get('admin', `/guardians/${ids.get('apoderado01')}/students`).expect(200);
-      expect(b.body.total).toBe(2);
+      expect(b.body.total).toBe(3);
       const c = await get(
         'admin',
         `/guardians/${ids.get('apoderado01')}/students?includeRevoked=true`,
       ).expect(200);
-      expect(c.body.total).toBe(2);
+      expect(c.body.total).toBe(3);
       await get('admin', `/guardians/${ids.get('estudiante01')}/students`).expect(422);
       await get('admin', `/students/${ids.get('apoderado01')}/guardians`).expect(422);
       await get('admin', `/guardians/${randomUUID()}/students`).expect(404);
@@ -1544,14 +1583,14 @@ describe.skipIf(!process.env.DATABASE_URL)('API usuarios y matriculas F3 (e2e, M
       expect(now).toMatchObject({
         years: 2,
         periods: 8,
-        sections: 7,
+        sections: 10,
         courses: 5,
-        courseSections: 30,
-        users: 68,
-        enrollments: 62,
-        currentEnrollments: 59,
-        links: 3,
-        activeLinks: 3,
+        courseSections: 40,
+        users: 94,
+        enrollments: 86,
+        currentEnrollments: 83,
+        links: 8,
+        activeLinks: 8,
       });
       expect(await prisma.user.count({ where: { email: { startsWith: 'qa-' } } })).toBe(0);
       expect(await prisma.academicYear.count({ where: { year: { gte: 2090 } } })).toBe(0);

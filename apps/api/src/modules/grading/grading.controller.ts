@@ -3,21 +3,25 @@ import { Roles } from '../../common/auth/roles.decorator.js';
 import { actorOf, currentUser, type RequestWithUser } from '../academic/request-user.js';
 import { ZodValidationPipe } from '../academic/zod-validation.pipe.js';
 import {
+  achievementInputSchema,
   gradebookQuerySchema,
   gradeInputSchema,
   idSchema,
   yearQuerySchema,
+  type AchievementInputDto,
   type GradebookQueryDto,
   type GradeInputDto,
   type YearQueryDto,
 } from './grading.dto.js';
 import type {
+  AchievementView,
   GradebookView,
   GradeSummaryView,
   GradeView,
   GuardianStudentsView,
   StudentGradesView,
 } from './grading.types.js';
+import { AchievementsService } from './achievements.service.js';
 import { GradebookReadService } from './gradebook-read.service.js';
 import { GradesService } from './grades.service.js';
 
@@ -28,7 +32,28 @@ export class GradingController {
   constructor(
     private readonly grades: GradesService,
     private readonly reads: GradebookReadService,
+    private readonly achievements: AchievementsService,
   ) {}
+
+  /** Logro del período en escala literal (INICIAL/PRIMARIA, decisión 2 del 09/11/2026). */
+  @Put('course-sections/:id/periods/:periodId/achievements/:enrollmentId')
+  @Roles('TEACHER', 'ADMIN')
+  putAchievement(
+    @Param('id', new ZodValidationPipe(idSchema)) courseSectionId: string,
+    @Param('periodId', new ZodValidationPipe(idSchema)) periodId: string,
+    @Param('enrollmentId', new ZodValidationPipe(idSchema)) enrollmentId: string,
+    @Body(new ZodValidationPipe(achievementInputSchema)) dto: AchievementInputDto,
+    @Req() req: RequestWithUser,
+  ): Promise<AchievementView> {
+    return this.achievements.put(
+      courseSectionId,
+      periodId,
+      enrollmentId,
+      dto,
+      currentUser(req),
+      actorOf(req),
+    );
+  }
 
   @Put('grades/:assignmentId/:enrollmentId')
   @Roles('TEACHER', 'ADMIN')

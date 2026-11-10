@@ -1,3 +1,4 @@
+import type { EducationLevel } from '@aula/shared';
 import { Injectable, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma/prisma.service.js';
 import { AcademicAccessService } from '../academic/academic-access.service.js';
@@ -27,7 +28,7 @@ export const REPORT_ERRORS = {
   },
   needsGradeFilter: {
     code: 'REPORT_NEEDS_GRADE_FILTER',
-    message: `El año tiene más de ${MAX_DASHBOARD_UNFILTERED} cursos-sección; elige un grado.`,
+    message: `El año tiene más de ${MAX_DASHBOARD_UNFILTERED} cursos-sección; elige un nivel o un grado.`,
   },
   tooMany: {
     code: 'REPORT_TOO_LARGE',
@@ -39,7 +40,13 @@ export interface CourseSectionRef {
   id: string;
   isActive: boolean;
   course: { id: string; name: string };
-  section: { id: string; gradeLevel: number; code: string; isActive: boolean };
+  section: {
+    id: string;
+    level: EducationLevel;
+    gradeLevel: number;
+    code: string;
+    isActive: boolean;
+  };
   teacher: { id: string; fullName: string } | null;
 }
 
@@ -80,16 +87,17 @@ export class ReportsDataService {
     return period;
   }
 
-  /** Cursos-sección del año, por grado, sección y curso. */
+  /** Cursos-sección del año, por nivel, grado, sección y curso. */
   courseSections(
     academicYearId: string,
-    filter: { gradeLevel?: number; sectionId?: string } = {},
+    filter: { level?: EducationLevel; gradeLevel?: number; sectionId?: string } = {},
   ): Promise<CourseSectionRef[]> {
     return this.prisma.courseSection.findMany({
       where: {
         ...(filter.sectionId ? { sectionId: filter.sectionId } : {}),
         section: {
           academicYearId,
+          ...(filter.level !== undefined ? { level: filter.level } : {}),
           ...(filter.gradeLevel !== undefined ? { gradeLevel: filter.gradeLevel } : {}),
         },
       },
@@ -97,10 +105,13 @@ export class ReportsDataService {
         id: true,
         isActive: true,
         course: { select: { id: true, name: true } },
-        section: { select: { id: true, gradeLevel: true, code: true, isActive: true } },
+        section: {
+          select: { id: true, level: true, gradeLevel: true, code: true, isActive: true },
+        },
         teacher: { select: { id: true, fullName: true } },
       },
       orderBy: [
+        { section: { level: 'asc' } },
         { section: { gradeLevel: 'asc' } },
         { section: { code: 'asc' } },
         { course: { name: 'asc' } },

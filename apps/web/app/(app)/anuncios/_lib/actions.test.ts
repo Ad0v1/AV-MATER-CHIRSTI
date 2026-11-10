@@ -61,31 +61,41 @@ describe('Server Actions de anuncios (RF-32)', () => {
     });
   });
 
-  it('RF-32: ADMIN INSTITUTION no envía grado; GRADE exige 1..5', async () => {
-    await createAdminAnnouncement('INSTITUTION', 3, 't', 'b');
+  it('RF-32: ADMIN INSTITUTION no envía grado; GRADE exige nivel y grado del nivel', async () => {
+    await createAdminAnnouncement('INSTITUTION', 'PRIMARIA', 3, 't', 'b');
     expect(api.post).toHaveBeenLastCalledWith('/announcements', {
       scope: 'INSTITUTION',
       title: 't',
       body: 'b',
     });
-    await createAdminAnnouncement('GRADE', '4', 't', 'b');
+    await createAdminAnnouncement('GRADE', 'PRIMARIA', '6', 't', 'b');
     expect(api.post).toHaveBeenLastCalledWith('/announcements', {
       scope: 'GRADE',
-      gradeLevel: 4,
+      level: 'PRIMARIA',
+      gradeLevel: 6,
       title: 't',
       body: 'b',
     });
     api.post.mockClear();
     for (const g of ['0', '6', '', undefined, 'x']) {
-      const r = await createAdminAnnouncement('GRADE', g, 't', 'b');
+      const r = await createAdminAnnouncement('GRADE', 'SECUNDARIA', g, 't', 'b');
       expect(r).toMatchObject({ ok: false, errors: { gradeLevel: expect.any(String) } });
+    }
+    // Inicial: 3..5 años; 1 no existe.
+    expect(await createAdminAnnouncement('GRADE', 'INICIAL', '1', 't', 'b')).toMatchObject({
+      ok: false,
+      errors: { gradeLevel: expect.any(String) },
+    });
+    for (const l of ['', 'BASICA', undefined]) {
+      const r = await createAdminAnnouncement('GRADE', l, '3', 't', 'b');
+      expect(r).toMatchObject({ ok: false, errors: { level: expect.any(String) } });
     }
     expect(api.post).not.toHaveBeenCalled();
   });
 
   it('RF-32: COURSE_SECTION u otro valor no se acepta en la acción de ADMIN', async () => {
     for (const s of ['COURSE_SECTION', 'ALL', undefined, 1]) {
-      expect((await createAdminAnnouncement(s, 1, 't', 'b')).ok).toBe(false);
+      expect((await createAdminAnnouncement(s, 'SECUNDARIA', 1, 't', 'b')).ok).toBe(false);
     }
     expect(api.post).not.toHaveBeenCalled();
   });

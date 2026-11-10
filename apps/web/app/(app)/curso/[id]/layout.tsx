@@ -4,7 +4,7 @@
 import { Suspense } from 'react';
 import { notFound } from 'next/navigation';
 import { CourseTabs } from '@/components/layout/course-tabs';
-import { sectionLabel } from '@/components/layout/course-nav-model';
+import { sectionLabel, type EducationLevel } from '@/components/layout/course-nav-model';
 import { ApiError } from '@/lib/api/errors';
 import { apiServer } from '@/lib/api/server';
 import { requireUser } from '@/lib/session';
@@ -13,7 +13,7 @@ type Context = {
   id: string;
   readOnly: boolean;
   academicYear: { year: number };
-  section: { gradeLevel: number; code: string };
+  section: { level?: EducationLevel; gradeLevel: number; code: string };
   course: { name: string };
   teacher: { fullName: string } | null;
 };

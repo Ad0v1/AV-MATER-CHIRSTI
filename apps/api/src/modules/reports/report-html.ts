@@ -1,8 +1,11 @@
 import { htmlText } from './report-text.js';
 import {
+  achievementText,
   averageLiteral,
   averageValue,
   cellValue,
+  isLiteralReport,
+  legendText,
   LOGO_MIMES,
   limaTimestamp,
   sectionText,
@@ -46,6 +49,7 @@ function logoTag(data: SectionReportData): string {
 const text = (v: number | string | null) => (v === null ? '—' : h(String(v)));
 
 export function buildSectionHtml(data: SectionReportData): string {
+  const literal = isLiteralReport(data);
   const heads = data.assignments.map((a) => `<th scope="col">${h(a.title)}</th>`).join('');
   const rows = data.students
     .map((s, i) => {
@@ -54,14 +58,16 @@ export function buildSectionHtml(data: SectionReportData): string {
       return (
         `<tr${s.atRisk ? ' class="risk"' : ''}><td>${i + 1}</td>` +
         `<th scope="row" class="name">${h(name)}</th>${cells}` +
-        `<td>${text(averageValue(s.average))}</td><td>${h(averageLiteral(s.average))}</td>` +
+        (literal
+          ? `<td>${h(achievementText(s.achievement))}</td>`
+          : `<td>${text(averageValue(s.average))}</td><td>${h(averageLiteral(s.average))}</td>`) +
         `<td>${s.atRisk ? 'Sí' : 'No'}</td></tr>`
       );
     })
     .join('');
   const empty =
     data.students.length === 0
-      ? `<tr><td colspan="${data.assignments.length + 5}">Sin estudiantes.</td></tr>`
+      ? `<tr><td colspan="${data.assignments.length + (literal ? 4 : 5)}">Sin estudiantes.</td></tr>`
       : '';
   return `<!DOCTYPE html>
 <html lang="es">
@@ -77,16 +83,16 @@ export function buildSectionHtml(data: SectionReportData): string {
 <dl>
 <dt>Curso</dt><dd>${h(data.course)}</dd>
 <dt>Docente</dt><dd>${h(data.teacher ?? 'Sin docente asignado')}</dd>
-<dt>Sección</dt><dd>${h(`${sectionText(data.gradeLevel, data.sectionCode)} (${data.year})`)}</dd>
+<dt>Sección</dt><dd>${h(`${sectionText(data.level, data.gradeLevel, data.sectionCode)} (${data.year})`)}</dd>
 <dt>Período</dt><dd>${h(data.period)}</dd>
 <dt>Generado</dt><dd>${h(limaTimestamp(data.generatedAt))}</dd>
 </dl>
 </div></header>
 <table>
-<thead><tr><th scope="col">N.º</th><th scope="col" class="name">Estudiante</th>${heads}<th scope="col">Promedio</th><th scope="col">Literal</th><th scope="col">En riesgo</th></tr></thead>
+<thead><tr><th scope="col">N.º</th><th scope="col" class="name">Estudiante</th>${heads}${literal ? '<th scope="col">Logro</th>' : '<th scope="col">Promedio</th><th scope="col">Literal</th>'}<th scope="col">En riesgo</th></tr></thead>
 <tbody>${rows}${empty}</tbody>
 </table>
-<p class="legend">${h(`NE: no entregó. EXO: exonerado. En riesgo: promedio con literal ${data.riskLiteral}.`)}</p>
+<p class="legend">${h(legendText(data))}</p>
 </body>
 </html>
 `;

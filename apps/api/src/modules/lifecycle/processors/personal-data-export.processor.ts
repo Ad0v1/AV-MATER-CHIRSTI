@@ -15,7 +15,8 @@ import {
 } from '../../jobs/index.js';
 
 /** Versión del formato del JSON: si cambia la forma, se sube (la lee quien atiende el pedido). */
-export const PERSONAL_DATA_FORMAT = 1;
+// 2 (09/11/2026, tres niveles): nivel en matrículas, literal en notas y logrosDelPeriodo.
+export const PERSONAL_DATA_FORMAT = 2;
 export const PERSONAL_DATA_FILE = 'datos-personales.json';
 
 const iso = (d: Date | null | undefined) => d?.toISOString() ?? null;
@@ -23,7 +24,8 @@ const iso = (d: Date | null | undefined) => d?.toISOString() ?? null;
 /**
  * Arma el JSON de datos personales de un estudiante (RF-63, U8, derecho ARCO): User, matrículas,
  * vínculos con apoderados, aceptaciones de la política, entregas (solo metadatos, sin los PDF) y
- * notas con comentario y exemptionReason. Del apoderado solo va el nombre: su correo es un dato
+ * notas con comentario y exemptionReason (valor numérico o literal AD/A/B/C según el nivel) y
+ * logros del período (PeriodAchievement, escala literal) con su comentario. Del apoderado solo va el nombre: su correo es un dato
  * de un tercero. null si el id no es de un estudiante.
  */
 export async function buildPersonalData(prisma: PrismaService, studentId: string, now: Date) {
@@ -42,7 +44,7 @@ export async function buildPersonalData(prisma: PrismaService, studentId: string
     },
   });
   if (!user || user.role !== 'STUDENT') return null;
-  const [enrollments, guardians, policies, versions, grades] = await Promise.all([
+  const [enrollments, guardians, policies, versions, grades, achievements] = await Promise.all([
     prisma.enrollment.findMany({
       where: { studentId },
       orderBy: { effectiveFrom: 'asc' },
@@ -53,7 +55,12 @@ export async function buildPersonalData(prisma: PrismaService, studentId: string
         endReason: true,
         isCurrent: true,
         section: {
-          select: { gradeLevel: true, code: true, academicYear: { select: { year: true } } },
+          select: {
+            level: true,
+            gradeLevel: true,
+            code: true,
+            academicYear: { select: { year: true } },
+          },
         },
       },
     }),
@@ -103,6 +110,7 @@ export async function buildPersonalData(prisma: PrismaService, studentId: string
       select: {
         state: true,
         value: true,
+        literal: true,
         comment: true,
         exemptionReason: true,
         source: true,
@@ -115,6 +123,18 @@ export async function buildPersonalData(prisma: PrismaService, studentId: string
             courseSection: { select: { course: { select: { name: true } } } },
           },
         },
+      },
+    }),
+    prisma.periodAchievement.findMany({
+      where: { enrollment: { studentId } },
+      orderBy: { gradedAt: 'asc' },
+      select: {
+        literal: true,
+        comment: true,
+        gradedAt: true,
+        updatedAt: true,
+        period: { select: { label: true } },
+        courseSection: { select: { course: { select: { name: true } } } },
       },
     }),
   ]);
@@ -136,6 +156,7 @@ export async function buildPersonalData(prisma: PrismaService, studentId: string
     matriculas: enrollments.map((e) => ({
       id: e.id,
       anio: e.section.academicYear.year,
+      nivel: e.section.level,
       grado: e.section.gradeLevel,
       seccion: e.section.code,
       desde: iso(e.effectiveFrom),
@@ -176,10 +197,19 @@ export async function buildPersonalData(prisma: PrismaService, studentId: string
       periodo: g.assignment.period.label,
       estado: g.state,
       valor: g.value === null ? null : Number(g.value),
+      literal: g.literal,
       comentario: g.comment,
       motivoDeExoneracion: g.exemptionReason,
       origen: g.source,
       calificadaEn: iso(g.gradedAt),
+    })),
+    logrosDelPeriodo: achievements.map((a) => ({
+      curso: a.courseSection.course.name,
+      periodo: a.period.label,
+      literal: a.literal,
+      comentario: a.comment,
+      calificadoEn: iso(a.gradedAt),
+      actualizadoEn: iso(a.updatedAt),
     })),
   };
 }

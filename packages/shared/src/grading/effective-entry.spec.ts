@@ -28,13 +28,19 @@ describe('resolveEffectiveEntry', () => {
         dueAt,
         now: after,
       }),
-    ).toEqual({ state: 'GRADED', value: '5.00', virtual: false, needsRegrade: false });
+    ).toEqual({
+      state: 'GRADED',
+      value: '5.00',
+      literal: null,
+      virtual: false,
+      needsRegrade: false,
+    });
   });
 
   it('RF-44 (A2): sin nota, sin entrega y vencida devuelve NE virtual con la nota NE de la tarea', () => {
     expect(
       resolveEffectiveEntry({ hasSubmission: false, dueAt, now: after, noSubmissionGrade: 5 }),
-    ).toEqual({ state: 'NE', value: '5.00', virtual: true, needsRegrade: false });
+    ).toEqual({ state: 'NE', value: '5.00', literal: null, virtual: true, needsRegrade: false });
   });
 
   it('RN-05: la NE virtual usa 0.00 si la tarea no configura nota NE', () => {
@@ -53,6 +59,7 @@ describe('resolveEffectiveEntry', () => {
     expect(resolveEffectiveEntry({ hasSubmission: false, dueAt, now: before })).toEqual({
       state: null,
       value: null,
+      literal: null,
       virtual: false,
       needsRegrade: false,
     });
@@ -76,7 +83,7 @@ describe('resolveEffectiveEntry', () => {
         dueAt,
         now: after,
       }),
-    ).toEqual({ state: 'NE', value: '0.00', virtual: false, needsRegrade: true });
+    ).toEqual({ state: 'NE', value: '0.00', literal: null, virtual: false, needsRegrade: true });
   });
 
   it('RF-45: NE guardada sin entrega no pide recalificar y manda sobre la virtual', () => {
@@ -88,7 +95,7 @@ describe('resolveEffectiveEntry', () => {
         now: after,
         noSubmissionGrade: '3',
       }),
-    ).toEqual({ state: 'NE', value: '8.50', virtual: false, needsRegrade: false });
+    ).toEqual({ state: 'NE', value: '8.50', literal: null, virtual: false, needsRegrade: false });
   });
 
   it('RN-07: EXEMPT guardada no lleva valor', () => {
@@ -99,7 +106,7 @@ describe('resolveEffectiveEntry', () => {
         dueAt,
         now: after,
       }),
-    ).toEqual({ state: 'EXEMPT', value: null, virtual: false, needsRegrade: false });
+    ).toEqual({ state: 'EXEMPT', value: null, literal: null, virtual: false, needsRegrade: false });
   });
 
   it('RN-01: una nota guardada inválida lanza INVALID_GRADE', () => {

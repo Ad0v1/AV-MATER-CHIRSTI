@@ -19,8 +19,11 @@ import { FOCUS_HEADING, focusIds } from '../../_lib/focus';
 import { formatInstant, sectionLabel, yearStatus } from '../../_lib/format';
 import type { List, SectionView, YearDetail } from '../../_lib/types';
 import { isUuid } from '../../_lib/validation';
+import type { EducationLevel } from '../../_lib/levels';
 import { ApiError } from '@/lib/api/errors';
 import { cn } from '@/lib/utils';
+
+const LEVEL_ORDER: Record<EducationLevel, number> = { INICIAL: 0, PRIMARIA: 1, SECUNDARIA: 2 };
 
 export const metadata = { title: 'Año académico' };
 
@@ -66,7 +69,10 @@ async function YearView({ params }: { params: Promise<{ anioId: string }> }) {
   const isClosed = !!year.closedAt;
   const openPeriods = year.periods.filter((p) => !p.closedAt).length;
   const sorted = [...sections.items].sort(
-    (a, b) => a.gradeLevel - b.gradeLevel || a.code.localeCompare(b.code, 'es'),
+    (a, b) =>
+      LEVEL_ORDER[a.level] - LEVEL_ORDER[b.level] ||
+      a.gradeLevel - b.gradeLevel ||
+      a.code.localeCompare(b.code, 'es'),
   );
 
   return (
@@ -178,7 +184,7 @@ async function YearView({ params }: { params: Promise<{ anioId: string }> }) {
                     tabIndex={-1}
                     className={cn('font-semibold', FOCUS_HEADING)}
                   >
-                    Sección {sectionLabel(s.gradeLevel, s.code)}
+                    Sección {sectionLabel(s.gradeLevel, s.code, s.level)}
                   </h3>
                   <StatusBadge tone={s.isActive ? 'active' : 'inactive'}>
                     {s.isActive ? 'Activa' : 'Inactiva'}

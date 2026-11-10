@@ -22,12 +22,15 @@ function setup(
     periodClosed?: boolean;
     dueAt?: string;
     lockedEnrollment?: Record<string, unknown> | null;
+    level?: 'INICIAL' | 'PRIMARIA' | 'SECUNDARIA';
+    noSubmissionLiteral?: 'AD' | 'A' | 'B' | 'C' | null;
   } = {},
 ) {
   const saved = (data: Record<string, unknown>) => ({
     id: 'g1',
     assignmentId: A,
     enrollmentId: E,
+    literal: null,
     comment: null,
     exemptionReason: null,
     gradedAt: new Date(),
@@ -71,7 +74,17 @@ function setup(
         effectiveTo: null,
       }),
     },
-    courseSection: { findUniqueOrThrow: vi.fn().mockResolvedValue({ sectionId: 'sec' }) },
+    courseSection: {
+      findUniqueOrThrow: vi.fn().mockResolvedValue({
+        sectionId: 'sec',
+        section: { level: opts.level ?? 'SECUNDARIA' },
+      }),
+    },
+    assignment: {
+      findUniqueOrThrow: vi
+        .fn()
+        .mockResolvedValue({ noSubmissionLiteral: opts.noSubmissionLiteral ?? null }),
+    },
     $transaction: vi.fn((fn: (t: typeof tx) => unknown) => fn(tx)),
   };
   const access = {
@@ -111,7 +124,7 @@ describe('GradesService.put', () => {
     const view = await service.put(
       A,
       E,
-      { state: 'GRADED', value: '15.00', comment: 'Buen trabajo' },
+      { state: 'GRADED', value: '15.00', literal: null, comment: 'Buen trabajo' },
       teacher,
       actor,
     );
@@ -134,6 +147,7 @@ describe('GradesService.put', () => {
         enrollmentId: E,
         state: 'NE',
         value: dec('2'),
+        literal: null,
         comment: null,
         exemptionReason: null,
         source: 'AUTO',
@@ -141,7 +155,13 @@ describe('GradesService.put', () => {
         updatedAt: new Date(),
       },
     });
-    await service.put(A, E, { state: 'GRADED', value: '14.00', comment: null }, teacher, actor);
+    await service.put(
+      A,
+      E,
+      { state: 'GRADED', value: '14.00', literal: null, comment: null },
+      teacher,
+      actor,
+    );
     expect(tx.grade.update).toHaveBeenCalledOnce();
     expect(audit.record.mock.calls[0][0]).toMatchObject({
       action: 'grading.grade.update',
@@ -157,6 +177,7 @@ describe('GradesService.put', () => {
         enrollmentId: E,
         state: 'GRADED',
         value: dec('14'),
+        literal: null,
         comment: null,
         exemptionReason: null,
         source: 'MANUAL',
@@ -167,7 +188,7 @@ describe('GradesService.put', () => {
     const view = await service.put(
       A,
       E,
-      { state: 'GRADED', value: '14.00', comment: null },
+      { state: 'GRADED', value: '14.00', literal: null, comment: null },
       teacher,
       actor,
     );
@@ -180,28 +201,46 @@ describe('GradesService.put', () => {
   it('RF-41: 422 NO_SUBMISSION sin entrega', async () => {
     const { service } = setup({ hasSubmission: false });
     await expect(
-      service.put(A, E, { state: 'GRADED', value: '10.00', comment: null }, teacher, actor),
+      service.put(
+        A,
+        E,
+        { state: 'GRADED', value: '10.00', literal: null, comment: null },
+        teacher,
+        actor,
+      ),
     ).rejects.toMatchObject({ status: 422, response: { code: 'NO_SUBMISSION' } });
   });
 
   it('RF-45: 422 NOT_OVERDUE con NE antes del plazo', async () => {
     const { service } = setup({ hasSubmission: false, dueAt: '2999-01-01T00:00:00.000Z' });
     await expect(
-      service.put(A, E, { state: 'NE', value: null, comment: null }, teacher, actor),
+      service.put(A, E, { state: 'NE', value: null, literal: null, comment: null }, teacher, actor),
     ).rejects.toMatchObject({ response: { code: 'NOT_OVERDUE' } });
   });
 
   it('RN-12: 422 ENROLLMENT_OUT_OF_SECTION con matrícula de otra sección', async () => {
     const { service } = setup({ sectionId: 'otra' });
     await expect(
-      service.put(A, E, { state: 'GRADED', value: '10.00', comment: null }, teacher, actor),
+      service.put(
+        A,
+        E,
+        { state: 'GRADED', value: '10.00', literal: null, comment: null },
+        teacher,
+        actor,
+      ),
     ).rejects.toMatchObject({ response: { code: 'ENROLLMENT_OUT_OF_SECTION' } });
   });
 
   it('RN-10/RF-50: 409 si el período se cierra a la vez (bloqueo FOR SHARE)', async () => {
     const { service } = setup({ periodClosed: true });
     await expect(
-      service.put(A, E, { state: 'GRADED', value: '10.00', comment: null }, teacher, actor),
+      service.put(
+        A,
+        E,
+        { state: 'GRADED', value: '10.00', literal: null, comment: null },
+        teacher,
+        actor,
+      ),
     ).rejects.toBeInstanceOf(ConflictException);
   });
 
@@ -209,7 +248,13 @@ describe('GradesService.put', () => {
     const { service, access } = setup();
     access.assertTeacherOf.mockRejectedValue(new ForbiddenException());
     await expect(
-      service.put(A, E, { state: 'GRADED', value: '10.00', comment: null }, teacher, actor),
+      service.put(
+        A,
+        E,
+        { state: 'GRADED', value: '10.00', literal: null, comment: null },
+        teacher,
+        actor,
+      ),
     ).rejects.toBeInstanceOf(ForbiddenException);
   });
 
@@ -225,7 +270,7 @@ describe('GradesService.put', () => {
       },
     });
     await expect(
-      service.put(A, E, { state: 'NE', value: null, comment: null }, teacher, actor),
+      service.put(A, E, { state: 'NE', value: null, literal: null, comment: null }, teacher, actor),
     ).rejects.toMatchObject({ response: { code: 'ENROLLMENT_NOT_ELIGIBLE' } });
     expect(tx.grade.create).not.toHaveBeenCalled();
   });
@@ -233,7 +278,13 @@ describe('GradesService.put', () => {
   it('RN-12: 404 si la matrícula desaparece y 422 si cambió de sección dentro de la transacción', async () => {
     const gone = setup({ lockedEnrollment: null });
     await expect(
-      gone.service.put(A, E, { state: 'GRADED', value: '10.00', comment: null }, teacher, actor),
+      gone.service.put(
+        A,
+        E,
+        { state: 'GRADED', value: '10.00', literal: null, comment: null },
+        teacher,
+        actor,
+      ),
     ).rejects.toMatchObject({ status: 404 });
     const moved = setup({
       lockedEnrollment: {
@@ -244,7 +295,13 @@ describe('GradesService.put', () => {
       },
     });
     await expect(
-      moved.service.put(A, E, { state: 'GRADED', value: '10.00', comment: null }, teacher, actor),
+      moved.service.put(
+        A,
+        E,
+        { state: 'GRADED', value: '10.00', literal: null, comment: null },
+        teacher,
+        actor,
+      ),
     ).rejects.toMatchObject({ response: { code: 'ENROLLMENT_OUT_OF_SECTION' } });
   });
 
@@ -254,7 +311,7 @@ describe('GradesService.put', () => {
     const view = await service.put(
       A,
       E,
-      { state: 'GRADED', value: '10.00', comment: null },
+      { state: 'GRADED', value: '10.00', literal: null, comment: null },
       teacher,
       actor,
     );
@@ -266,7 +323,75 @@ describe('GradesService.put', () => {
     const { service, tx } = setup();
     tx.grade.create.mockRejectedValue(Object.assign(new Error('dup'), { code: 'P2002' }));
     await expect(
-      service.put(A, E, { state: 'GRADED', value: '10.00', comment: null }, teacher, actor),
+      service.put(
+        A,
+        E,
+        { state: 'GRADED', value: '10.00', literal: null, comment: null },
+        teacher,
+        actor,
+      ),
     ).rejects.toBeInstanceOf(ConflictException);
+  });
+
+  it('RN-01: 400 si la nota no usa la escala del nivel (value en PRIMARIA, literal en SECUNDARIA)', async () => {
+    const prim = setup({ level: 'PRIMARIA' });
+    await expect(
+      prim.service.put(
+        A,
+        E,
+        { state: 'GRADED', value: '15.00', literal: null, comment: null },
+        teacher,
+        actor,
+      ),
+    ).rejects.toMatchObject({ status: 400 });
+    const sec = setup();
+    await expect(
+      sec.service.put(
+        A,
+        E,
+        { state: 'GRADED', value: null, literal: 'A', comment: null },
+        teacher,
+        actor,
+      ),
+    ).rejects.toMatchObject({ status: 400 });
+    expect(prim.tx.grade.create).not.toHaveBeenCalled();
+  });
+
+  it('RN-01: guarda el literal en PRIMARIA y la bitácora lleva literal sin comentario', async () => {
+    const { service, tx, audit } = setup({ level: 'PRIMARIA' });
+    const view = await service.put(
+      A,
+      E,
+      { state: 'GRADED', value: null, literal: 'AD', comment: 'privado' },
+      teacher,
+      actor,
+    );
+    expect(tx.grade.create.mock.calls[0][0].data).toMatchObject({ literal: 'AD', value: null });
+    expect(view).toMatchObject({ literal: 'AD', value: null });
+    const event = JSON.stringify(audit.record.mock.calls[0][0]);
+    expect(event).toContain('"literal":"AD"');
+    expect(event).not.toContain('privado');
+  });
+
+  it('RN-05: NE literal usa noSubmissionLiteral; sin literal en la tarea da 422 NE_LITERAL_REQUIRED', async () => {
+    const ok = setup({ level: 'INICIAL', hasSubmission: false, noSubmissionLiteral: 'C' });
+    await ok.service.put(
+      A,
+      E,
+      { state: 'NE', value: null, literal: null, comment: null },
+      teacher,
+      actor,
+    );
+    expect(ok.tx.grade.create.mock.calls[0][0].data).toMatchObject({ state: 'NE', literal: 'C' });
+    const missing = setup({ level: 'INICIAL', hasSubmission: false });
+    await expect(
+      missing.service.put(
+        A,
+        E,
+        { state: 'NE', value: null, literal: null, comment: null },
+        teacher,
+        actor,
+      ),
+    ).rejects.toMatchObject({ status: 422, response: { code: 'NE_LITERAL_REQUIRED' } });
   });
 });

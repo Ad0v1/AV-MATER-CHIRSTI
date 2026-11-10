@@ -2,7 +2,13 @@
 // Mis notas y el panel del apoderado. Nunca muestra el motivo de exoneración (U2: la API no lo
 // envía a estas vistas). Lista en vez de tabla para que se lea bien desde 360 px.
 import { DISPLAY_STATUS_LABEL, formatDateTime } from '../../curso/[id]/tareas/assignment-format';
-import { averageText, cellText } from '../../curso/[id]/registro/_lib/grading-format';
+import {
+  averageText,
+  cellText,
+  isLiteral,
+  literalLabel,
+  sectionText,
+} from '../../curso/[id]/registro/_lib/grading-format';
 import type { StudentGradesView } from '../../curso/[id]/registro/_lib/types';
 
 export function StudentGrades({
@@ -27,27 +33,36 @@ export function StudentGrades({
   return (
     <div className="grid gap-6">
       <p className="text-sm text-muted-foreground">
-        Año {view.academicYear.year}. NE = no entregó. La exoneración no cuenta en el promedio.
+        Año {view.academicYear.year}. NE = no entregó. La exoneración no cuenta en el promedio. En
+        inicial y primaria se usa la escala AD, A, B, C y el docente elige el logro del bimestre.
       </p>
       {view.courses.map((c) => (
         <section
           key={`${c.enrollmentId}-${c.courseSectionId}`}
-          aria-label={`${c.course.name}, ${c.section.gradeLevel}.° ${c.section.code}`}
+          aria-label={`${c.course.name}, ${sectionText(c.section)}`}
           className="rounded-lg border p-4"
         >
           <H className="text-base font-semibold break-words">
             {c.course.name}{' '}
             <span className="text-sm font-normal text-muted-foreground">
-              · {c.section.gradeLevel}.° {c.section.code}
+              · {sectionText(c.section)}
               {c.isCurrent ? '' : ' (sección anterior)'}
             </span>
           </H>
           {c.periods.map((p) => (
             <div key={p.id} className="mt-3">
               <Hp className="text-sm font-medium">
-                {p.label}: promedio {averageText(p.average)}
+                {p.label}:{' '}
+                {isLiteral(c.gradingScale)
+                  ? `logro del bimestre ${p.achievement ? literalLabel(p.achievement.literal) : 'pendiente'}`
+                  : `promedio ${averageText(p.average)}`}
                 {p.isOpen ? '' : ' (período cerrado)'}
               </Hp>
+              {p.achievement?.comment && (
+                <p className="mt-1 text-sm break-words whitespace-pre-line">
+                  Comentario del docente sobre el logro: {p.achievement.comment}
+                </p>
+              )}
               {p.assignments.length === 0 ? (
                 <p className="mt-1 text-sm text-muted-foreground">Sin tareas.</p>
               ) : (

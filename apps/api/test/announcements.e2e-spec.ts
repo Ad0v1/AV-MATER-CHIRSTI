@@ -76,7 +76,9 @@ describe.skipIf(!process.env.DATABASE_URL)('Anuncios 5d (e2e, MySQL)', () => {
       'estudiante01',
       'estudiante02',
       'estudiante11',
+      'estudiante61',
       'apoderado01',
+      'apoderado03',
     ]) {
       const user = await prisma.user.findUniqueOrThrow({
         where: { email: `${key}@colegio.example` },
@@ -158,12 +160,14 @@ describe.skipIf(!process.env.DATABASE_URL)('Anuncios 5d (e2e, MySQL)', () => {
     }).expect(201);
     await post('admin', '/announcements', {
       scope: 'GRADE',
+      level: 'SECUNDARIA',
       gradeLevel: 3,
       title: `${PREFIX}g3`,
       body: 'Tercero',
     }).expect(201);
     await post('admin', '/announcements', {
       scope: 'GRADE',
+      level: 'SECUNDARIA',
       gradeLevel: 4,
       title: `${PREFIX}g4`,
       body: 'Cuarto',
@@ -175,12 +179,25 @@ describe.skipIf(!process.env.DATABASE_URL)('Anuncios 5d (e2e, MySQL)', () => {
     }).expect(403);
     await post('admin', '/announcements', {
       scope: 'GRADE',
+      level: 'SECUNDARIA',
       gradeLevel: 9,
+      title: `${PREFIX}x`,
+      body: 'y',
+    }).expect(400);
+    // Sin nivel → 400 (nunca 500 por el CHECK). El grado por nivel se prueba en el DTO.
+    // Tope de 5 POST por minuto (ANNOUNCEMENT_CREATE_THROTTLE): no agregar más aquí.
+    await post('admin', '/announcements', {
+      scope: 'GRADE',
+      gradeLevel: 3,
       title: `${PREFIX}x`,
       body: 'y',
     }).expect(400);
     const list = await get('admin', '/announcements').expect(200);
     expect(titles(list.body.items)).toEqual(['g3', 'g4', 'inst']);
+    expect(list.body.items.find((i: Item) => i.title === `${PREFIX}g3`)).toMatchObject({
+      level: 'SECUNDARIA',
+      gradeLevel: 3,
+    });
     await get('docente03', '/announcements').expect(403);
   });
 
@@ -204,6 +221,39 @@ describe.skipIf(!process.env.DATABASE_URL)('Anuncios 5d (e2e, MySQL)', () => {
     expect(titles(only)).toEqual(['cie-3a', 'g3', 'inst']);
     await get('apoderado01', `/me/announcements?studentId=${ids.get('estudiante02')}`).expect(403);
     await get('estudiante01', `/me/announcements?studentId=${ids.get('estudiante01')}`).expect(400);
+  });
+
+  it('tres niveles: GRADE compara (nivel, grado); 4.° primaria no ve 4.° secundaria', async () => {
+    // Se crean directo en BD: el POST ya se probó arriba y tiene tope de 5 por minuto.
+    const year = await prisma.academicYear.findUniqueOrThrow({ where: { year: 2026 } });
+    const make = (level: 'PRIMARIA' | 'INICIAL', gradeLevel: number, t: string) =>
+      prisma.announcement.create({
+        data: {
+          academicYearId: year.id,
+          scope: 'GRADE',
+          level,
+          gradeLevel,
+          title: `${PREFIX}${t}`,
+          body: 'Por nivel',
+          authorId: ids.get('admin')!,
+        },
+      });
+    await make('PRIMARIA', 4, 'p4');
+    await make('INICIAL', 5, 'i5');
+    try {
+      // estudiante61 está en P4C: ve p4, no g4 (4.° secundaria) ni i5.
+      expect(titles(await mine('estudiante61'))).toEqual(['inst', 'p4']);
+      // estudiante01 (3.° secundaria) no ve los anuncios de primaria ni de inicial.
+      expect(titles(await mine('estudiante01'))).toEqual(['cie-3a', 'g3', 'inst']);
+      // apoderado03 solo tiene niños de inicial (sin cuenta): ve los anuncios de 5 años.
+      const inicial = await mine('apoderado03');
+      expect(titles(inicial)).toEqual(['i5', 'inst']);
+      expect(inicial.find((i) => i.title === `${PREFIX}i5`)!.students!.length).toBe(2);
+    } finally {
+      await prisma.announcement.deleteMany({
+        where: { title: { in: [`${PREFIX}p4`, `${PREFIX}i5`] } },
+      });
+    }
   });
 
   it('PATCH: autor o ADMIN; no vuelve a encolar; edited true', async () => {

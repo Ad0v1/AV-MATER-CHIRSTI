@@ -5,13 +5,19 @@
 import { refresh } from 'next/cache';
 import { ApiError, toUserMessage } from '@/lib/api/errors';
 import { apiServer } from '@/lib/api/server';
-import { gradeErrorMessage, isUuid, type GradeFormErrors } from './grading-format';
-import type { GradeInput } from './types';
+import {
+  COMMENT_MAX,
+  gradeErrorMessage,
+  isGradeLiteral,
+  isUuid,
+  type GradeFormErrors,
+} from './grading-format';
+import type { AchievementInput, GradeInput } from './types';
 
 export type SaveGradeResult =
   { ok: true } | { ok: false; message: string; fieldErrors?: GradeFormErrors };
 
-const FIELDS = new Set(['state', 'value', 'comment', 'exemptionReason']);
+const FIELDS = new Set(['state', 'value', 'literal', 'comment', 'exemptionReason']);
 
 export async function saveGrade(
   assignmentId: string,
@@ -32,6 +38,35 @@ export async function saveGrade(
     }
     const byCode = error instanceof ApiError ? gradeErrorMessage(error.code) : undefined;
     return { ok: false, message: byCode ?? toUserMessage(error), fieldErrors };
+  }
+  refresh();
+  return { ok: true };
+}
+
+export type SaveAchievementResult = { ok: true } | { ok: false; message: string };
+
+/** Logro del bimestre (escala literal, INICIAL/PRIMARIA). El backend valida docente y período. */
+export async function saveAchievement(
+  courseSectionId: string,
+  periodId: string,
+  enrollmentId: string,
+  body: AchievementInput,
+): Promise<SaveAchievementResult> {
+  if (![courseSectionId, periodId, enrollmentId].every(isUuid) || !isGradeLiteral(body.literal)) {
+    return { ok: false, message: 'Datos no válidos.' };
+  }
+  const comment = body.comment?.trim() ?? '';
+  if (comment.length > COMMENT_MAX) {
+    return { ok: false, message: `El comentario admite hasta ${COMMENT_MAX} caracteres.` };
+  }
+  try {
+    await apiServer.put(
+      `/course-sections/${courseSectionId}/periods/${periodId}/achievements/${enrollmentId}`,
+      { literal: body.literal, comment: comment === '' ? null : comment },
+    );
+  } catch (error) {
+    const byCode = error instanceof ApiError ? gradeErrorMessage(error.code) : undefined;
+    return { ok: false, message: byCode ?? toUserMessage(error) };
   }
   refresh();
   return { ok: true };

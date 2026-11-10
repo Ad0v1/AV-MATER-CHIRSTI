@@ -118,8 +118,14 @@ describe('buildGradebook', () => {
       ]),
     );
     const [t1, t2, t3] = book.rows[0].entries;
-    expect(t1).toMatchObject({ state: 'GRADED', value: '15.00', virtual: false });
-    expect(t2).toMatchObject({ state: 'NE', value: '5.00', virtual: true, neEligible: true });
+    expect(t1).toMatchObject({ state: 'GRADED', value: '15.00', literal: null, virtual: false });
+    expect(t2).toMatchObject({
+      state: 'NE',
+      value: '5.00',
+      literal: null,
+      virtual: true,
+      neEligible: true,
+    });
     expect(t3).toMatchObject({ state: null, hasSubmission: false });
     // (15 + 5) / 2 = 10 → C.
     expect(book.rows[0].average).toMatchObject({ rounded: 10, literal: 'C', counted: 2 });
@@ -330,9 +336,9 @@ describe('summarizeAverage y riskLiteralOf', () => {
   it('RN-07: ignora entradas sin nota y EXEMPT', () => {
     expect(
       summarizeAverage([
-        { state: null, value: null, virtual: false, needsRegrade: false },
-        { state: 'EXEMPT', value: null, virtual: false, needsRegrade: false },
-        { state: 'NE', value: '10.50', virtual: true, needsRegrade: false },
+        { state: null, value: null, literal: null, virtual: false, needsRegrade: false },
+        { state: 'EXEMPT', value: null, literal: null, virtual: false, needsRegrade: false },
+        { state: 'NE', value: '10.50', literal: null, virtual: true, needsRegrade: false },
       ]),
     ).toEqual({ status: 'OK', rounded: 11, literal: 'B', counted: 1, exempt: 1 });
   });

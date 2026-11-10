@@ -8,6 +8,8 @@ export type AssignmentItem = {
   dueAt: string;
   maxSizeBytes: number;
   noSubmissionGrade: string;
+  /** NE literal (INICIAL/PRIMARIA); null en SECUNDARIA o sin definir. */
+  noSubmissionLiteral?: string | null;
   allowLate: boolean;
   periodIsOpen: boolean;
 };

@@ -24,19 +24,20 @@
 | `GuardianStudent` | Dev 2 | id (`CHAR(36)`), guardianId, studentId, isActive (TRUE o NULL), createdAt, revokedAt | RF-20, RF-52, RN-13; vínculo revocable en la fila (PROPUESTA F3, D-032); finalidad y plazo de conservación PENDIENTE INSTITUCIÓN (ver docs/04) |
 | `AcademicYear` | Dev 2 | year (único), isActive (TRUE o NULL, único), closedAt, createdAt, updatedAt | RF-09; solo uno activo (invariante 1, D-027) |
 | `AcademicPeriod` | Dev 2 | academicYearId, sequence (1..4), kind (enum `AcademicPeriodKind`), label, startDate, endDate (`@db.Date`), closedAt | RF-10/11; exactamente cuatro tipos/denominaciones documentadas (D-002), con CHECK de sequence/kind y de fechas; sin solapes en el servicio |
-| `Section` | Dev 2 | academicYearId, gradeLevel(1..5), code, isActive | RF-12; único por año, grado y código |
+| `Section` | Dev 2 | academicYearId, level (enum `EducationLevel`), gradeLevel (según nivel), code, isActive | RF-12; único por año, nivel, grado y código |
 | `Course` | Dev 2 | name (único), isActive | RF-13 |
 | `CourseSection` | Dev 2 | sectionId, courseId, teacherId (opcional, D-029), isActive | RF-14, RN-12; único por sección y curso; `teacherId` nulo mientras no hay docente |
 | `Enrollment` | Dev 2 | studentId, sectionId, academicYearId, isCurrent (TRUE o NULL), effectiveFrom, effectiveTo, endReason (enum `EnrollmentEndReason`) | RF-18/24; preservar movimientos y notas; invariante 2 (D-027) |
 
 **Nombres finales del modelo académico (PROPUESTA del 26/10/2026, pendiente de revisión del dueño de Dev 2).** Fuente: `prisma/schema/academic.prisma` en el repo privado, migración `academic_estructura`. Depende de D-021 (FK hacia `User` en `CHAR(36)`). Enums: `AcademicPeriodKind` (`FIRST_BIMESTER`, `SECOND_BIMESTER`, `THIRD_TRIMESTER`, `FOURTH_TRIMESTER`) y `EnrollmentEndReason` (`TRANSFER`, `WITHDRAWAL`, `YEAR_END`, `CORRECTION`). Una matrícula vigente tiene `isCurrent` TRUE y no tiene `effectiveTo` ni `endReason`; una cerrada tiene `isCurrent` NULL, `effectiveTo` y `endReason`.
 | `Material` | **Dev 3** | courseSectionId, periodId?, type, title, description, fileId, reusable, deletedAt | RF-26/27/29/30/31 |
-| `Assignment` | **Dev 3** | courseSectionId, periodId, title, instructions, dueAt, maxSizeBytes, noSubmissionGrade, allowLate, attachmentFileId?, deletedAt | RF-28/29, RN-05/08/10 |
+| `Assignment` | **Dev 3** | courseSectionId, periodId, title, instructions, dueAt, maxSizeBytes, noSubmissionGrade, noSubmissionLiteral?, allowLate, attachmentFileId?, deletedAt | RF-28/29, RN-05/08/10 |
 | `StoredFile` | **Dev 3** | objectKey, bytes, MIME, checksum?, uploadStatus, scanStatus, uploadedById | RNF-03/18, RF-34/35/40 |
 | `Submission` | **Dev 3** | assignmentId, enrollmentId, createdAt | RF-33/36/38; única por alumno-matrícula/tarea |
 | `SubmissionVersion` | **Dev 3** | submissionId, fileId, versionNumber, receivedAt, isLate | RF-36/37/39; historial inmutable |
-| `Grade` | Dev 4 | assignmentId, enrollmentId, state, value?, comment?, exemptionReason?, source, gradedAt | RF-41..46, RN-01..07; **un único dueño de NE** |
-| `Announcement` | Dev 5 | scope, courseSectionId?, text | RF-32 |
+| `Grade` | Dev 4 | assignmentId, enrollmentId, state, value?, literal?, comment?, exemptionReason?, source, gradedAt | RF-41..46, RN-01..07; **un único dueño de NE** |
+| `PeriodAchievement` | Dev 4 | enrollmentId, courseSectionId, periodId, literal, comment?, gradedAt | Logro del bimestre elegido por el docente (inicial y primaria); único por matrícula, curso-sección y período |
+| `Announcement` | Dev 5 | scope, level?, gradeLevel?, courseSectionId?, text | RF-32 |
 | `Notification` | Dev 5 | recipientId, eventType, deliveredAt? | RF-53 |
 | `InstitutionSetting` | Dev 5 | key, value | RF-61 |
 | `AuditLog` | Dev 1 | actorId, action, module, entityType, entityId, before/after, ip, occurredAt | RNF-14/15; solo inserción, reforzado con triggers en BD (D-021); entityId = UUID de la raíz del agregado |
@@ -60,8 +61,17 @@
 CHECK (Prisma no los modela; van en la migración):
 
 - `Grade_value_chk`: `value` es nulo o está entre 0 y 20.
-- `Grade_state_chk`: `GRADED` y `NE` llevan `value` y no llevan `exemptionReason`; `EXEMPT` no lleva `value` y sí `exemptionReason`.
+- `Grade_state_chk` (reemplazado en `tres_niveles`): `GRADED` y `NE` llevan exactamente uno de `value` o `literal` y no llevan `exemptionReason`; `EXEMPT` no lleva ninguno y sí `exemptionReason`.
 - `Grade_source_chk`: `source = AUTO` solo si `state = NE`.
+
+**Tres niveles: inicial, primaria y secundaria (PROPUESTA del 09/11/2026, solo repo privado).** Migración `20261109120000_tres_niveles`. Decisiones del usuario en `.claude/tareas/20261109-tres-niveles.md`.
+
+- `enum EducationLevel` (`INICIAL`, `PRIMARIA`, `SECUNDARIA`) y `Section.level` NOT NULL, por defecto `SECUNDARIA` (backfill de las secciones existentes). `gradeLevel` es el grado dentro del nivel: INICIAL 3..5 (años de edad), PRIMARIA 1..6, SECUNDARIA 1..5. `Section_gradeLevel_chk` depende del nivel. Único: `(academicYearId, level, gradeLevel, code)` (clave Prisma `academicYearId_level_gradeLevel_code`).
+- Escala por nivel, fija y **no persistida**: INICIAL y PRIMARIA usan `LITERAL_ADABC`, SECUNDARIA `NUMERIC_0_20`. Se resuelve en código (`GradingScale` y `scaleForLevel(level)` en `packages/shared/src/grading`) para no tener una segunda fuente de verdad que pueda contradecir `Section.level`.
+- `enum GradeLiteral` (`AD`, `A`, `B`, `C`). `Grade.literal` nulo; `Grade.value` ya era nulo. Un CHECK no puede leer `Section.level`: que una nota literal vaya solo en INICIAL/PRIMARIA y una numérica solo en SECUNDARIA lo valida el servicio de Dev 4.
+- `Assignment.noSubmissionLiteral` (`GradeLiteral`, nulo): NE por defecto en escala literal. `noSubmissionGrade` sigue para SECUNDARIA. El literal de la NE automática está pendiente de decisión del usuario.
+- `PeriodAchievement` (Dev 4): logro literal del bimestre que elige el docente en INICIAL y PRIMARIA. FK `Restrict` a `Enrollment`, `CourseSection` y `AcademicPeriod`; `comment` es dato de menores. En SECUNDARIA el promedio se sigue calculando y no se guarda.
+- `Announcement.level` (nulo): `GRADE` exige `level` y `gradeLevel` con el mismo rango que `Section`; `INSTITUTION` y `COURSE_SECTION` no llevan ninguno (`Announcement_scope_chk` reemplazado).
 
 ## Cardinalidades esenciales
 

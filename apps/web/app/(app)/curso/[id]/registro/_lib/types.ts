@@ -5,11 +5,21 @@ import type { DisplayStatus } from '../../tareas/assignment-format';
 export type { DisplayStatus };
 export type GradeState = 'GRADED' | 'NE' | 'EXEMPT';
 export type GradeSource = 'MANUAL' | 'AUTO';
+/** Tres niveles (09/11/2026): SECUNDARIA 0..20; INICIAL y PRIMARIA literal AD/A/B/C. */
+export type EducationLevel = 'INICIAL' | 'PRIMARIA' | 'SECUNDARIA';
+export type GradingScale = 'NUMERIC_0_20' | 'LITERAL_ADABC';
+export type GradeLiteral = 'AD' | 'A' | 'B' | 'C';
+export type SectionRef = { id: string; level: EducationLevel; gradeLevel: number; code: string };
+
+/** Logro del período (escala literal), elegido por el docente. */
+export type PeriodAchievement = { literal: GradeLiteral; comment: string | null; gradedAt: string };
 
 /** Promedio con literal; sin notas que cuenten es NO_GRADES (D-026), nunca 0. */
 export type AverageSummary =
   | { status: 'OK'; rounded: number; literal: string; counted: number; exempt: number }
-  | { status: 'NO_GRADES'; counted: 0; exempt: number };
+  | { status: 'NO_GRADES'; counted: 0; exempt: number }
+  /** Escala literal: sin promedio aritmético; manda el logro del período. */
+  | { status: 'LITERAL_SCALE'; counted: 0; exempt: number };
 
 export type DeliveryCounts = { onTime: number; late: number; ne: number };
 
@@ -26,6 +36,7 @@ export type PeriodRef = { id: string; label: string; sequence: number; isOpen: b
 export type EffectiveGrade = {
   state: GradeState | null;
   value: string | null;
+  literal: GradeLiteral | null;
   virtual: boolean;
   needsRegrade: boolean;
 };
@@ -44,7 +55,8 @@ export type GradebookView = {
     id: string;
     readOnly: boolean;
     course: { id: string; name: string };
-    section: { id: string; gradeLevel: number; code: string };
+    section: SectionRef;
+    gradingScale: GradingScale;
   };
   period: PeriodRef;
   periods: PeriodRef[];
@@ -54,6 +66,7 @@ export type GradebookView = {
     dueAt: string;
     allowLate: boolean;
     noSubmissionGrade: string;
+    noSubmissionLiteral: GradeLiteral | null;
     average: AverageSummary;
     counts: DeliveryCounts;
   }[];
@@ -63,6 +76,7 @@ export type GradebookView = {
     fullName: string;
     isCurrent: boolean;
     average: AverageSummary;
+    achievement: PeriodAchievement | null;
     atRisk: boolean;
     cells: GradebookCell[];
   }[];
@@ -109,6 +123,10 @@ export type GradeSummaryView = {
     dueAt: string;
     allowLate: boolean;
     noSubmissionGrade: string;
+    noSubmissionLiteral: GradeLiteral | null;
+    gradingScale: GradingScale;
+    /** Opcional para tolerar una API anterior; en INICIAL no hay entregas. */
+    level?: EducationLevel;
     periodIsOpen: boolean;
   };
   items: GradeSummaryItem[];
@@ -124,15 +142,18 @@ export type StudentGradesView = {
     enrollmentId: string;
     isCurrent: boolean;
     course: { id: string; name: string };
-    section: { id: string; gradeLevel: number; code: string };
+    section: SectionRef;
+    gradingScale: GradingScale;
     periods: (PeriodRef & {
       average: AverageSummary;
+      achievement: PeriodAchievement | null;
       assignments: {
         assignmentId: string;
         title: string;
         dueAt: string;
         state: GradeState | null;
         value: string | null;
+        literal: GradeLiteral | null;
         comment: string | null;
         displayStatus: DisplayStatus;
         isLate: boolean;
@@ -145,12 +166,16 @@ export type GuardianStudentsView = {
   items: {
     studentId: string;
     fullName: string;
-    currentSection: { id: string; gradeLevel: number; code: string } | null;
+    currentSection: SectionRef | null;
   }[];
 };
 
 /** Cuerpo de PUT /grades/:assignmentId/:enrollmentId. */
 export type GradeInput =
   | { state: 'GRADED'; value: string; comment?: string }
-  | { state: 'NE'; value?: string; comment?: string }
+  | { state: 'GRADED'; literal: GradeLiteral; comment?: string }
+  | { state: 'NE'; value?: string; literal?: GradeLiteral; comment?: string }
   | { state: 'EXEMPT'; exemptionReason: string; comment?: string };
+
+/** Cuerpo de PUT /course-sections/:id/periods/:periodId/achievements/:enrollmentId. */
+export type AchievementInput = { literal: GradeLiteral; comment?: string | null };
