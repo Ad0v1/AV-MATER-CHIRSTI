@@ -131,9 +131,11 @@ export function EnableTwoFactorForm({ homePath }: { homePath: string }) {
     );
   }
 
+  const secret = setup.secret;
+
   async function copySecret() {
     try {
-      await navigator.clipboard.writeText(setup.secret);
+      await navigator.clipboard.writeText(secret);
       setSecretCopied(true);
       setCopyMessage('Clave copiada.');
     } catch {
