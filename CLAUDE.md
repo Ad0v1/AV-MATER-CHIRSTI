@@ -26,6 +26,12 @@ Documentos de referencia: `docs/00_INICIO_Y_MAPA.md` (quién hace qué), `docs/0
 | `ux-accesibilidad`       | Después de QA, si hay pantallas                                               |
 | `revisor-pr`             | Antes de dar la tarea por terminada                                           |
 | `documentador`           | Al final, si cambió algo visible para usuarios o la API                       |
+| `director-diseno`        | Una vez, para fijar `docs/diseno/guia.md` (Sonnet, esfuerzo alto)             |
+| `disenador-ui`           | Antes del dev si hay pantallas: especificación o maqueta (Sonnet, medio)      |
+| `revisor-visual`         | Después de QA si hay pantallas: web real con Playwright MCP (Sonnet, bajo)    |
+| `revisor-movimiento`     | Después de QA solo si hay animaciones (Sonnet, bajo)                          |
+
+**Flujo con pantallas:** arquitecto → `disenador-ui` → dev → qa → seguridad ∥ ux-accesibilidad ∥ revisor-visual (∥ revisor-movimiento) → revisor-pr. Después de cada avance de pantallas, levanta la web (`preview_start` api y web) y muéstrale al usuario lo nuevo.
 
 ## Cómo procesar una tarea
 
