@@ -50,14 +50,17 @@ export default function Page({ searchParams }: PageProps<'/admin/usuarios'>) {
           </>
         }
       />
+      <Suspense fallback={<LoadingBlock rows={2} label="Cargando filtros…" />}>
+        <UsersFiltersView searchParams={searchParams} />
+      </Suspense>
       <Suspense fallback={<LoadingBlock rows={6} label="Cargando usuarios…" />}>
-        <UsersView searchParams={searchParams} />
+        <UsersListView searchParams={searchParams} />
       </Suspense>
     </PageShell>
   );
 }
 
-async function UsersView({
+async function UsersFiltersView({
   searchParams,
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
@@ -71,15 +74,21 @@ async function UsersView({
     sections = [];
   }
   const key = buildUserListQuery(filters);
+  return <UserFilters key={key} filters={filters} sections={sections} />;
+}
+
+async function UsersListView({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const filters = parseUserFilters(await searchParams);
+  // key: al aplicar otros filtros se monta un buscador nuevo y se descartan los resultados
+  // de la búsqueda anterior (MEDIO de UX, INFORME 13).
   return (
-    <>
-      <UserFilters key={key} filters={filters} sections={sections} />
-      {/* key: al aplicar otros filtros se monta un buscador nuevo y se descartan los resultados
-          de la búsqueda anterior (MEDIO de UX, INFORME 13). */}
-      <UserSearch key={searchResetKey(filters)} filters={filters}>
-        <ServerList filters={filters} />
-      </UserSearch>
-    </>
+    <UserSearch key={searchResetKey(filters)} filters={filters}>
+      <ServerList filters={filters} />
+    </UserSearch>
   );
 }
 
