@@ -518,6 +518,7 @@ describe.skipIf(!process.env.DATABASE_URL)('API academica F2 (e2e, MySQL)', () =
 
       // año cerrado: solo lectura
       await post('admin', `/academic-years/${y.body.id}/sections`, {
+        level: 'SECUNDARIA',
         gradeLevel: 1,
         code: 'A',
       }).expect(409);
@@ -581,6 +582,7 @@ describe.skipIf(!process.env.DATABASE_URL)('API academica F2 (e2e, MySQL)', () =
   describe('Secciones, cursos y docentes (RF-12, RF-13, RF-14)', () => {
     it('RF-12: crea una sección en 2095 (código a mayúsculas) con bitácora', async () => {
       const res = await post('admin', `/academic-years/${y2095.id}/sections`, {
+        level: 'SECUNDARIA',
         gradeLevel: 3,
         code: 'qa1',
       }).expect(201);
@@ -598,25 +600,47 @@ describe.skipIf(!process.env.DATABASE_URL)('API academica F2 (e2e, MySQL)', () =
 
     it('RF-12: sección duplicada 409; datos invalidos 400; año inexistente 404', async () => {
       await post('admin', `/academic-years/${y2095.id}/sections`, {
+        level: 'SECUNDARIA',
         gradeLevel: 3,
         code: 'QA1',
       }).expect(409);
       await post('admin', `/academic-years/${y2095.id}/sections`, {
+        level: 'SECUNDARIA',
         gradeLevel: 6,
         code: 'A',
       }).expect(400);
       await post('admin', `/academic-years/${y2095.id}/sections`, {
+        level: 'SECUNDARIA',
         gradeLevel: 1,
         code: 'codigo-largo!',
       }).expect(400);
       await post('admin', `/academic-years/${randomUUID()}/sections`, {
+        level: 'SECUNDARIA',
         gradeLevel: 1,
         code: 'A',
       }).expect(404);
     });
 
+    it('RF-12: nivel y grado incoherentes (INICIAL 2) o sin nivel dan 400', async () => {
+      await post('admin', `/academic-years/${y2095.id}/sections`, {
+        level: 'INICIAL',
+        gradeLevel: 2,
+        code: 'A',
+      }).expect(400);
+      await post('admin', `/academic-years/${y2095.id}/sections`, {
+        level: 'PRIMARIA',
+        gradeLevel: 7,
+        code: 'A',
+      }).expect(400);
+      await post('admin', `/academic-years/${y2095.id}/sections`, {
+        gradeLevel: 3,
+        code: 'A',
+      }).expect(400);
+    });
+
     it('RF-12/RF-17: crear sección en 2025 (año cerrado) 409', async () => {
       await post('admin', `/academic-years/${year2025Id}/sections`, {
+        level: 'SECUNDARIA',
         gradeLevel: 1,
         code: 'ZZ',
       }).expect(409);
@@ -627,6 +651,7 @@ describe.skipIf(!process.env.DATABASE_URL)('API academica F2 (e2e, MySQL)', () =
 
     it('RF-12: PATCH de sección cambia el código; duplicado 409; sin cambios no registra bitácora', async () => {
       await post('admin', `/academic-years/${y2095.id}/sections`, {
+        level: 'SECUNDARIA',
         gradeLevel: 3,
         code: 'QA2',
       }).expect(201);

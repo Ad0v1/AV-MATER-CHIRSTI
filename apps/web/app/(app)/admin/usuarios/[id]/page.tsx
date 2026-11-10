@@ -24,7 +24,8 @@ import {
   StatusBadge,
 } from '../../_shared/components/page-bits';
 import { FOCUS_HEADING } from '../../_shared/lib/focus';
-import { formatInstant, sectionLabel } from '../../_shared/lib/format';
+import { formatInstant } from '../../_shared/lib/format';
+import { sectionLabel } from '../../estructura/_lib/format';
 import { isUuid } from '../../_shared/lib/validation';
 import { CreatedNotice } from '../_components/created-notice';
 import {
@@ -132,6 +133,7 @@ async function UserPage({
               ? sectionLabel(
                   user.currentEnrollment.section.gradeLevel,
                   user.currentEnrollment.section.code,
+                  user.currentEnrollment.section.level,
                 )
               : null,
           )}
@@ -252,7 +254,7 @@ async function StudentSections({ user }: { user: UserDetail }) {
   const current = user.currentEnrollment ?? null;
   const plan = studentPlan(user.status, current, active);
   const currentLabel = current
-    ? sectionLabel(current.section.gradeLevel, current.section.code)
+    ? sectionLabel(current.section.gradeLevel, current.section.code, current.section.level)
     : null;
 
   return (
@@ -319,7 +321,8 @@ function EnrollmentHistory({ items }: { items: EnrollmentView[] }) {
           >
             <div className="flex items-center justify-between gap-2">
               <span className="font-medium">
-                {e.academicYear.year} · {sectionLabel(e.section.gradeLevel, e.section.code)}
+                {e.academicYear.year} ·{' '}
+                {sectionLabel(e.section.gradeLevel, e.section.code, e.section.level)}
               </span>
               <StatusBadge tone={e.isCurrent ? 'active' : 'closed'}>{status(e)}</StatusBadge>
             </div>
@@ -348,7 +351,9 @@ function EnrollmentHistory({ items }: { items: EnrollmentView[] }) {
             {sorted.map((e) => (
               <TableRow key={e.id}>
                 <TableCell>{e.academicYear.year}</TableCell>
-                <TableCell>{sectionLabel(e.section.gradeLevel, e.section.code)}</TableCell>
+                <TableCell>
+                  {sectionLabel(e.section.gradeLevel, e.section.code, e.section.level)}
+                </TableCell>
                 <TableCell className="whitespace-normal">
                   {formatInstant(e.effectiveFrom)}
                 </TableCell>

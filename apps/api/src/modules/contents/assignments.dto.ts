@@ -1,3 +1,4 @@
+import { GRADE_LITERALS } from '@aula/shared';
 import { z } from 'zod';
 import {
   DEFAULT_MAX_SIZE_BYTES,
@@ -32,6 +33,11 @@ const noSubmissionGrade = z.union([z.number(), z.string()]).transform((value, ct
   return grade;
 });
 
+// NE en escala literal (INICIAL/PRIMARIA). El servicio lo rechaza en SECUNDARIA.
+const noSubmissionLiteral = z.enum(GRADE_LITERALS, {
+  error: 'El literal de NE debe ser AD, A, B o C',
+});
+
 export const createAssignmentSchema = z.strictObject({
   periodId: idSchema,
   title,
@@ -39,6 +45,7 @@ export const createAssignmentSchema = z.strictObject({
   dueAt,
   maxSizeBytes: maxSizeBytes.default(DEFAULT_MAX_SIZE_BYTES),
   noSubmissionGrade: noSubmissionGrade.default(DEFAULT_NO_SUBMISSION_GRADE),
+  noSubmissionLiteral: noSubmissionLiteral.nullable().default(null),
   allowLate: z.boolean().default(false),
   attachmentFileId: idSchema.nullable().default(null),
 });
@@ -52,6 +59,7 @@ export const updateAssignmentSchema = z
     dueAt: dueAt.optional(),
     maxSizeBytes: maxSizeBytes.optional(),
     noSubmissionGrade: noSubmissionGrade.optional(),
+    noSubmissionLiteral: noSubmissionLiteral.nullable().optional(),
     allowLate: z.boolean().optional(),
     attachmentFileId: idSchema.nullable().optional(), // null quita el adjunto
   })

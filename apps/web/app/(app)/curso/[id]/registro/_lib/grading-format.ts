@@ -1,7 +1,40 @@
 // Formatos y validaciones puras de calificaciones (Dev 4, fase 4c). Sin React ni red.
 // Las reglas reales las decide la API (motor de @aula/shared); aquí solo se adelantan los
 // errores obvios para no hacer un viaje en vano y se traducen los códigos 422.
-import type { AverageSummary, EffectiveGrade, GradeInput, GradeState } from './types';
+import type {
+  AverageSummary,
+  EducationLevel,
+  EffectiveGrade,
+  GradeInput,
+  GradeLiteral,
+  GradeState,
+  GradingScale,
+} from './types';
+
+export const GRADE_LITERALS: readonly GradeLiteral[] = ['AD', 'A', 'B', 'C'];
+
+const LEVEL_LABEL: Record<EducationLevel, string> = {
+  INICIAL: 'Inicial',
+  PRIMARIA: 'Primaria',
+  SECUNDARIA: 'Secundaria',
+};
+
+/** "5 años C · Inicial", "4.° C · Primaria", "3.° A · Secundaria". */
+export function sectionText(s: {
+  level?: EducationLevel;
+  gradeLevel: number;
+  code: string;
+}): string {
+  const level = s.level ?? 'SECUNDARIA';
+  const grade = level === 'INICIAL' ? `${s.gradeLevel} años` : `${s.gradeLevel}.°`;
+  return `${grade} ${s.code} · ${LEVEL_LABEL[level]}`;
+}
+
+export const isLiteral = (scale: GradingScale | undefined): boolean => scale === 'LITERAL_ADABC';
+
+export function isGradeLiteral(v: unknown): v is GradeLiteral {
+  return typeof v === 'string' && (GRADE_LITERALS as readonly string[]).includes(v);
+}
 
 export const COMMENT_MAX = 2000;
 export const REASON_MIN = 10;
@@ -20,9 +53,10 @@ export function literalLabel(literal: string): string {
   return name ? `${literal} (${name})` : literal;
 }
 
-/** "15 · A (logro esperado)" o "Sin notas" (D-026: nunca 0). */
+/** "15 · A (logro esperado)" o "Sin notas" (D-026: nunca 0). Escala literal: sin promedio. */
 export function averageText(average: AverageSummary): string {
   if (average.status === 'NO_GRADES') return 'Sin notas';
+  if (average.status === 'LITERAL_SCALE') return 'Sin promedio (escala literal)';
   return `${average.rounded} · ${literalLabel(average.literal)}`;
 }
 
@@ -30,9 +64,9 @@ export function averageText(average: AverageSummary): string {
 export function cellText(grade: EffectiveGrade): string {
   switch (grade.state) {
     case 'GRADED':
-      return grade.value ?? '';
+      return grade.literal ?? grade.value ?? '';
     case 'NE':
-      return `NE ${grade.value ?? ''}`.trim();
+      return `NE ${grade.literal ?? grade.value ?? ''}`.trim();
     case 'EXEMPT':
       return 'Exonerado';
     default:
@@ -46,6 +80,12 @@ export const STATE_LABEL: Record<GradeState, string> = {
   EXEMPT: 'Exonerar',
 };
 
+/** Etiquetas del tipo de registro según el nivel: en INICIAL no hay entregas, así que la NE
+ *  se presenta como "Sin registro de logro" (decisión 3 del usuario, 09/11/2026). */
+export function stateLabel(state: GradeState, noDelivery = false): string {
+  return noDelivery && state === 'NE' ? 'Sin registro de logro' : STATE_LABEL[state];
+}
+
 /** Mensajes de los 422 de PUT /grades por su code (la API ya los manda en español). */
 const ERROR_BY_CODE: Record<string, string> = {
   NO_SUBMISSION: 'Solo se pone nota a una tarea entregada. Si no entregó, registra NE.',
@@ -54,6 +94,7 @@ const ERROR_BY_CODE: Record<string, string> = {
   ENROLLMENT_OUT_OF_SECTION: 'El estudiante no pertenece a la sección de esta tarea.',
   ENROLLMENT_NOT_ELIGIBLE:
     'El estudiante no estaba matriculado en la sección cuando venció la tarea.',
+  NE_LITERAL_REQUIRED: 'La tarea no tiene literal de NE: elige AD, A, B o C.',
 };
 
 export function gradeErrorMessage(code: string | undefined): string | undefined {
@@ -63,12 +104,16 @@ export function gradeErrorMessage(code: string | undefined): string | undefined 
 export type GradeFormFields = {
   state: GradeState;
   value: string;
+  /** Escala literal: AD/A/B/C elegido ('' = ninguno). */
+  literal?: GradeLiteral | '';
+  /** Escala del nivel; por defecto NUMERIC_0_20. */
+  scale?: GradingScale;
   comment: string;
   exemptionReason: string;
 };
 
 export type GradeFormErrors = Partial<
-  Record<'state' | 'value' | 'comment' | 'exemptionReason', string>
+  Record<'state' | 'value' | 'literal' | 'comment' | 'exemptionReason', string>
 >;
 
 const GRADE_TEXT = /^\d{1,2}([.,]\d{1,2})?$/;
@@ -103,6 +148,19 @@ export function buildGradeInput(
     }
     if (Object.keys(errors).length > 0) return { ok: false, errors };
     return { ok: true, body: { state: 'EXEMPT', exemptionReason: reason, ...withComment } };
+  }
+
+  if (isLiteral(fields.scale)) {
+    const literal = fields.literal ?? '';
+    if (literal === '' && fields.state === 'GRADED') errors.literal = 'Elige AD, A, B o C.';
+    if (Object.keys(errors).length > 0) return { ok: false, errors };
+    if (fields.state === 'GRADED') {
+      return {
+        ok: true,
+        body: { state: 'GRADED', literal: literal as GradeLiteral, ...withComment },
+      };
+    }
+    return { ok: true, body: { state: 'NE', ...(literal ? { literal } : {}), ...withComment } };
   }
 
   const raw = fields.value.trim();

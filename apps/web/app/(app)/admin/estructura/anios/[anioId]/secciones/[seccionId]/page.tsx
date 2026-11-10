@@ -102,7 +102,7 @@ async function SectionDetail({
     );
   }
 
-  const label = sectionLabel(section.gradeLevel, section.code);
+  const label = sectionLabel(section.gradeLevel, section.code, section.level);
   const readOnly = year.readOnly;
   const assigned = new Set(courseSections.items.map((cs) => cs.course.id));
   const available = courses.items.filter((c) => !assigned.has(c.id));

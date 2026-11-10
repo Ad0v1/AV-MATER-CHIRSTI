@@ -462,7 +462,7 @@ describe('toStudentChoice', () => {
       fullName: 'Estudiante 1',
       code: '2600000001',
       status: 'ACTIVE',
-      sectionLabel: '3.º A',
+      sectionLabel: '3.° Secundaria A',
     });
     expect(toStudentChoice({ ...item, currentSection: null }).sectionLabel).toBeNull();
   });
@@ -906,5 +906,30 @@ describe('DNI y credenciales (RF-69, RF-83, RF-87)', () => {
     }
     expect(isCredentialStatus('PENDING')).toBe(true);
     expect(isCredentialStatus('x')).toBe(false);
+  });
+});
+
+describe('filtro por nivel (tres niveles, 09/11/2026)', () => {
+  it('acepta el nivel y valida el grado contra su rango', () => {
+    expect(parseUserFilters({ role: 'STUDENT', level: 'PRIMARIA', gradeLevel: '6' })).toEqual({
+      role: 'STUDENT',
+      level: 'PRIMARIA',
+      gradeLevel: 6,
+      page: 1,
+    });
+    expect(
+      parseUserFilters({ role: 'STUDENT', level: 'INICIAL', gradeLevel: '2' }).gradeLevel,
+    ).toBeUndefined();
+    expect(parseUserFilters({ role: 'STUDENT', level: 'OTRO' }).level).toBeUndefined();
+    expect(parseUserFilters({ role: 'TEACHER', level: 'PRIMARIA' }).level).toBeUndefined();
+  });
+
+  it('manda level a la API solo con rol Estudiante', () => {
+    expect(buildUserListQuery({ role: 'STUDENT', level: 'INICIAL', gradeLevel: 5, page: 1 })).toBe(
+      'role=STUDENT&level=INICIAL&gradeLevel=5&page=1&pageSize=20',
+    );
+    expect(buildUserListQuery({ role: 'TEACHER', level: 'INICIAL', page: 1 })).toBe(
+      'role=TEACHER&page=1&pageSize=20',
+    );
   });
 });

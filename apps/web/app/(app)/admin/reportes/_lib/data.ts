@@ -4,6 +4,7 @@ import 'server-only';
 import { apiServer } from '@/lib/api/server';
 import {
   courseSectionsQuery,
+  type EducationLevel,
   type ReportCourseSectionsView,
   type ReportFilters,
   type ReportsDashboardView,
@@ -17,9 +18,11 @@ export const getReportCourseSections = (filters: ReportFilters) =>
 export const getReportsDashboard = (
   academicYearId: string,
   periodId: string,
+  level: EducationLevel | null = null,
   gradeLevel: number | null = null,
 ) => {
   const q = new URLSearchParams({ academicYearId, periodId });
-  if (gradeLevel !== null) q.set('gradeLevel', String(gradeLevel));
+  if (level !== null) q.set('level', level);
+  if (level !== null && gradeLevel !== null) q.set('gradeLevel', String(gradeLevel));
   return apiServer.get<ReportsDashboardView>(`/admin/reports/dashboard?${q.toString()}`);
 };

@@ -344,9 +344,9 @@ function GroupPanel({
   const [bulkAction, setBulkAction] = useState<PromotionAction>(actions[0]);
   const [bulkSection, setBulkSection] = useState(NO_SECTION);
   const choices = sectionChoices(group.items[0], bulkAction, state.proposal.targetSections);
-  const needsSection = targetGradeFor(bulkAction, group.gradeLevel) !== null;
+  const needsSection = targetGradeFor(bulkAction, group) !== null;
   const editable = state.phase === 'editando';
-  const label = sectionLabel(group.gradeLevel, group.code);
+  const label = sectionLabel(group.gradeLevel, group.code, group.level);
   const suffix = `para toda la sección ${label}`;
 
   return (
@@ -377,7 +377,10 @@ function GroupPanel({
               hiddenSuffix={suffix}
               options={[
                 { value: NO_SECTION, label: 'La propuesta para cada fila' },
-                ...choices.map((s) => ({ value: s.id, label: sectionLabel(s.gradeLevel, s.code) })),
+                ...choices.map((s) => ({
+                  value: s.id,
+                  label: sectionLabel(s.gradeLevel, s.code, s.level),
+                })),
               ]}
               value={bulkSection}
               disabled={!editable}
@@ -433,7 +436,7 @@ function RowPanel({
   const actions = allowedActions(item);
   const ids = rowFieldIds(item.enrollmentId);
   const choices = sectionChoices(item, decision.action, state.proposal.targetSections);
-  const needsSection = targetGradeFor(decision.action, item.from.gradeLevel) !== null;
+  const needsSection = targetGradeFor(decision.action, item.from) !== null;
   const error = rowError(state, item);
   const note = actions.length === 1 ? onlyExcludeNote(item) : null;
   const flags = item.flags.map((f) => FLAG_LABELS[f]);
@@ -496,7 +499,10 @@ function RowPanel({
               hiddenSuffix={suffix}
               options={[
                 { value: NO_SECTION, label: 'Elige una sección' },
-                ...choices.map((s) => ({ value: s.id, label: sectionLabel(s.gradeLevel, s.code) })),
+                ...choices.map((s) => ({
+                  value: s.id,
+                  label: sectionLabel(s.gradeLevel, s.code, s.level),
+                })),
               ]}
               value={decision.sectionId ?? NO_SECTION}
               disabled={!editable}

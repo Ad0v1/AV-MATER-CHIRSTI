@@ -1,5 +1,12 @@
 // Anuncios (RF-32, Dev 5): tipos de la API y lógica pura compartida por las pantallas del docente,
 // del ADMIN, del estudiante y del apoderado. La API vuelve a validar todo.
+import {
+  gradeLabel,
+  isEducationLevel,
+  isValidGradeForLevel,
+  sectionLabel,
+  type EducationLevel,
+} from '../../admin/estructura/_lib/levels';
 
 export const TITLE_MAX = 150;
 export const BODY_MAX = 5000;
@@ -9,10 +16,12 @@ export type AnnouncementScope = 'INSTITUTION' | 'GRADE' | 'COURSE_SECTION';
 export type Announcement = {
   id: string;
   scope: AnnouncementScope;
+  /** Nivel del grado (solo GRADE). */
+  level: EducationLevel | null;
   gradeLevel: number | null;
   courseSectionId: string | null;
   course: { id: string; name: string } | null;
-  section: { gradeLevel: number; code: string } | null;
+  section: { level: EducationLevel; gradeLevel: number; code: string } | null;
   title: string;
   /** Texto plano: se muestra como texto, nunca como HTML. */
   body: string;
@@ -30,7 +39,7 @@ export type AnnouncementPage = {
   total: number;
 };
 
-export type AnnouncementField = 'title' | 'body' | 'gradeLevel';
+export type AnnouncementField = 'title' | 'body' | 'level' | 'gradeLevel';
 export type AnnouncementInput = { title: string; body: string };
 export type Validated<T> =
   { ok: true; value: T } | { ok: false; errors: Partial<Record<AnnouncementField, string>> };
@@ -63,16 +72,29 @@ export function validateAnnouncement(input: {
     : { ok: true, value: { title, body } };
 }
 
-/** Grado 1..5 o error. */
-export function parseGradeLevel(v: unknown): number | null {
-  const n = typeof v === 'string' ? Number(v) : typeof v === 'number' ? v : NaN;
-  return Number.isInteger(n) && n >= 1 && n <= 5 ? n : null;
+/** Nivel educativo válido o null. */
+export function parseLevel(v: unknown): EducationLevel | null {
+  return isEducationLevel(v) ? v : null;
 }
 
-export function scopeLabel(a: Pick<Announcement, 'scope' | 'gradeLevel' | 'course' | 'section'>) {
+/** Grado válido dentro del nivel (INICIAL 3..5, PRIMARIA 1..6, SECUNDARIA 1..5) o null. */
+export function parseGradeLevel(level: EducationLevel, v: unknown): number | null {
+  const n = typeof v === 'string' && v !== '' ? Number(v) : typeof v === 'number' ? v : NaN;
+  return isValidGradeForLevel(level, n) ? n : null;
+}
+
+export function scopeLabel(
+  a: Pick<Announcement, 'scope' | 'level' | 'gradeLevel' | 'course' | 'section'>,
+) {
   if (a.scope === 'INSTITUTION') return 'Toda la institución';
-  if (a.scope === 'GRADE') return `${a.gradeLevel}.° grado`;
-  const where = a.section ? ` · ${a.section.gradeLevel}.° ${a.section.code}` : '';
+  if (a.scope === 'GRADE') {
+    return a.level && a.gradeLevel !== null
+      ? gradeLabel(a.level, a.gradeLevel)
+      : `${a.gradeLevel}.° grado`;
+  }
+  const where = a.section
+    ? ` · ${sectionLabel(a.section.level, a.section.gradeLevel, a.section.code)}`
+    : '';
   return `${a.course?.name ?? 'Curso'}${where}`;
 }
 

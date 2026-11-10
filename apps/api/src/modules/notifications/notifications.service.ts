@@ -61,6 +61,7 @@ type AnnouncementInfo = {
   title: string;
   deletedAt: Date | null;
   scope: 'INSTITUTION' | 'GRADE' | 'COURSE_SECTION';
+  level: string | null;
   gradeLevel: number | null;
   sectionId: string | null;
   courseSectionId: string | null;
@@ -202,7 +203,9 @@ export class NotificationsService {
           if (!a || a.deletedAt) return gone('Un anuncio fue retirado.');
           const allowed =
             a.scope === 'INSTITUTION' ||
-            (a.scope === 'GRADE' && a.gradeLevel !== null && reach.grades.has(a.gradeLevel)) ||
+            (a.scope === 'GRADE' &&
+              a.gradeLevel !== null &&
+              reach.grades.has(`${a.level}:${a.gradeLevel}`)) ||
             (a.scope === 'COURSE_SECTION' &&
               a.sectionId !== null &&
               reach.sections.has(a.sectionId));
@@ -226,17 +229,18 @@ export class NotificationsService {
   private async reachOf(
     user: AuthenticatedUser,
     linkedIds: string[],
-  ): Promise<{ sections: Set<string>; grades: Set<number> }> {
+  ): Promise<{ sections: Set<string>; grades: Set<string> }> {
     const studentIds =
       user.role === 'STUDENT' ? [user.id] : user.role === 'GUARDIAN' ? linkedIds : [];
     if (studentIds.length === 0) return { sections: new Set(), grades: new Set() };
     const rows = await this.prisma.enrollment.findMany({
       where: { studentId: { in: studentIds }, isCurrent: true },
-      select: { sectionId: true, section: { select: { gradeLevel: true } } },
+      select: { sectionId: true, section: { select: { level: true, gradeLevel: true } } },
     });
     return {
       sections: new Set(rows.map((r) => r.sectionId)),
-      grades: new Set(rows.map((r) => r.section.gradeLevel)),
+      // Clave nivel:grado (3.° primaria no es 3.° secundaria).
+      grades: new Set(rows.map((r) => `${r.section.level}:${r.section.gradeLevel}`)),
     };
   }
 
@@ -314,6 +318,7 @@ export class NotificationsService {
         title: true,
         deletedAt: true,
         scope: true,
+        level: true,
         gradeLevel: true,
         courseSectionId: true,
         courseSection: { select: { sectionId: true, course: { select: { name: true } } } },
@@ -326,6 +331,7 @@ export class NotificationsService {
           title: a.title,
           deletedAt: a.deletedAt,
           scope: a.scope,
+          level: a.level,
           gradeLevel: a.gradeLevel,
           sectionId: a.courseSection?.sectionId ?? null,
           courseSectionId: a.courseSectionId,

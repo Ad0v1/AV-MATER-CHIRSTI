@@ -1,4 +1,9 @@
-import { normalizeGradeInput, type NormalizedGradeInput } from '@aula/shared';
+import {
+  GRADE_COMMENT_MAX,
+  GRADE_LITERALS,
+  normalizeGradeInput,
+  type NormalizedGradeInput,
+} from '@aula/shared';
 import { z } from 'zod';
 
 // Entradas de calificaciones (RF-41, RF-42, RF-45, RF-46). Las reglas viven en el motor
@@ -27,3 +32,15 @@ export type GradebookQueryDto = z.output<typeof gradebookQuerySchema>;
 
 export const yearQuerySchema = z.strictObject({ academicYearId: idSchema.optional() });
 export type YearQueryDto = z.output<typeof yearQuerySchema>;
+
+/** Cuerpo de PUT /course-sections/:id/periods/:periodId/achievements/:enrollmentId. */
+export const achievementInputSchema = z.strictObject({
+  literal: z.enum(GRADE_LITERALS, { error: 'El logro debe ser AD, A, B o C.' }),
+  comment: z
+    .string()
+    .trim()
+    .max(GRADE_COMMENT_MAX, `El comentario admite hasta ${GRADE_COMMENT_MAX} caracteres.`)
+    .nullish()
+    .transform((c) => (c === undefined || c === null || c === '' ? null : c)),
+});
+export type AchievementInputDto = z.output<typeof achievementInputSchema>;

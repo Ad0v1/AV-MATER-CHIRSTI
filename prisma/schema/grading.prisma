@@ -14,25 +14,59 @@ enum GradeSource {
   AUTO // NE materializada por el sistema al vencer o cerrar el periodo (solo state = NE)
 }
 
-// Nota de una matricula en una tarea (RF-41..46). value es null solo si EXEMPT.
+// Logro literal (CNEB) de INICIAL y PRIMARIA (tres niveles, 09/11/2026).
+enum GradeLiteral {
+  AD
+  A
+  B
+  C
+}
+
+// Nota de una matricula en una tarea (RF-41..46). GRADED y NE llevan exactamente uno de value
+// (SECUNDARIA, 0..20) o literal (INICIAL/PRIMARIA); EXEMPT no lleva ninguno. Que el campo usado
+// coincida con Section.level lo valida el servicio (cross-tabla).
 // exemptionReason solo para docente y ADMIN; nunca va a la bitacora ni a Mis notas.
 // CHECK: Grade_value_chk, Grade_state_chk, Grade_source_chk.
 model Grade {
-  id              String      @id @default(uuid(7)) @db.Char(36)
-  assignmentId    String      @db.Char(36)
-  enrollmentId    String      @db.Char(36)
+  id              String        @id @default(uuid(7)) @db.Char(36)
+  assignmentId    String        @db.Char(36)
+  enrollmentId    String        @db.Char(36)
   state           GradeState
-  value           Decimal?    @db.Decimal(4, 2) // 0..20 (RN-01)
-  comment         String?     @db.Text
-  exemptionReason String?     @db.VarChar(500)
-  source          GradeSource @default(MANUAL)
-  gradedAt        DateTime    @db.DateTime(3)
-  createdAt       DateTime    @default(now())
-  updatedAt       DateTime    @updatedAt
+  value           Decimal?      @db.Decimal(4, 2) // 0..20 (RN-01), solo SECUNDARIA
+  literal         GradeLiteral? // AD/A/B/C, solo INICIAL y PRIMARIA
+  comment         String?       @db.Text
+  exemptionReason String?       @db.VarChar(500)
+  source          GradeSource   @default(MANUAL)
+  gradedAt        DateTime      @db.DateTime(3)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
 
   assignment Assignment @relation(fields: [assignmentId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   enrollment Enrollment @relation(fields: [enrollmentId], references: [id], onDelete: Restrict, onUpdate: Restrict)
 
   @@unique([assignmentId, enrollmentId])
   @@index([enrollmentId])
+}
+
+// Logro del periodo (bimestre) en escala literal, elegido por el docente (decision 2 del usuario,
+// 09/11/2026). Solo INICIAL y PRIMARIA; en SECUNDARIA el promedio se calcula (RN-02/03) y no se
+// guarda. Una fila por matricula, curso-seccion y periodo. El cierre se lee de AcademicPeriod.closedAt.
+model PeriodAchievement {
+  id              String       @id @default(uuid(7)) @db.Char(36)
+  enrollmentId    String       @db.Char(36)
+  courseSectionId String       @db.Char(36)
+  periodId        String       @db.Char(36)
+  literal         GradeLiteral
+  comment         String?      @db.Text
+  gradedAt        DateTime     @db.DateTime(3)
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  enrollment    Enrollment     @relation(fields: [enrollmentId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  courseSection CourseSection  @relation(fields: [courseSectionId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  period        AcademicPeriod @relation(fields: [periodId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([enrollmentId, courseSectionId, periodId])
+  @@index([courseSectionId, periodId])
+  @@index([periodId])
 }

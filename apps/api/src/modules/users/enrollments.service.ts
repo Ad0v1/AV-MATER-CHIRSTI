@@ -7,7 +7,7 @@ import {
 import { AuditService } from '../../common/audit/audit.service.js';
 import { PrismaService } from '../../common/prisma/prisma.service.js';
 import type { Prisma } from '../../generated/prisma/client.js';
-import type { UserStatus } from '../../generated/prisma/enums.js';
+import type { EducationLevel, UserStatus } from '../../generated/prisma/enums.js';
 import { AcademicEventPublisher } from '../academic/academic-events.js';
 import { MSG, mapPrismaError } from '../academic/academic.errors.js';
 import type { Actor } from '../academic/request-user.js';
@@ -42,7 +42,8 @@ export type TransferResult = { closed: EnrollmentView; current: EnrollmentView }
 // Respuesta del alta (RF-18). Las contrasenas iniciales solo viajan aqui, una vez (RF-70).
 export type CreatedStudent = {
   user: UserView;
-  credentials: IssuedCredentials;
+  // Ausente en INICIAL: esos niños no tienen codigo ni contrasena (tres niveles, 09/11/2026).
+  credentials?: IssuedCredentials;
   enrollment: EnrollmentView;
   guardians: Array<{
     user: UserView;
@@ -95,13 +96,7 @@ export class EnrollmentsService {
     const result = await this.prisma
       .$transaction(async (tx) => {
         const section = await resolveTargetSection(tx, dto.sectionId);
-        const { user, credentials } = await this.issuer.createUser(tx, {
-          fullName: dto.fullName,
-          role: 'STUDENT',
-          dni: dto.dni,
-          dniVerified: dto.dniVerified,
-          email: dto.email,
-        });
+        const { user, credentials } = await this.createStudentUser(tx, dto, section.level);
         const enrollment = await tx.enrollment.create({
           data: {
             studentId: user.id,
@@ -184,7 +179,7 @@ export class EnrollmentsService {
     }
     return {
       user: toUserView(result.user),
-      credentials: result.credentials,
+      ...(result.credentials ? { credentials: result.credentials } : {}),
       enrollment: toEnrollmentView(result.enrollment),
       guardians: result.guardians.map((g) => ({
         user: toUserView(g.user),
@@ -193,6 +188,38 @@ export class EnrollmentsService {
         ...(g.credentials ? { credentials: g.credentials } : {}),
       })),
     };
+  }
+
+  /**
+   * Usuario STUDENT del alta. En INICIAL no hay login por ninguna via: sin codigo, sin correo, sin
+   * LocalCredential y con DNI opcional. En PRIMARIA y SECUNDARIA se emiten credenciales (RF-68..70).
+   */
+  private async createStudentUser(
+    tx: Prisma.TransactionClient,
+    dto: CreateStudentDto,
+    level: EducationLevel,
+  ): Promise<{ user: CreatedGuardian['user']; credentials?: IssuedCredentials }> {
+    if (level === 'INICIAL') {
+      if (dto.email) throw new UnprocessableEntityException(USERS_MSG.emailInicial);
+      if (dto.dni) await this.issuer.assertDniFree(tx, dto.dni);
+      const user = await tx.user.create({
+        data: {
+          fullName: dto.fullName,
+          role: 'STUDENT',
+          ...(dto.dni ? this.issuer.dniData(dto.dni) : {}),
+          ...(dto.dni && dto.dniVerified ? { dniVerifiedAt: new Date() } : {}),
+        },
+      });
+      return { user };
+    }
+    if (!dto.dni) throw new UnprocessableEntityException(USERS_MSG.studentDniRequired);
+    return this.issuer.createUser(tx, {
+      fullName: dto.fullName,
+      role: 'STUDENT',
+      dni: dto.dni,
+      dniVerified: dto.dniVerified,
+      email: dto.email,
+    });
   }
 
   // Matrícula de un estudiante existente (también la rematrícula tras un retiro).
@@ -245,14 +272,17 @@ export class EnrollmentsService {
             id: true,
             sectionId: true,
             effectiveFrom: true,
-            section: { select: { gradeLevel: true } },
+            section: { select: { level: true, gradeLevel: true } },
           },
         });
         if (!current) throw new ConflictException(USERS_MSG.noCurrentEnrollment);
         if (current.sectionId === section.id) {
           throw new UnprocessableEntityException(USERS_MSG.sameSection);
         }
-        if (current.section.gradeLevel !== section.gradeLevel) {
+        if (
+          current.section.level !== section.level ||
+          current.section.gradeLevel !== section.gradeLevel
+        ) {
           throw new UnprocessableEntityException(USERS_MSG.otherGrade);
         }
         const at = closeInstant(now, current.effectiveFrom);

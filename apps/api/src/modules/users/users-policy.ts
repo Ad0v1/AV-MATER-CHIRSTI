@@ -1,3 +1,4 @@
+import type { EducationLevel } from '@aula/shared';
 // Reglas puras del módulo users (sin BD), probadas en users-policy.spec.ts.
 import { ConflictException } from '@nestjs/common';
 import type { Prisma } from '../../generated/prisma/client.js';
@@ -41,6 +42,7 @@ export type UserSearchFilters = {
   /** RF-87: NONE sin contraseña, PENDING no cambió la inicial, READY ya la cambió. */
   credentials?: 'NONE' | 'PENDING' | 'READY';
   emailVerified?: 'true' | 'false';
+  level?: EducationLevel;
   gradeLevel?: number;
   sectionId?: string;
 };
@@ -66,7 +68,12 @@ export function buildUserSearchWhere(
   if (filters.emailVerified === 'true') where.emailVerifiedAt = { not: null };
   if (filters.emailVerified === 'false') where.emailVerifiedAt = null;
   if (matchingIds !== undefined) where.id = { in: matchingIds };
-  if (filters.gradeLevel === undefined && filters.sectionId === undefined) return where;
+  if (
+    filters.level === undefined &&
+    filters.gradeLevel === undefined &&
+    filters.sectionId === undefined
+  )
+    return where;
   if (academicYearId === null) {
     where.id = { in: [] };
     return where;
@@ -76,7 +83,14 @@ export function buildUserSearchWhere(
       academicYearId,
       isCurrent: true,
       ...(filters.sectionId !== undefined ? { sectionId: filters.sectionId } : {}),
-      ...(filters.gradeLevel !== undefined ? { section: { gradeLevel: filters.gradeLevel } } : {}),
+      ...(filters.level !== undefined || filters.gradeLevel !== undefined
+        ? {
+            section: {
+              ...(filters.level !== undefined ? { level: filters.level } : {}),
+              ...(filters.gradeLevel !== undefined ? { gradeLevel: filters.gradeLevel } : {}),
+            },
+          }
+        : {}),
     },
   };
   return where;

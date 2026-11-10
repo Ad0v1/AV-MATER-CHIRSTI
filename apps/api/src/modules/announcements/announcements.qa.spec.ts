@@ -89,7 +89,10 @@ describe('RF-32: título de 150 vs 151 y cuerpo con HTML', () => {
   it('RF-32: 150 caracteres pasa y 151 falla en crear de curso, ADMIN (ambos alcances) y PATCH', () => {
     expect(courseAnnouncementSchema.safeParse({ title: edge(150), body: 'b' }).success).toBe(true);
     expect(courseAnnouncementSchema.safeParse({ title: edge(151), body: 'b' }).success).toBe(false);
-    for (const extra of [{ scope: 'INSTITUTION' }, { scope: 'GRADE', gradeLevel: 2 }]) {
+    for (const extra of [
+      { scope: 'INSTITUTION' },
+      { scope: 'GRADE', level: 'PRIMARIA', gradeLevel: 2 },
+    ]) {
       expect(
         adminAnnouncementSchema.safeParse({ ...extra, title: edge(150), body: 'b' }).success,
       ).toBe(true);
@@ -148,6 +151,7 @@ const annRow = (over: Record<string, unknown> = {}) => ({
   id: 'ann-1',
   academicYearId: YEAR,
   scope: 'COURSE_SECTION',
+  level: null,
   gradeLevel: null,
   courseSectionId: 'cs-1',
   title: 'T',
@@ -155,7 +159,10 @@ const annRow = (over: Record<string, unknown> = {}) => ({
   authorId: 'teacher-1',
   publishedAt: new Date('2026-05-01T10:00:00Z'),
   updatedAt: new Date('2026-05-01T10:00:00Z'),
-  courseSection: { course: { id: 'c', name: 'Mate' }, section: { gradeLevel: 3, code: 'A' } },
+  courseSection: {
+    course: { id: 'c', name: 'Mate' },
+    section: { level: 'SECUNDARIA', gradeLevel: 3, code: 'A' },
+  },
   ...over,
 });
 
@@ -189,7 +196,9 @@ function build(opts: { linked?: string[]; current?: unknown } = {}) {
       findUnique: vi.fn(() => Promise.resolve({ id: 'cs-1' })),
       findUniqueOrThrow: vi.fn(() => Promise.resolve({ section: { academicYearId: YEAR } })),
       findMany: vi.fn(() =>
-        Promise.resolve([{ id: 'cs-1', sectionId: 'sec-1', section: { gradeLevel: 3 } }]),
+        Promise.resolve([
+          { id: 'cs-1', sectionId: 'sec-1', section: { level: 'SECUNDARIA', gradeLevel: 3 } },
+        ]),
       ),
     },
     academicYear: { findUnique: vi.fn(() => Promise.resolve({ closedAt: null })) },
@@ -198,7 +207,7 @@ function build(opts: { linked?: string[]; current?: unknown } = {}) {
         Promise.resolve([
           {
             sectionId: 'sec-1',
-            section: { gradeLevel: 3 },
+            section: { level: 'SECUNDARIA', gradeLevel: 3 },
             student: { id: 'st-1', fullName: 'Ana' },
           },
         ]),
@@ -389,14 +398,16 @@ describe('RF-32 / RN-14: borrado lógico y paginación', () => {
   it('RF-32: el docente ve INSTITUTION, los grados que enseña y sus cursos', async () => {
     const { service, prisma } = build();
     prisma.courseSection.findMany.mockResolvedValue([
-      { id: 'cs-1', section: { gradeLevel: 2 } },
-      { id: 'cs-2', section: { gradeLevel: 2 } },
+      { id: 'cs-1', section: { level: 'SECUNDARIA', gradeLevel: 2 } },
+      { id: 'cs-2', section: { level: 'SECUNDARIA', gradeLevel: 2 } },
+      { id: 'cs-3', section: { level: 'PRIMARIA', gradeLevel: 2 } },
     ] as never);
     await service.listMine(role('TEACHER', 'teacher-1'), { page: 1 });
     expect(lastFind(prisma.announcement.findMany).where.OR).toEqual([
       { scope: 'INSTITUTION' },
-      { scope: 'GRADE', gradeLevel: { in: [2] } },
-      { scope: 'COURSE_SECTION', courseSectionId: { in: ['cs-1', 'cs-2'] } },
+      { scope: 'GRADE', level: 'SECUNDARIA', gradeLevel: 2 },
+      { scope: 'GRADE', level: 'PRIMARIA', gradeLevel: 2 },
+      { scope: 'COURSE_SECTION', courseSectionId: { in: ['cs-1', 'cs-2', 'cs-3'] } },
     ]);
   });
 });

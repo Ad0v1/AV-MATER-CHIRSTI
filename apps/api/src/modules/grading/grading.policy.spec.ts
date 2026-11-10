@@ -20,7 +20,7 @@ const enrollment = {
 };
 
 const ctx = (over: Partial<ManualGradeContext>): ManualGradeContext => ({
-  input: { state: 'GRADED', value: '15.00', comment: null },
+  input: { state: 'GRADED', value: '15.00', literal: null, comment: null },
   hasSubmission: true,
   dueAt,
   now: after,
@@ -32,6 +32,7 @@ const ctx = (over: Partial<ManualGradeContext>): ManualGradeContext => ({
 const row = (over: Partial<GradeRow> = {}): GradeRow => ({
   state: 'GRADED',
   value: '15.00',
+  literal: null,
   comment: null,
   exemptionReason: null,
   source: 'MANUAL',
@@ -43,6 +44,7 @@ describe('gradeInputSchema', () => {
     expect(gradeInputSchema.parse({ state: 'GRADED', value: '05' })).toEqual({
       state: 'GRADED',
       value: '5.00',
+      literal: null,
       comment: null,
     });
   });
@@ -76,24 +78,27 @@ describe('decideManualGrade (A1)', () => {
     expect(
       decideManualGrade(
         ctx({
-          input: { state: 'NE', value: null, comment: 'x' },
+          input: { state: 'NE', value: null, literal: null, comment: 'x' },
           hasSubmission: false,
           noSubmissionGrade: '5.00',
         }),
       ),
-    ).toEqual({ ok: true, row: row({ state: 'NE', value: '5.00', comment: 'x' }) });
+    ).toEqual({ ok: true, row: row({ state: 'NE', value: '5.00', literal: null, comment: 'x' }) });
   });
 
   it('RF-45: NE manual con valor propio', () => {
     expect(
       decideManualGrade(
-        ctx({ input: { state: 'NE', value: '3.00', comment: null }, hasSubmission: false }),
+        ctx({
+          input: { state: 'NE', value: '3.00', literal: null, comment: null },
+          hasSubmission: false,
+        }),
       ),
     ).toMatchObject({ ok: true, row: { state: 'NE', value: '3.00' } });
   });
 
   it('RF-45: NE con entrega es HAS_SUBMISSION; antes del plazo NOT_OVERDUE', () => {
-    const ne = { state: 'NE' as const, value: null, comment: null };
+    const ne = { state: 'NE' as const, value: null, literal: null, comment: null };
     expect(decideManualGrade(ctx({ input: ne }))).toMatchObject({ code: 'HAS_SUBMISSION' });
     expect(decideManualGrade(ctx({ input: ne, hasSubmission: false, now: before }))).toMatchObject({
       code: 'NOT_OVERDUE',
@@ -104,7 +109,7 @@ describe('decideManualGrade (A1)', () => {
     expect(
       decideManualGrade(
         ctx({
-          input: { state: 'NE', value: null, comment: null },
+          input: { state: 'NE', value: null, literal: null, comment: null },
           hasSubmission: false,
           enrollment: { isCurrent: true, effectiveFrom: after, effectiveTo: null },
         }),
@@ -162,7 +167,7 @@ describe('changedFields y bitácora (U3)', () => {
   it('U2/U3: la bitácora solo lleva state, value y source', () => {
     expect(
       auditState(row({ state: 'EXEMPT', value: null, exemptionReason: 'secreto', comment: 'c' })),
-    ).toEqual({ state: 'EXEMPT', value: null, source: 'MANUAL' });
+    ).toEqual({ state: 'EXEMPT', value: null, literal: null, source: 'MANUAL' });
   });
 
   it('RN-07: toGradeEntry y decimalText', () => {

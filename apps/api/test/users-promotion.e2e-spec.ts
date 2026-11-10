@@ -18,7 +18,7 @@ config({ path: fileURLToPath(new URL('../../../.env', import.meta.url)), quiet: 
 const API = '/api/v1';
 const USER_PREFIX = 'qa-f6p-';
 // 2070 → 2071: origen y destino. 2072: no consecutivo. 2016 → 2017: destino de solo lectura.
-const QA_YEARS = [2016, 2017, 2070, 2071, 2072];
+const QA_YEARS = [2016, 2017, 2070, 2071, 2072, 2080, 2081];
 
 const periodsOf = (year: number) => [
   { sequence: 1, startDate: `${year}-03-01`, endDate: `${year}-05-31` },
@@ -588,6 +588,83 @@ describe.skipIf(!process.env.DATABASE_URL)('Promoción en bloque RF-16 (e2e, MyS
         studentId: students.get('s6'),
         proposed: { action: 'EXCLUDE' },
       });
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  describe('Promoción entre niveles (tres niveles)', () => {
+    type Level = 'INICIAL' | 'PRIMARIA' | 'SECUNDARIA';
+    const secs = new Map<string, string>();
+    const kids = new Map<string, string>();
+    const enr = new Map<string, string>();
+
+    beforeAll(async () => {
+      const mk = async (year: number, level: Level, gradeLevel: number) => {
+        const sct = await prisma.section.create({
+          data: { academicYearId: y(year), level, gradeLevel, code: 'N' },
+        });
+        secs.set(`${year}-${level}-${gradeLevel}`, sct.id);
+      };
+      await mk(2080, 'INICIAL', 5);
+      await mk(2080, 'PRIMARIA', 6);
+      await mk(2081, 'PRIMARIA', 1);
+      await mk(2081, 'SECUNDARIA', 1);
+      await prisma.academicPeriod.updateMany({
+        where: { academicYearId: y(2080) },
+        data: { closedAt: new Date() },
+      });
+      for (const [key, level, grade] of [
+        ['n1', 'INICIAL', 5],
+        ['n2', 'PRIMARIA', 6],
+      ] as const) {
+        const u = await prisma.user.create({
+          data: {
+            email: `${USER_PREFIX}${key}@colegio.example`,
+            fullName: `QA Nivel ${key}`,
+            role: 'STUDENT',
+          },
+        });
+        kids.set(key, u.id);
+        const e = await prisma.enrollment.create({
+          data: {
+            studentId: u.id,
+            sectionId: secs.get(`2080-${level}-${grade}`)!,
+            academicYearId: y(2080),
+            effectiveFrom: new Date('2020-03-01T00:00:00Z'),
+          },
+        });
+        enr.set(key, e.id);
+      }
+    });
+
+    it('RF-16: INICIAL 5 años -> PRIMARIA 1.° y PRIMARIA 6.° -> SECUNDARIA 1.° (sin graduar)', async () => {
+      const res = await proposal('admin', y(2081), y(2080)).expect(200);
+      const byStudent = new Map((res.body.items as Json[]).map((i) => [i.studentId, i]));
+      expect(res.body.summary).toMatchObject({ promote: 2, graduate: 0 });
+      expect(byStudent.get(kids.get('n1'))!.proposed).toEqual({
+        action: 'PROMOTE',
+        sectionId: secs.get('2081-PRIMARIA-1'),
+      });
+      expect(byStudent.get(kids.get('n2'))!.proposed).toEqual({
+        action: 'PROMOTE',
+        sectionId: secs.get('2081-SECUNDARIA-1'),
+      });
+      await commit('admin', y(2081), {
+        sourceYearId: y(2080),
+        fingerprint: res.body.fingerprint,
+        decisions: accept(res.body.items),
+      }).expect(201);
+      const now = await prisma.enrollment.findMany({
+        where: { studentId: { in: [...kids.values()] }, isCurrent: true },
+        select: { studentId: true, sectionId: true },
+      });
+      expect(now).toHaveLength(2);
+      expect(now.find((e) => e.studentId === kids.get('n1'))!.sectionId).toBe(
+        secs.get('2081-PRIMARIA-1'),
+      );
+      expect(now.find((e) => e.studentId === kids.get('n2'))!.sectionId).toBe(
+        secs.get('2081-SECUNDARIA-1'),
+      );
     });
   });
 

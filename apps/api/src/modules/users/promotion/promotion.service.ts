@@ -266,13 +266,13 @@ export class PromotionService {
         studentId: true,
         effectiveFrom: true,
         student: { select: { fullName: true, status: true } },
-        section: { select: { id: true, gradeLevel: true, code: true } },
+        section: { select: { id: true, level: true, gradeLevel: true, code: true } },
       },
     });
     const targetSections = await db.section.findMany({
       where: { academicYearId: targetId, isActive: true },
-      select: { id: true, gradeLevel: true, code: true },
-      orderBy: [{ gradeLevel: 'asc' }, { code: 'asc' }],
+      select: { id: true, level: true, gradeLevel: true, code: true },
+      orderBy: [{ level: 'asc' }, { gradeLevel: 'asc' }, { code: 'asc' }],
     });
     const studentIds = rows.map((r) => r.studentId);
     const already =

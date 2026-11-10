@@ -1,3 +1,4 @@
+import { scaleForLevel, type EducationLevel } from '@aula/shared';
 import { Injectable, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import { AuditService } from '../../common/audit/audit.service.js';
 import { PrismaService } from '../../common/prisma/prisma.service.js';
@@ -26,12 +27,12 @@ export interface ReportCourseSectionsView {
   academicYear: { id: string; year: number; isActive: boolean; closedAt: string | null } | null;
   years: { id: string; year: number; isActive: boolean }[];
   periods: { id: string; label: string; sequence: number }[];
-  sections: { id: string; gradeLevel: number; code: string }[];
+  sections: { id: string; level: EducationLevel; gradeLevel: number; code: string }[];
   items: {
     courseSectionId: string;
     isActive: boolean;
     course: { id: string; name: string };
-    section: { id: string; gradeLevel: number; code: string };
+    section: { id: string; level: EducationLevel; gradeLevel: number; code: string };
     teacher: { id: string; fullName: string } | null;
   }[];
 }
@@ -56,7 +57,7 @@ export class ReportsService {
     private readonly audit: AuditService,
   ) {}
 
-  /** RF-57: cursos-sección del año con su docente, filtrables por grado y sección. */
+  /** RF-57: cursos-sección del año con su docente, filtrables por nivel, grado y sección. */
   async courseSections(query: CourseSectionsQuery): Promise<ReportCourseSectionsView> {
     const years = await this.prisma.academicYear.findMany({
       select: { id: true, year: true, isActive: true, closedAt: true },
@@ -77,10 +78,11 @@ export class ReportsService {
       }),
       this.prisma.section.findMany({
         where: { academicYearId: year.id },
-        select: { id: true, gradeLevel: true, code: true },
-        orderBy: [{ gradeLevel: 'asc' }, { code: 'asc' }],
+        select: { id: true, level: true, gradeLevel: true, code: true },
+        orderBy: [{ level: 'asc' }, { gradeLevel: 'asc' }, { code: 'asc' }],
       }),
       this.data.courseSections(year.id, {
+        level: query.level,
         gradeLevel: query.gradeLevel,
         sectionId: query.sectionId,
       }),
@@ -99,7 +101,12 @@ export class ReportsService {
         courseSectionId: cs.id,
         isActive: cs.isActive,
         course: cs.course,
-        section: { id: cs.section.id, gradeLevel: cs.section.gradeLevel, code: cs.section.code },
+        section: {
+          id: cs.section.id,
+          level: cs.section.level,
+          gradeLevel: cs.section.gradeLevel,
+          code: cs.section.code,
+        },
         teacher: cs.teacher,
       })),
     };
@@ -108,12 +115,16 @@ export class ReportsService {
   /**
    * RF-60: promedios por grado y sección, distribución por literal, estudiantes en riesgo
    * (conteos, sin nombres) y entregas a tiempo, tarde y NE del período. Todo sale del motor por
-   * curso-sección (aggregateDashboard no recalcula). Sin promedio anual (D-014).
+   * curso-sección (aggregateDashboard no recalcula). Sin promedio anual (D-014). Agrupa por
+   * (nivel, grado); en escala literal (INICIAL, PRIMARIA) cuenta logros del bimestre, no promedios.
    */
   async dashboard(query: DashboardQuery, now: Date = new Date()): Promise<ReportsDashboardView> {
     const year = await this.data.year(query.academicYearId);
     const period = await this.data.period(year.id, query.periodId);
-    const refs = await this.data.courseSections(year.id, { gradeLevel: query.gradeLevel });
+    const refs = await this.data.courseSections(year.id, {
+      level: query.level,
+      gradeLevel: query.gradeLevel,
+    });
     if (refs.length > MAX_REPORT_COURSE_SECTIONS) {
       throw new UnprocessableEntityException(REPORT_ERRORS.tooMany);
     }
@@ -125,6 +136,8 @@ export class ReportsService {
     for (const ref of refs) {
       const { view } = await this.data.sectionGradebook(ref.id, period.id, now);
       items.push({
+        level: ref.section.level,
+        gradingScale: scaleForLevel(ref.section.level),
         gradeLevel: ref.section.gradeLevel,
         sectionId: ref.section.id,
         code: ref.section.code,

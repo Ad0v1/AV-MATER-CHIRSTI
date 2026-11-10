@@ -84,7 +84,7 @@ export class BulkExportProcessor implements JobProcessor<TrackedJobData>, OnModu
         if (total > maxBytes) throw new JobError('BULK_TOO_LARGE', false);
         await zip.addBuffer(
           zipPath(
-            sectionText(ref.section.gradeLevel, ref.section.code),
+            sectionText(ref.section.level, ref.section.gradeLevel, ref.section.code),
             entryName(`${data.course} - ${data.period}`, FORMAT_EXT[format]),
           ),
           file,

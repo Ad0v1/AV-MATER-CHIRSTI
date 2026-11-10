@@ -3,8 +3,11 @@ import {
   isNeEligible,
   isOverdue,
   resolveNoSubmissionGrade,
-  type GradeEntry,
+  resolveNoSubmissionLiteral,
+  type GradeLiteralCode,
+  type GradingScale,
   type NormalizedGradeInput,
+  type StoredGradeEntry,
 } from '@aula/shared';
 
 // Reglas puras de la API de calificaciones (A1, U2, U3), sin BD. Probadas en grading.policy.spec.ts.
@@ -16,13 +19,20 @@ export type GradeSourceValue = 'MANUAL' | 'AUTO';
 export type GradeRow = {
   state: GradeStateValue;
   value: string | null;
+  /** AD/A/B/C en INICIAL y PRIMARIA; null en SECUNDARIA (tres niveles, 09/11/2026). */
+  literal: GradeLiteralCode | null;
   comment: string | null;
   exemptionReason: string | null;
   source: GradeSourceValue;
 };
 
 /** Lo único que va a la bitácora (U3): nunca comment ni exemptionReason. */
-export type GradeAuditState = { state: GradeStateValue; value: string | null; source: string };
+export type GradeAuditState = {
+  state: GradeStateValue;
+  value: string | null;
+  literal: GradeLiteralCode | null;
+  source: string;
+};
 
 export const GRADE_ERRORS = {
   NO_SUBMISSION: 'Solo se califica con nota una tarea entregada',
@@ -30,6 +40,7 @@ export const GRADE_ERRORS = {
   NOT_OVERDUE: 'La tarea aún no vence: no se puede registrar NE',
   ENROLLMENT_OUT_OF_SECTION: 'La matrícula no es de la sección de la tarea',
   ENROLLMENT_NOT_ELIGIBLE: 'La matrícula no estaba vigente al vencer la tarea',
+  NE_LITERAL_REQUIRED: 'La tarea no define el literal de NE: indica AD, A, B o C',
 } as const;
 export type GradeErrorCode = keyof typeof GRADE_ERRORS;
 
@@ -37,10 +48,21 @@ export type GradeErrorCode = keyof typeof GRADE_ERRORS;
 export const decimalText = (value: { toFixed(d: number): string } | null): string | null =>
   value === null ? null : value.toFixed(2);
 
-/** Fila de Grade → entrada del motor. */
-export function toGradeEntry(row: { state: GradeStateValue; value: string | null }): GradeEntry {
+/** Fila de Grade → entrada del motor (numérica o literal según la columna usada). */
+export function toGradeEntry(row: {
+  state: GradeStateValue;
+  value: string | null;
+  literal?: GradeLiteralCode | null;
+}): StoredGradeEntry {
   if (row.state === 'EXEMPT') return { state: 'EXEMPT' };
-  return { state: row.state, value: row.value ?? '0' };
+  if (row.literal !== null && row.literal !== undefined) {
+    return row.state === 'NE'
+      ? { state: 'NE', literal: row.literal }
+      : { state: 'GRADED', literal: row.literal };
+  }
+  return row.state === 'NE'
+    ? { state: 'NE', value: row.value ?? '0' }
+    : { state: 'GRADED', value: row.value ?? '0' };
 }
 
 export type ManualGradeContext = {
@@ -50,6 +72,10 @@ export type ManualGradeContext = {
   now: Date;
   /** Nota NE de la tarea ("0.00"). */
   noSubmissionGrade: string;
+  /** Escala del nivel de la sección; por defecto NUMERIC_0_20. */
+  scale?: GradingScale;
+  /** Literal NE de la tarea (escala literal). */
+  noSubmissionLiteral?: GradeLiteralCode | null;
   enrollment: { isCurrent: boolean; effectiveFrom: Date; effectiveTo: Date | null };
 };
 
@@ -78,6 +104,7 @@ export function decideManualGrade(ctx: ManualGradeContext): ManualGradeDecision 
         row: {
           state: 'GRADED',
           value: input.value,
+          literal: input.literal,
           comment: input.comment,
           exemptionReason: null,
           source: 'MANUAL',
@@ -87,11 +114,28 @@ export function decideManualGrade(ctx: ManualGradeContext): ManualGradeDecision 
       if (ctx.hasSubmission) return reject('HAS_SUBMISSION');
       if (!isOverdue(ctx.dueAt, ctx.now)) return reject('NOT_OVERDUE');
       if (!eligible) return reject('ENROLLMENT_NOT_ELIGIBLE');
+      if (ctx.scale === 'LITERAL_ADABC') {
+        // La BD exige literal en una NE guardada: sin literal de la tarea, el docente lo indica.
+        const literal = input.literal ?? resolveNoSubmissionLiteral(ctx.noSubmissionLiteral);
+        if (literal === null) return reject('NE_LITERAL_REQUIRED');
+        return {
+          ok: true,
+          row: {
+            state: 'NE',
+            value: null,
+            literal,
+            comment: input.comment,
+            exemptionReason: null,
+            source: 'MANUAL',
+          },
+        };
+      }
       return {
         ok: true,
         row: {
           state: 'NE',
           value: input.value ?? resolveNoSubmissionGrade(ctx.noSubmissionGrade),
+          literal: null,
           comment: input.comment,
           exemptionReason: null,
           source: 'MANUAL',
@@ -104,6 +148,7 @@ export function decideManualGrade(ctx: ManualGradeContext): ManualGradeDecision 
         row: {
           state: 'EXEMPT',
           value: null,
+          literal: null,
           comment: input.comment,
           exemptionReason: input.exemptionReason,
           source: 'MANUAL',
@@ -112,7 +157,7 @@ export function decideManualGrade(ctx: ManualGradeContext): ManualGradeDecision 
   }
 }
 
-const FIELDS = ['state', 'value', 'comment', 'exemptionReason', 'source'] as const;
+const FIELDS = ['state', 'value', 'literal', 'comment', 'exemptionReason', 'source'] as const;
 
 /** Nombres de los campos que cambian (sin sus valores). Todos si no había fila. */
 export function changedFields(before: GradeRow | null, after: GradeRow): string[] {
@@ -129,5 +174,6 @@ const normalized = (row: GradeRow, field: (typeof FIELDS)[number]): string | nul
 export const auditState = (row: GradeRow): GradeAuditState => ({
   state: row.state,
   value: row.value,
+  literal: row.literal,
   source: row.source,
 });

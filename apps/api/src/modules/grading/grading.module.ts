@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { AcademicModule } from '../academic/academic.module.js';
 import { SubmissionsModule } from '../submissions/submissions.module.js';
+import { AchievementsService } from './achievements.service.js';
 import { GradebookReadService } from './gradebook-read.service.js';
 import { GradesService } from './grades.service.js';
 import { GradingEventPublisher } from './grading-events.js';
@@ -15,7 +16,13 @@ import { NeMaterializer } from './ne-materializer.service.js';
 @Module({
   imports: [AcademicModule, SubmissionsModule],
   controllers: [GradingController],
-  providers: [GradesService, GradebookReadService, NeMaterializer, GradingEventPublisher],
+  providers: [
+    AchievementsService,
+    GradesService,
+    GradebookReadService,
+    NeMaterializer,
+    GradingEventPublisher,
+  ],
   exports: [GradebookReadService, GradingEventPublisher, NeMaterializer],
 })
 export class GradingModule {}

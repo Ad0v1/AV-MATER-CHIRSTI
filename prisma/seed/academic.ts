@@ -8,7 +8,9 @@ import {
   ALL_USERS,
   COURSES,
   ENROLLMENTS,
+  COURSES_BY_LEVEL,
   GUARDIAN_LINKS,
+  INITIAL_CHILDREN,
   SECTIONS,
   YEARS,
   day,
@@ -43,6 +45,21 @@ export async function seedAcademic(prisma: PrismaClient): Promise<void> {
       select: { id: true },
     });
     userIds.set(u.key, row.id);
+  }
+  // 1b. Niños de inicial sin cuenta (decision 3 del usuario, 09/11/2026): sin correo, sin codigo
+  //     y sin credencial. Clave natural: nombre + rol STUDENT + sin correo ni codigo.
+  for (const c of INITIAL_CHILDREN) {
+    const existing = await prisma.user.findFirst({
+      where: { fullName: c.fullName, role: 'STUDENT', email: null, code: null },
+      select: { id: true },
+    });
+    const row =
+      existing ??
+      (await prisma.user.create({
+        data: { fullName: c.fullName, role: 'STUDENT', status: 'ACTIVE' },
+        select: { id: true },
+      }));
+    userIds.set(c.key, row.id);
   }
   const userId = (key: string): string => {
     const id = userIds.get(key);
@@ -89,15 +106,21 @@ export async function seedAcademic(prisma: PrismaClient): Promise<void> {
     return id;
   };
 
-  // 4. Secciones (clave: academicYearId + gradeLevel + code).
+  // 4. Secciones (clave: academicYearId + level + gradeLevel + code).
   const sectionIds = new Map<string, { id: string; academicYearId: string }>();
   for (const s of SECTIONS) {
     const academicYearId = yearId(s.year);
+    const level = s.level ?? 'SECUNDARIA';
     const row = await prisma.section.upsert({
       where: {
-        academicYearId_gradeLevel_code: { academicYearId, gradeLevel: s.gradeLevel, code: s.code },
+        academicYearId_level_gradeLevel_code: {
+          academicYearId,
+          level,
+          gradeLevel: s.gradeLevel,
+          code: s.code,
+        },
       },
-      create: { academicYearId, gradeLevel: s.gradeLevel, code: s.code },
+      create: { academicYearId, level, gradeLevel: s.gradeLevel, code: s.code },
       update: { isActive: true },
       select: { id: true, academicYearId: true },
     });
@@ -121,12 +144,12 @@ export async function seedAcademic(prisma: PrismaClient): Promise<void> {
     courseIds.set(name, row.id);
   }
 
-  // 6. CourseSection: los 5 cursos en cada seccion del año activo (clave: sectionId + courseId).
+  // 6. CourseSection: los cursos del nivel en cada seccion del año activo (clave: sectionId + courseId).
   const activeYear = YEARS.find((y) => y.isActive);
   if (!activeYear) throw new Error('El seed necesita un año activo');
   for (const s of SECTIONS.filter((x) => x.year === activeYear.year)) {
     const sectionId = section(sectionKey(s)).id;
-    for (const course of COURSES) {
+    for (const course of COURSES_BY_LEVEL[s.level ?? 'SECUNDARIA']) {
       const courseId = courseIds.get(course)!;
       const teacherId = userId(teacherFor(course, s));
       await prisma.courseSection.upsert({

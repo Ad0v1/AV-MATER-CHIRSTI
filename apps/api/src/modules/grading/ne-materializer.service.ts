@@ -1,5 +1,12 @@
 import { Injectable, Logger, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
-import { isNeEligible, isOverdue } from '@aula/shared';
+import {
+  isNeEligible,
+  isOverdue,
+  resolveNoSubmissionLiteral,
+  scaleForLevel,
+  type EducationLevel,
+  type GradeLiteralCode,
+} from '@aula/shared';
 import { AuditService } from '../../common/audit/audit.service.js';
 import { PrismaService } from '../../common/prisma/prisma.service.js';
 import type { Prisma } from '../../generated/prisma/client.js';
@@ -17,6 +24,9 @@ import { decimalText, type GradeAuditState } from './grading.policy.js';
 // A3: mientras se materializa, una NE AUTO se resincroniza con la nota NE actual de la tarea.
 // Transacción leer→insertar por tarea; si otro escribió a la vez (P2002 o bloqueo mutuo) se
 // reintenta la transacción, que vuelve a leer. Nunca createMany({skipDuplicates}) (INFORME 1).
+// Tres niveles (09/11/2026): en INICIAL/PRIMARIA la NE AUTO lleva el literal de la tarea
+// (noSubmissionLiteral). Si la tarea no define literal, no se materializa (la BD exige value o
+// literal en una NE) y la lectura muestra la NE virtual sin literal ("NE").
 
 const MAX_ATTEMPTS = 3;
 const logger = new Logger('NeMaterializer');
@@ -27,8 +37,12 @@ type AssignmentRow = {
   periodId: string;
   dueAt: Date;
   noSubmissionGrade: { toFixed(d: number): string };
-  courseSection: { sectionId: string };
+  noSubmissionLiteral: GradeLiteralCode | null;
+  courseSection: { sectionId: string; section: { level: EducationLevel } };
 };
+
+/** Lo que debe valer una NE AUTO: un número (SECUNDARIA) o un literal (INICIAL/PRIMARIA). */
+type Target = { value: string | null; literal: GradeLiteralCode | null };
 
 type Change = {
   gradeId: string;
@@ -46,8 +60,23 @@ const assignmentSelect = {
   periodId: true,
   dueAt: true,
   noSubmissionGrade: true,
-  courseSection: { select: { sectionId: true } },
+  noSubmissionLiteral: true,
+  courseSection: { select: { sectionId: true, section: { select: { level: true } } } },
 } as const;
+
+/** Valor de la NE AUTO de una tarea, o null si no hay literal que guardar. */
+function targetOf(a: AssignmentRow): Target | null {
+  if (scaleForLevel(a.courseSection.section.level) === 'LITERAL_ADABC') {
+    const literal = resolveNoSubmissionLiteral(a.noSubmissionLiteral);
+    return literal === null ? null : { value: null, literal };
+  }
+  return { value: decimalText(a.noSubmissionGrade)!, literal: null };
+}
+
+const sameTarget = (
+  g: { value: { toFixed(d: number): string } | null; literal: GradeLiteralCode | null },
+  t: Target,
+): boolean => decimalText(g.value) === t.value && g.literal === t.literal;
 
 const retriable = (error: unknown): boolean => {
   if (isDeadlock(error)) return true;
@@ -136,7 +165,8 @@ export class NeMaterializer implements OnModuleInit, OnModuleDestroy {
     now: Date,
     requireOpen: boolean,
   ): Promise<number> {
-    const target = decimalText(a.noSubmissionGrade)!;
+    const target = targetOf(a);
+    if (target === null) return 0;
     if (!(await this.hasWork(a, target))) return 0;
 
     let changes: Change[] = [];
@@ -154,7 +184,7 @@ export class NeMaterializer implements OnModuleInit, OnModuleDestroy {
               {
                 before: c.before,
                 after: c.after,
-                changedFields: c.before === null ? ['state', 'value', 'source'] : ['value'],
+                changedFields: c.before === null ? createdFields(target) : [targetField(target)],
                 assignmentId: c.assignmentId,
                 enrollmentId: c.enrollmentId,
               },
@@ -190,7 +220,7 @@ export class NeMaterializer implements OnModuleInit, OnModuleDestroy {
   }
 
   /** Lectura previa sin transacción: evita abrir una si no hay nada que hacer. */
-  private async hasWork(a: AssignmentRow, target: string): Promise<boolean> {
+  private async hasWork(a: AssignmentRow, target: Target): Promise<boolean> {
     const plan = await this.plan(this.prisma, a, target);
     return plan.toCreate.length > 0 || plan.toResync.length > 0;
   }
@@ -198,7 +228,7 @@ export class NeMaterializer implements OnModuleInit, OnModuleDestroy {
   private async plan(
     db: Prisma.TransactionClient | PrismaService,
     a: AssignmentRow,
-    target: string,
+    target: Target,
   ) {
     const [enrollments, submissions, grades] = await Promise.all([
       db.enrollment.findMany({
@@ -211,7 +241,14 @@ export class NeMaterializer implements OnModuleInit, OnModuleDestroy {
       }),
       db.grade.findMany({
         where: { assignmentId: a.id },
-        select: { id: true, enrollmentId: true, state: true, value: true, source: true },
+        select: {
+          id: true,
+          enrollmentId: true,
+          state: true,
+          value: true,
+          literal: true,
+          source: true,
+        },
       }),
     ]);
     const submitted = new Set(submissions.map((s) => s.enrollmentId));
@@ -220,7 +257,7 @@ export class NeMaterializer implements OnModuleInit, OnModuleDestroy {
       .filter((e) => isNeEligible(e, a.dueAt) && !submitted.has(e.id) && !graded.has(e.id))
       .map((e) => e.id);
     const toResync = grades.filter(
-      (g) => g.source === 'AUTO' && g.state === 'NE' && decimalText(g.value) !== target,
+      (g) => g.source === 'AUTO' && g.state === 'NE' && !sameTarget(g, target),
     );
     return { toCreate, toResync };
   }
@@ -228,14 +265,19 @@ export class NeMaterializer implements OnModuleInit, OnModuleDestroy {
   private async materializeInTx(
     tx: Prisma.TransactionClient,
     a: AssignmentRow,
-    target: string,
+    target: Target,
     now: Date,
     requireOpen: boolean,
   ): Promise<Change[]> {
     // RN-10: el cierre del período espera a esta transacción (FOR SHARE), igual que en contents.
     if (requireOpen) await lockOpenPeriod(tx, a.periodId);
     const { toCreate, toResync } = await this.plan(tx, a, target);
-    const after: GradeAuditState = { state: 'NE', value: target, source: 'AUTO' };
+    const after: GradeAuditState = {
+      state: 'NE',
+      value: target.value,
+      literal: target.literal,
+      source: 'AUTO',
+    };
     const changes: Change[] = [];
     for (const enrollmentId of toCreate) {
       const g = await tx.grade.create({
@@ -243,7 +285,8 @@ export class NeMaterializer implements OnModuleInit, OnModuleDestroy {
           assignmentId: a.id,
           enrollmentId,
           state: 'NE',
-          value: target,
+          value: target.value,
+          literal: target.literal,
           source: 'AUTO',
           gradedAt: now,
         },
@@ -263,7 +306,7 @@ export class NeMaterializer implements OnModuleInit, OnModuleDestroy {
       // Solo si sigue siendo AUTO: un docente pudo editarla a la vez.
       const { count } = await tx.grade.updateMany({
         where: { id: old.id, source: 'AUTO', state: 'NE' },
-        data: { value: target, gradedAt: now },
+        data: { value: target.value, literal: target.literal, gradedAt: now },
       });
       if (count === 0) continue;
       changes.push({
@@ -271,7 +314,12 @@ export class NeMaterializer implements OnModuleInit, OnModuleDestroy {
         assignmentId: a.id,
         enrollmentId: old.enrollmentId,
         courseSectionId: a.courseSectionId,
-        before: { state: 'NE', value: decimalText(old.value), source: 'AUTO' },
+        before: {
+          state: 'NE',
+          value: decimalText(old.value),
+          literal: old.literal,
+          source: 'AUTO',
+        },
         after,
         updatedAt: now,
       });
@@ -279,3 +327,6 @@ export class NeMaterializer implements OnModuleInit, OnModuleDestroy {
     return changes;
   }
 }
+
+const targetField = (t: Target): 'value' | 'literal' => (t.literal === null ? 'value' : 'literal');
+const createdFields = (t: Target): string[] => ['state', targetField(t), 'source'];

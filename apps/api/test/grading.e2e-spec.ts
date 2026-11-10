@@ -258,6 +258,7 @@ describe.skipIf(!process.env.DATABASE_URL)('Calificaciones de Dev 4, fase 4b (e2
       expect(auditOf('grading.grade.update')[0].beforeState).toEqual({
         state: 'GRADED',
         value: '5.00',
+        literal: null,
         source: 'MANUAL',
       });
     });
@@ -347,7 +348,12 @@ describe.skipIf(!process.env.DATABASE_URL)('Calificaciones de Dev 4, fase 4b (e2
         value: '16',
       }).expect(200);
       const changed = auditOf('grading.grade.update').at(-1)!;
-      expect(changed.beforeState).toEqual({ state: 'NE', value: '4.00', source: 'AUTO' });
+      expect(changed.beforeState).toEqual({
+        state: 'NE',
+        value: '4.00',
+        literal: null,
+        source: 'AUTO',
+      });
     });
 
     it('RF-44: period.closed.v1 deja fijas las NE AUTO del período', async () => {
@@ -558,7 +564,7 @@ describe.skipIf(!process.env.DATABASE_URL)('Calificaciones de Dev 4, fase 4b (e2
       expect(list.body.items.map((s: Json) => s.studentId)).toEqual(
         expect.arrayContaining([ids.get('estudiante01'), await idOf('estudiante11')]),
       );
-      expect(list.body.items).toHaveLength(2);
+      expect(list.body.items).toHaveLength(3);
       const grades = await get(
         'apoderado01',
         `/guardian/students/${ids.get('estudiante01')}/grades`,
@@ -637,6 +643,7 @@ describe.skipIf(!process.env.DATABASE_URL)('Calificaciones de Dev 4, fase 4b (e2
       expect(auditOf('grading.grade.update').at(-1)!.beforeState).toEqual({
         state: 'NE',
         value: '3.00',
+        literal: null,
         source: 'AUTO',
       });
 

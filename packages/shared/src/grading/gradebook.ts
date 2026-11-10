@@ -1,3 +1,4 @@
+import type { GradingScale } from '../academic/levels';
 import { calculateAverage, type GradeEntry } from './average';
 import {
   assertDate,
@@ -5,9 +6,17 @@ import {
   resolveEffectiveEntry,
   type EffectiveEntry,
   type EnrollmentWindow,
+  type StoredGradeEntry,
 } from './effective-entry';
 import { GradingError } from './errors';
 import { GRADE_MIN, type GradeInput } from './grade-value';
+import {
+  GRADE_LITERALS,
+  isGradeLiteral,
+  isLiteralScale,
+  LITERAL_RISK,
+  type GradeLiteralCode,
+} from './literal-grade';
 import {
   assertLiteralScale,
   DEFAULT_LITERAL_SCALE,
@@ -20,6 +29,8 @@ export interface GradebookAssignment {
   readonly id: string;
   readonly dueAt: Date;
   readonly noSubmissionGrade?: GradeInput | null;
+  /** NE en escala literal (`Assignment.noSubmissionLiteral`). */
+  readonly noSubmissionLiteral?: GradeLiteralCode | null;
 }
 
 /** Estudiante (fila) del registro auxiliar: una matrícula con su vigencia. */
@@ -31,7 +42,7 @@ export interface GradebookStudent extends EnrollmentWindow {
 export interface GradebookCell {
   readonly assignmentId: string;
   readonly enrollmentId: string;
-  readonly grade?: GradeEntry | null;
+  readonly grade?: StoredGradeEntry | null;
   /** Última versión aceptada; `null`/`undefined` si no entregó. */
   readonly submission?: { readonly isLate: boolean } | null;
 }
@@ -45,6 +56,15 @@ export interface BuildGradebookInput {
   readonly now: Date;
   /** Tabla de literales (RN-04, RF-61). Por defecto AD/A/B/C. */
   readonly scale?: LiteralScale;
+  /** Escala del nivel (`scaleForLevel`). Por defecto `NUMERIC_0_20`. */
+  readonly gradingScale?: GradingScale;
+  /** Escala literal: logro del período elegido por el docente (PeriodAchievement). */
+  readonly achievements?: readonly {
+    readonly enrollmentId: string;
+    readonly literal: GradeLiteralCode;
+  }[];
+  /** Escala literal: literal de NE si la tarea no define uno (por defecto `null`, pendiente). */
+  readonly defaultNoSubmissionLiteral?: GradeLiteralCode | null;
 }
 
 /** Promedio con su literal. Sin notas que cuenten es `NO_GRADES` (D-026). */
@@ -56,7 +76,9 @@ export type AverageSummary =
       readonly counted: number;
       readonly exempt: number;
     }
-  | { readonly status: 'NO_GRADES'; readonly counted: 0; readonly exempt: number };
+  | { readonly status: 'NO_GRADES'; readonly counted: 0; readonly exempt: number }
+  /** Escala literal (INICIAL/PRIMARIA): no hay promedio aritmético; manda el logro del período. */
+  | { readonly status: 'LITERAL_SCALE'; readonly counted: 0; readonly exempt: number };
 
 /** Celda calculada: evaluación efectiva + datos de entrega. */
 export interface GradebookEntry extends EffectiveEntry {
@@ -82,7 +104,9 @@ export interface GradebookRow {
   /** En el mismo orden que `assignments`. */
   readonly entries: readonly GradebookEntry[];
   readonly average: AverageSummary;
-  /** Promedio con el literal de riesgo (A5). */
+  /** Logro del período (escala literal); `null` sin logro o en escala numérica. */
+  readonly achievement: GradeLiteralCode | null;
+  /** Promedio (o logro, en escala literal) con el literal de riesgo (A5). */
   readonly atRisk: boolean;
 }
 
@@ -155,8 +179,9 @@ export function riskLiteralOf(scale: LiteralScale = DEFAULT_LITERAL_SCALE): stri
 export function buildGradebook(input: BuildGradebookInput): Gradebook {
   const { assignments, students, cells, now } = input;
   const scale = input.scale ?? DEFAULT_LITERAL_SCALE;
+  const literalMode = isLiteralScale(input.gradingScale);
   assertDate(now, 'now');
-  const riskLiteral = riskLiteralOf(scale);
+  const riskLiteral = literalMode ? LITERAL_RISK : riskLiteralOf(scale);
 
   const assignmentIds = uniqueIds(
     assignments.map((a) => a.id),
@@ -191,6 +216,20 @@ export function buildGradebook(input: BuildGradebookInput): Gradebook {
     cellMap.set(key, cell);
   }
 
+  const achievementMap = new Map<string, GradeLiteralCode>();
+  for (const a of input.achievements ?? []) {
+    if (!enrollmentIds.has(a.enrollmentId)) {
+      throw new GradingError(
+        'INVALID_INPUT',
+        `Logro de una matrícula desconocida: ${a.enrollmentId}.`,
+      );
+    }
+    if (!isGradeLiteral(a.literal)) {
+      throw new GradingError('INVALID_GRADE', 'El logro debe ser AD, A, B o C.');
+    }
+    achievementMap.set(a.enrollmentId, a.literal);
+  }
+
   const columnEntries: EffectiveEntry[][] = assignments.map(() => []);
   const columnCounts = assignments.map(() => ({ onTime: 0, late: 0, ne: 0 }));
 
@@ -207,6 +246,9 @@ export function buildGradebook(input: BuildGradebookInput): Gradebook {
         now,
         noSubmissionGrade: assignment.noSubmissionGrade,
         neEligible,
+        scale: input.gradingScale,
+        noSubmissionLiteral: assignment.noSubmissionLiteral,
+        defaultNoSubmissionLiteral: input.defaultNoSubmissionLiteral,
       });
 
       columnEntries[index].push(effective);
@@ -220,23 +262,43 @@ export function buildGradebook(input: BuildGradebookInput): Gradebook {
       return { ...effective, assignmentId: assignment.id, neEligible, hasSubmission, isLate };
     });
 
+    if (literalMode) {
+      const achievement = achievementMap.get(student.enrollmentId) ?? null;
+      return {
+        enrollmentId: student.enrollmentId,
+        entries,
+        average: literalSummary(entries),
+        achievement,
+        atRisk: achievement === riskLiteral,
+      };
+    }
     const average = summarizeAverage(entries, scale);
     const atRisk = average.status === 'OK' && average.literal === riskLiteral;
-    return { enrollmentId: student.enrollmentId, entries, average, atRisk };
+    return { enrollmentId: student.enrollmentId, entries, average, achievement: null, atRisk };
   });
 
   const columns: GradebookColumn[] = assignments.map((assignment, index) => ({
     assignmentId: assignment.id,
-    average: summarizeAverage(columnEntries[index], scale),
+    average: literalMode
+      ? literalSummary(columnEntries[index])
+      : summarizeAverage(columnEntries[index], scale),
     counts: columnCounts[index],
   }));
 
   const distribution: Record<string, number> = {};
-  for (const band of [...scale].sort((a, b) => b.min - a.min)) distribution[band.literal] = 0;
   let noGrades = 0;
-  for (const row of rows) {
-    if (row.average.status === 'OK') distribution[row.average.literal] += 1;
-    else noGrades += 1;
+  if (literalMode) {
+    for (const literal of GRADE_LITERALS) distribution[literal] = 0;
+    for (const row of rows) {
+      if (row.achievement !== null) distribution[row.achievement] += 1;
+      else noGrades += 1;
+    }
+  } else {
+    for (const band of [...scale].sort((a, b) => b.min - a.min)) distribution[band.literal] = 0;
+    for (const row of rows) {
+      if (row.average.status === 'OK') distribution[row.average.literal] += 1;
+      else noGrades += 1;
+    }
   }
 
   const counts = columnCounts.reduce(
@@ -258,6 +320,15 @@ export function buildGradebook(input: BuildGradebookInput): Gradebook {
       riskLiteral,
       atRisk: rows.filter((r) => r.atRisk).map((r) => r.enrollmentId),
     },
+  };
+}
+
+/** Escala literal: sin promedio aritmético; solo cuenta las exoneraciones. */
+function literalSummary(entries: readonly EffectiveEntry[]): AverageSummary {
+  return {
+    status: 'LITERAL_SCALE',
+    counted: 0,
+    exempt: entries.filter((e) => e.state === 'EXEMPT').length,
   };
 }
 

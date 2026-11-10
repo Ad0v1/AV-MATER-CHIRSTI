@@ -1,3 +1,4 @@
+import { ConflictException } from '@nestjs/common';
 import { lateBySeconds } from './display-status.js';
 import type { SubmissionReceipt } from './submissions.types.js';
 
@@ -64,4 +65,18 @@ export function toReceipts(
 ): SubmissionReceipt[] {
   const sorted = [...versions].sort((a, b) => b.versionNumber - a.versionNumber);
   return sorted.map((v, i) => toReceipt(v, assignment, i === 0));
+}
+
+/** Decisión del usuario (09/11/2026): en INICIAL los niños no entregan PDF; las tareas son actividades. */
+export const submissionsAllowedForLevel = (level: string | null | undefined): boolean =>
+  level !== 'INICIAL';
+
+export const NO_SUBMISSIONS_IN_LEVEL = {
+  code: 'NO_SUBMISSIONS_IN_LEVEL',
+  message: 'En Inicial las tareas son actividades sin entrega: no se suben archivos',
+} as const;
+
+/** 409 si la sección de la tarea no recibe entregas (INICIAL). */
+export function assertSubmissionsAllowed(level: string | null | undefined): void {
+  if (!submissionsAllowedForLevel(level)) throw new ConflictException(NO_SUBMISSIONS_IN_LEVEL);
 }

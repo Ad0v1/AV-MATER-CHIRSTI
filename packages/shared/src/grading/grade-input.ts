@@ -1,5 +1,7 @@
 import type { GradeState } from './average';
+import type { GradingScale } from '../academic/levels';
 import { formatGrade, isValidGrade, type GradeInput } from './grade-value';
+import { isGradeLiteral, type GradeLiteralCode } from './literal-grade';
 
 /** Largo máximo del comentario del docente (RF-42). */
 export const GRADE_COMMENT_MAX = 2000;
@@ -14,10 +16,22 @@ export const EXEMPTION_REASON_MAX = 500;
  * - `NE`: nota opcional; `null` = la API usa la nota NE de la tarea (RN-05).
  * - `EXEMPT`: sin nota y con motivo (RN-07).
  * Nota con 2 decimales (`"05"` → `"5.00"`, A4); comentario vacío → `null`.
+ * Escala literal (INICIAL/PRIMARIA): `literal` AD/A/B/C en vez de `value`; nunca los dos. Que el
+ * campo usado coincida con la escala del nivel lo comprueba `checkGradeInputScale`.
  */
 export type NormalizedGradeInput =
-  | { readonly state: 'GRADED'; readonly value: string; readonly comment: string | null }
-  | { readonly state: 'NE'; readonly value: string | null; readonly comment: string | null }
+  | {
+      readonly state: 'GRADED';
+      readonly value: string | null;
+      readonly literal: GradeLiteralCode | null;
+      readonly comment: string | null;
+    }
+  | {
+      readonly state: 'NE';
+      readonly value: string | null;
+      readonly literal: GradeLiteralCode | null;
+      readonly comment: string | null;
+    }
   | {
       readonly state: 'EXEMPT';
       readonly exemptionReason: string;
@@ -60,6 +74,9 @@ export function normalizeGradeInput(body: unknown): GradeInputResult {
     if (raw.value !== undefined && raw.value !== null) {
       issues.push({ path: 'value', message: 'Una exoneración no lleva nota.' });
     }
+    if (raw.literal !== undefined && raw.literal !== null) {
+      issues.push({ path: 'literal', message: 'Una exoneración no lleva nota.' });
+    }
     const reason = typeof raw.exemptionReason === 'string' ? raw.exemptionReason.trim() : null;
     if (reason === null) {
       issues.push({ path: 'exemptionReason', message: 'El motivo de exoneración es obligatorio.' });
@@ -78,7 +95,15 @@ export function normalizeGradeInput(body: unknown): GradeInputResult {
   }
 
   let value: string | null = null;
-  if (raw.value === undefined || raw.value === null) {
+  let literal: GradeLiteralCode | null = null;
+  const hasValue = raw.value !== undefined && raw.value !== null;
+  const hasLiteral = raw.literal !== undefined && raw.literal !== null;
+  if (hasValue && hasLiteral) {
+    issues.push({ path: 'literal', message: 'Envía la nota numérica o el literal, no ambos.' });
+  } else if (hasLiteral) {
+    if (isGradeLiteral(raw.literal)) literal = raw.literal;
+    else issues.push({ path: 'literal', message: 'El literal debe ser AD, A, B o C.' });
+  } else if (!hasValue) {
     if (state === 'GRADED') issues.push({ path: 'value', message: 'La nota es obligatoria.' });
   } else if (isValidGrade(raw.value)) {
     value = formatGrade(raw.value as GradeInput);
@@ -90,8 +115,30 @@ export function normalizeGradeInput(body: unknown): GradeInputResult {
   }
 
   if (issues.length > 0) return { ok: false, issues };
-  if (state === 'GRADED') return { ok: true, data: { state, value: value as string, comment } };
-  return { ok: true, data: { state: 'NE', value, comment } };
+  if (state === 'GRADED') return { ok: true, data: { state, value, literal, comment } };
+  return { ok: true, data: { state: 'NE', value, literal, comment } };
+}
+
+/**
+ * Comprueba que la nota use el campo de la escala del nivel (tres niveles, 09/11/2026):
+ * NUMERIC_0_20 → `value`; LITERAL_ADABC → `literal`. La API responde 400 con el problema.
+ * Devuelve `null` si coincide (EXEMPT y NE sin nota siempre coinciden).
+ */
+export function checkGradeInputScale(
+  input: NormalizedGradeInput,
+  scale: GradingScale,
+): GradeInputIssue | null {
+  if (input.state === 'EXEMPT') return null;
+  if (scale === 'LITERAL_ADABC') {
+    if (input.value !== null) {
+      return { path: 'value', message: 'Este nivel califica con literal AD, A, B o C.' };
+    }
+    return null;
+  }
+  if (input.literal !== null) {
+    return { path: 'literal', message: 'Este nivel califica con nota de 0 a 20.' };
+  }
+  return null;
 }
 
 function readComment(input: unknown, issues: GradeInputIssue[]): string | null {

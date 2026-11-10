@@ -1,10 +1,13 @@
 import { computeDisplayStatus, lateBySeconds } from './display-status.js';
 import { submitSchema } from './submissions.dto.js';
+import { ConflictException } from '@nestjs/common';
 import {
+  assertSubmissionsAllowed,
   evaluateTiming,
   isLateAt,
   nextVersionNumber,
   toReceipts,
+  submissionsAllowedForLevel,
   type VersionRow,
 } from './submissions.policy.js';
 
@@ -154,5 +157,25 @@ describe('submitSchema', () => {
     expect(submitSchema.safeParse({ fileId: id }).success).toBe(true);
     expect(submitSchema.safeParse({ fileId: 'x' }).success).toBe(false);
     expect(submitSchema.safeParse({ fileId: id, late: true }).success).toBe(false);
+  });
+});
+
+describe('INICIAL sin entregas (decisión del usuario 09/11/2026)', () => {
+  it('INICIAL no admite entregas; PRIMARIA y SECUNDARIA sí', () => {
+    expect(submissionsAllowedForLevel('INICIAL')).toBe(false);
+    expect(submissionsAllowedForLevel('PRIMARIA')).toBe(true);
+    expect(submissionsAllowedForLevel('SECUNDARIA')).toBe(true);
+  });
+  it('assertSubmissionsAllowed lanza 409 con código NO_SUBMISSIONS_IN_LEVEL', () => {
+    expect(() => assertSubmissionsAllowed('PRIMARIA')).not.toThrow();
+    try {
+      assertSubmissionsAllowed('INICIAL');
+      throw new Error('no lanzó');
+    } catch (e) {
+      expect(e).toBeInstanceOf(ConflictException);
+      expect((e as ConflictException).getResponse()).toMatchObject({
+        code: 'NO_SUBMISSIONS_IN_LEVEL',
+      });
+    }
   });
 });

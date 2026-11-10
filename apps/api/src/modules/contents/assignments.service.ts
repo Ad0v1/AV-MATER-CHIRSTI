@@ -1,9 +1,11 @@
 import {
+  BadRequestException,
   ConflictException,
   Injectable,
   NotFoundException,
   UnprocessableEntityException,
 } from '@nestjs/common';
+import type { GradeLiteralCode } from '@aula/shared';
 import { AuditService } from '../../common/audit/audit.service.js';
 import type { AuthenticatedUser } from '../../common/auth/roles.js';
 import { PrismaService } from '../../common/prisma/prisma.service.js';
@@ -18,6 +20,7 @@ import type {
 } from './assignments.dto.js';
 import {
   auditSnapshot,
+  checkNoSubmissionLiteral,
   diffAssignment,
   isDueAtAcceptable,
   type AssignmentFields,
@@ -36,6 +39,8 @@ export type AssignmentView = {
   dueAt: string;
   maxSizeBytes: number;
   noSubmissionGrade: string;
+  /** NE en escala literal (INICIAL/PRIMARIA); null en SECUNDARIA o sin definir. */
+  noSubmissionLiteral: GradeLiteralCode | null;
   allowLate: boolean;
   attachmentFileId: string | null;
   /** RN-10: false si el período o su año están cerrados (la tarea ya no se edita). */
@@ -70,6 +75,7 @@ function toView(a: AssignmentRow): AssignmentView {
     dueAt: a.dueAt.toISOString(),
     maxSizeBytes: a.maxSizeBytes,
     noSubmissionGrade: a.noSubmissionGrade.toFixed(2),
+    noSubmissionLiteral: a.noSubmissionLiteral,
     allowLate: a.allowLate,
     attachmentFileId: a.attachmentFileId,
     periodIsOpen: periodIsOpen(a.period, a.period.academicYear),
@@ -84,6 +90,7 @@ const fieldsOf = (a: AssignmentRow): AssignmentFields => ({
   dueAt: a.dueAt,
   maxSizeBytes: a.maxSizeBytes,
   noSubmissionGrade: a.noSubmissionGrade.toFixed(2),
+  noSubmissionLiteral: a.noSubmissionLiteral,
   allowLate: a.allowLate,
   attachmentFileId: a.attachmentFileId,
 });
@@ -106,6 +113,7 @@ export class AssignmentsService {
   ): Promise<AssignmentView> {
     await assertCanWriteCourseSection(this.access, user, courseSectionId);
     await this.access.assertCourseSectionWritable(courseSectionId, dto.periodId);
+    await this.assertNoSubmissionLiteral(courseSectionId, dto.noSubmissionLiteral);
     if (!isDueAtAcceptable(dto.dueAt, new Date())) {
       throw new UnprocessableEntityException(MSG.dueAtPast);
     }
@@ -125,6 +133,7 @@ export class AssignmentsService {
             dueAt: dto.dueAt,
             maxSizeBytes: dto.maxSizeBytes,
             noSubmissionGrade: dto.noSubmissionGrade,
+            noSubmissionLiteral: dto.noSubmissionLiteral,
             allowLate: dto.allowLate,
             attachmentFileId: dto.attachmentFileId,
             createdById: actor.id,
@@ -159,6 +168,22 @@ export class AssignmentsService {
     return toView(created);
   }
 
+  /** 400 si se envía un literal de NE en una sección de SECUNDARIA (tres niveles). */
+  private async assertNoSubmissionLiteral(
+    courseSectionId: string,
+    literal: GradeLiteralCode | null | undefined,
+  ): Promise<void> {
+    if (literal === null || literal === undefined) return;
+    const cs = await this.prisma.courseSection.findUnique({
+      where: { id: courseSectionId },
+      select: { section: { select: { level: true } } },
+    });
+    const message = cs ? checkNoSubmissionLiteral(cs.section.level, literal) : null;
+    if (message) {
+      throw new BadRequestException({ message: [{ path: 'noSubmissionLiteral', message }] });
+    }
+  }
+
   // RF-28: lista de tareas del curso-sección para sus miembros (sin apoderado; lo filtra @Roles).
   async list(
     courseSectionId: string,
@@ -190,6 +215,7 @@ export class AssignmentsService {
     const current = await this.findOrFail(id);
     await assertCanWriteCourseSection(this.access, user, current.courseSectionId);
     await this.access.assertCourseSectionWritable(current.courseSectionId, current.periodId);
+    await this.assertNoSubmissionLiteral(current.courseSectionId, dto.noSubmissionLiteral);
 
     const change = diffAssignment(fieldsOf(current), dto);
     if (change.changedFields.length === 0) return toView(current);
@@ -213,6 +239,7 @@ export class AssignmentsService {
             dueAt: dto.dueAt,
             maxSizeBytes: dto.maxSizeBytes,
             noSubmissionGrade: dto.noSubmissionGrade,
+            noSubmissionLiteral: dto.noSubmissionLiteral,
             allowLate: dto.allowLate,
             attachmentFileId: dto.attachmentFileId,
           },

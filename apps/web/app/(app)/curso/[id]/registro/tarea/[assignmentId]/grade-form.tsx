@@ -17,12 +17,15 @@ import { saveGrade } from '../../_lib/actions';
 import {
   buildGradeInput,
   COMMENT_MAX,
+  GRADE_LITERALS,
+  isLiteral,
+  literalLabel,
   REASON_MAX,
   REASON_MIN,
-  STATE_LABEL,
+  stateLabel,
   type GradeFormErrors,
 } from '../../_lib/grading-format';
-import type { GradeState } from '../../_lib/types';
+import type { GradeLiteral, GradeState, GradingScale } from '../../_lib/types';
 
 const FIELD = `mt-1 block w-full rounded-md border bg-background px-3 py-2 text-base ${INVALID_FIELD}`;
 
@@ -32,9 +35,15 @@ export type GradeFormProps = {
   studentName: string;
   hasSubmission: boolean;
   noSubmissionGrade: string;
+  /** Escala del nivel (tres niveles): literal AD/A/B/C en inicial y primaria. */
+  scale?: GradingScale;
+  noSubmissionLiteral?: GradeLiteral | null;
+  /** INICIAL: actividad sin entrega; arranca en GRADED y la NE se llama "Sin registro de logro". */
+  noDelivery?: boolean;
   initial: {
     state: GradeState | null;
     value: string | null;
+    literal?: GradeLiteral | null;
     comment: string | null;
     exemptionReason: string | null;
   };
@@ -45,9 +54,11 @@ export function GradeForm(props: GradeFormProps) {
   const formRef = useRef<HTMLFormElement>(null);
   const okRef = useRef<HTMLDivElement>(null);
   const [state, setState] = useState<GradeState>(
-    props.initial.state ?? (props.hasSubmission ? 'GRADED' : 'NE'),
+    props.initial.state ?? (props.hasSubmission || props.noDelivery ? 'GRADED' : 'NE'),
   );
   const [value, setValue] = useState(props.initial.value ?? '');
+  const [literal, setLiteral] = useState<GradeLiteral | ''>(props.initial.literal ?? '');
+  const literalScale = isLiteral(props.scale);
   const [comment, setComment] = useState(props.initial.comment ?? '');
   const [reason, setReason] = useState(props.initial.exemptionReason ?? '');
   const [errors, setErrors] = useState<GradeFormErrors>({});
@@ -62,6 +73,8 @@ export function GradeForm(props: GradeFormProps) {
     value: `${id}-value`,
     valueHint: `${id}-value-hint`,
     valueErr: `${id}-value-err`,
+    literalHint: `${id}-literal-hint`,
+    literalErr: `${id}-literal-err`,
     comment: `${id}-comment`,
     commentErr: `${id}-comment-err`,
     reason: `${id}-reason`,
@@ -74,7 +87,14 @@ export function GradeForm(props: GradeFormProps) {
     event.preventDefault();
     if (pending) return;
     setMessage(null);
-    const built = buildGradeInput({ state, value, comment, exemptionReason: reason });
+    const built = buildGradeInput({
+      state,
+      value,
+      literal,
+      scale: props.scale,
+      comment,
+      exemptionReason: reason,
+    });
     if (!built.ok) {
       setErrors(built.errors);
       setFailures((n) => n + 1);
@@ -114,13 +134,52 @@ export function GradeForm(props: GradeFormProps) {
                 onChange={() => setState(s)}
                 className="size-4"
               />
-              {STATE_LABEL[s]}
+              {stateLabel(s, props.noDelivery)}
             </label>
           ))}
         </div>
       </fieldset>
 
-      {state !== 'EXEMPT' && (
+      {state !== 'EXEMPT' && literalScale && (
+        <fieldset
+          className="mt-3"
+          aria-invalid={errors.literal ? true : undefined}
+          aria-describedby={describedBy(ids.literalHint, errors.literal && ids.literalErr)}
+        >
+          <legend className="text-sm font-medium">
+            {state === 'GRADED'
+              ? 'Nivel de logro'
+              : props.noDelivery
+                ? 'Nivel de logro sin registro (opcional)'
+                : 'Nivel de logro de la NE (opcional)'}
+          </legend>
+          <div className="mt-1 flex flex-wrap gap-x-4">
+            {GRADE_LITERALS.map((l) => (
+              <label key={l} className="flex min-h-11 items-center gap-2 text-sm">
+                <input
+                  type="radio"
+                  name={`${id}-literal`}
+                  value={l}
+                  checked={literal === l}
+                  onChange={() => setLiteral(l)}
+                  className="size-4"
+                />
+                {literalLabel(l)}
+              </label>
+            ))}
+          </div>
+          <p id={ids.literalHint} className="mt-1 text-xs text-muted-foreground">
+            {state === 'GRADED'
+              ? 'Escala literal de inicial y primaria. Sin descuento por entrega tardía.'
+              : props.noSubmissionLiteral
+                ? `Si no eliges, se usa el literal NE de la tarea (${props.noSubmissionLiteral}).`
+                : 'La tarea no tiene literal NE: elige uno para registrarla.'}
+          </p>
+          <FieldError id={ids.literalErr} message={errors.literal} />
+        </fieldset>
+      )}
+
+      {state !== 'EXEMPT' && !literalScale && (
         <div className="mt-3">
           <label htmlFor={ids.value} className="text-sm font-medium">
             {state === 'GRADED' ? 'Nota (0 a 20)' : 'Nota NE (opcional)'}

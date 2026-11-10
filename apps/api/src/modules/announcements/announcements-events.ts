@@ -1,6 +1,6 @@
 import { EventEmitter } from 'node:events';
 import { Injectable, Logger } from '@nestjs/common';
-import type { AnnouncementScope } from '../../generated/prisma/enums.js';
+import type { AnnouncementScope, EducationLevel } from '../../generated/prisma/enums.js';
 
 // Eventos en proceso de anuncios (D-031, node:events). Se publican después del commit y de la
 // bitácora. Solo ids, alcance y fechas ISO UTC: nunca el título ni el cuerpo.
@@ -10,6 +10,7 @@ export type AnnouncementEventMap = {
     announcementId: string;
     academicYearId: string;
     scope: AnnouncementScope;
+    level: EducationLevel | null;
     gradeLevel: number | null;
     courseSectionId: string | null;
     publishedAt: string;

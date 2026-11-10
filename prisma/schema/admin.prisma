@@ -6,7 +6,7 @@
 
 enum AnnouncementScope {
   INSTITUTION // toda la institucion
-  GRADE // un grado (gradeLevel 1..5) del año
+  GRADE // un grado (level + gradeLevel) del año
   COURSE_SECTION // un curso-seccion
 }
 
@@ -41,12 +41,13 @@ enum JobStatus {
 }
 
 // Anuncio (RF-32). El alcance decide que columna va: INSTITUTION sin gradeLevel ni courseSectionId,
-// GRADE con gradeLevel 1..5, COURSE_SECTION con courseSectionId. Borrado logico: deletedAt y
+// GRADE con level y gradeLevel (rango segun nivel, como Section), COURSE_SECTION con courseSectionId. Borrado logico: deletedAt y
 // deletedById van juntos. CHECK: Announcement_scope_chk, Announcement_deleted_chk.
 model Announcement {
   id              String            @id @default(uuid(7)) @db.Char(36)
   academicYearId  String            @db.Char(36)
   scope           AnnouncementScope
+  level           EducationLevel?
   gradeLevel      Int?              @db.TinyInt
   courseSectionId String?           @db.Char(36)
   title           String            @db.VarChar(150)

@@ -42,7 +42,7 @@ describe('DTO de anuncios (RF-32)', () => {
     );
   });
 
-  it('ADMIN: INSTITUTION sin grado, GRADE con grado 1..5, nunca COURSE_SECTION', () => {
+  it('ADMIN: INSTITUTION sin grado, GRADE con nivel y grado del nivel, nunca COURSE_SECTION', () => {
     expect(
       adminAnnouncementSchema.safeParse({ scope: 'INSTITUTION', title: 't', body: 'b' }).success,
     ).toBe(true);
@@ -55,11 +55,43 @@ describe('DTO de anuncios (RF-32)', () => {
       }).success,
     ).toBe(false);
     expect(
-      adminAnnouncementSchema.safeParse({ scope: 'GRADE', gradeLevel: 5, title: 't', body: 'b' })
-        .success,
+      adminAnnouncementSchema.safeParse({
+        scope: 'GRADE',
+        level: 'SECUNDARIA',
+        gradeLevel: 5,
+        title: 't',
+        body: 'b',
+      }).success,
     ).toBe(true);
     expect(
-      adminAnnouncementSchema.safeParse({ scope: 'GRADE', gradeLevel: 6, title: 't', body: 'b' })
+      adminAnnouncementSchema.safeParse({
+        scope: 'GRADE',
+        level: 'SECUNDARIA',
+        gradeLevel: 6,
+        title: 't',
+        body: 'b',
+      }).success,
+    ).toBe(false);
+    expect(
+      adminAnnouncementSchema.safeParse({
+        scope: 'GRADE',
+        level: 'PRIMARIA',
+        gradeLevel: 6,
+        title: 't',
+        body: 'b',
+      }).success,
+    ).toBe(true);
+    expect(
+      adminAnnouncementSchema.safeParse({
+        scope: 'GRADE',
+        level: 'INICIAL',
+        gradeLevel: 2,
+        title: 't',
+        body: 'b',
+      }).success,
+    ).toBe(false);
+    expect(
+      adminAnnouncementSchema.safeParse({ scope: 'GRADE', gradeLevel: 3, title: 't', body: 'b' })
         .success,
     ).toBe(false);
     expect(

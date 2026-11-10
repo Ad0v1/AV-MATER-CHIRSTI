@@ -7,6 +7,7 @@ import {
   isUuid,
   literalLabel,
   parseGradeText,
+  sectionText,
 } from './grading-format';
 
 const base = { value: '', comment: '', exemptionReason: '' };
@@ -21,11 +22,36 @@ describe('grading-format', () => {
   });
 
   it('RF-47: celdas con texto para cada estado', () => {
-    const g = { virtual: false, needsRegrade: false };
+    const g = { virtual: false, needsRegrade: false, literal: null };
     expect(cellText({ ...g, state: 'GRADED', value: '15.00' })).toBe('15.00');
     expect(cellText({ ...g, state: 'NE', value: '0.00' })).toBe('NE 0.00');
     expect(cellText({ ...g, state: 'EXEMPT', value: null })).toBe('Exonerado');
     expect(cellText({ ...g, state: null, value: null })).toBe('—');
+  });
+
+  it('RN-01: escala literal (inicial y primaria): celdas, promedio y cuerpo del PUT', () => {
+    const g = { virtual: false, needsRegrade: false, value: null };
+    expect(cellText({ ...g, state: 'GRADED', literal: 'AD' })).toBe('AD');
+    expect(cellText({ ...g, state: 'NE', literal: 'C' })).toBe('NE C');
+    expect(cellText({ ...g, state: 'NE', literal: null })).toBe('NE');
+    expect(averageText({ status: 'LITERAL_SCALE', counted: 0, exempt: 0 })).toBe(
+      'Sin promedio (escala literal)',
+    );
+    const base = { value: '', comment: '', exemptionReason: '', scale: 'LITERAL_ADABC' as const };
+    expect(buildGradeInput({ ...base, state: 'GRADED', literal: 'A' })).toEqual({
+      ok: true,
+      body: { state: 'GRADED', literal: 'A' },
+    });
+    expect(buildGradeInput({ ...base, state: 'GRADED', literal: '' })).toMatchObject({
+      ok: false,
+      errors: { literal: expect.any(String) },
+    });
+    expect(buildGradeInput({ ...base, state: 'NE', literal: '' })).toEqual({
+      ok: true,
+      body: { state: 'NE' },
+    });
+    expect(sectionText({ level: 'INICIAL', gradeLevel: 5, code: 'C' })).toBe('5 años C · Inicial');
+    expect(sectionText({ level: 'PRIMARIA', gradeLevel: 4, code: 'C' })).toBe('4.° C · Primaria');
   });
 
   it('RF-41/RN-01: nota 0..20 con hasta 2 decimales y coma decimal', () => {

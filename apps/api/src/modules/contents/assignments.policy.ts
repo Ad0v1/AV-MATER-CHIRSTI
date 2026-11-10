@@ -1,4 +1,5 @@
 // Reglas puras de las tareas (RF-28/29, RN-05, RN-08), sin BD. Probadas en assignments.policy.spec.ts.
+import { scaleForLevel, type EducationLevel, type GradeLiteralCode } from '@aula/shared';
 
 /** 1 MiB en bytes (decisión del usuario 29/10/2026: los MB de la ERS se cuentan en MiB). */
 export const MIB = 1_048_576;
@@ -50,6 +51,8 @@ export type AssignmentFields = {
   dueAt: Date;
   maxSizeBytes: number;
   noSubmissionGrade: string;
+  /** NE en escala literal (INICIAL/PRIMARIA); null en SECUNDARIA o sin definir. */
+  noSubmissionLiteral: GradeLiteralCode | null;
   allowLate: boolean;
   attachmentFileId: string | null;
 };
@@ -61,6 +64,7 @@ const FIELD_ORDER: ReadonlyArray<keyof AssignmentFields> = [
   'dueAt',
   'maxSizeBytes',
   'noSubmissionGrade',
+  'noSubmissionLiteral',
   'allowLate',
   'attachmentFileId',
 ];
@@ -109,7 +113,25 @@ export function auditSnapshot(
     dueAt: fields.dueAt.toISOString(),
     maxSizeBytes: fields.maxSizeBytes,
     noSubmissionGrade: fields.noSubmissionGrade,
+    noSubmissionLiteral: fields.noSubmissionLiteral,
     allowLate: fields.allowLate,
     attachmentFileId: fields.attachmentFileId,
   };
+}
+
+export const NO_SUBMISSION_LITERAL_NUMERIC =
+  'Este nivel califica de 0 a 20: la tarea no lleva literal de NE';
+
+/**
+ * Tres niveles (09/11/2026, stub autorizado por el orquestador para Dev 4): el literal de NE solo
+ * existe en INICIAL y PRIMARIA (escala AD/A/B/C). En SECUNDARIA un literal distinto de null es
+ * un error de validación. En escala literal, null es válido (NE sin literal, pendiente del
+ * usuario el literal por defecto). Devuelve el mensaje o null si es válido.
+ */
+export function checkNoSubmissionLiteral(
+  level: EducationLevel,
+  noSubmissionLiteral: GradeLiteralCode | null | undefined,
+): string | null {
+  if (noSubmissionLiteral === null || noSubmissionLiteral === undefined) return null;
+  return scaleForLevel(level) === 'LITERAL_ADABC' ? null : NO_SUBMISSION_LITERAL_NUMERIC;
 }

@@ -43,7 +43,8 @@ function chunks<T>(items: T[], size: number): T[][] {
  * SUCCEEDED que sigue en S3 con más de 0 bytes y closedAt + purgeAfterDays cumplido): si no se cumplen, falla sin reintentos con
  * PURGE_NOT_ELIGIBLE. Luego, en este orden y de forma idempotente:
  *   1. FileLifecycleService.purge (Dev 3) sobre cada StoredFile del año sin purgar; los
- *      Material isReusable se saltan (RN-14, regla H). Las filas, notas y bitácora se conservan.
+ *      Material isReusable se saltan (RN-14, regla H). Las filas, notas, logros del período
+ *      (PeriodAchievement) y bitácora se conservan (RN-14): ninguna Notification apunta a un logro.
  *   2. Borra las Notification del año (las que apuntan a sus tareas, notas o anuncios).
  *   3. Borra los ZIP de respaldo del año (U6) y los marca EXPIRED.
  *   4. Bitácora lifecycle.purge con los conteos.

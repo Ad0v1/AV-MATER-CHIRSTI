@@ -1,9 +1,16 @@
 import {
+  BadRequestException,
   ConflictException,
   Injectable,
   NotFoundException,
   UnprocessableEntityException,
 } from '@nestjs/common';
+import {
+  checkGradeInputScale,
+  scaleForLevel,
+  type GradeLiteralCode,
+  type GradingScale,
+} from '@aula/shared';
 import { AuditService } from '../../common/audit/audit.service.js';
 import type { AuthenticatedUser } from '../../common/auth/roles.js';
 import { PrismaService } from '../../common/prisma/prisma.service.js';
@@ -56,6 +63,7 @@ const gradeSelect = {
   enrollmentId: true,
   state: true,
   value: true,
+  literal: true,
   comment: true,
   exemptionReason: true,
   source: true,
@@ -75,6 +83,7 @@ const toStored = (g: {
   enrollmentId: string;
   state: GradeRow['state'];
   value: { toFixed(d: number): string } | null;
+  literal: GradeLiteralCode | null;
   comment: string | null;
   exemptionReason: string | null;
   source: GradeRow['source'];
@@ -88,6 +97,7 @@ export const toGradeView = (g: StoredGrade): GradeView => ({
   enrollmentId: g.enrollmentId,
   state: g.state,
   value: g.value,
+  literal: g.literal,
   comment: g.comment,
   exemptionReason: g.exemptionReason,
   source: g.source,
@@ -109,7 +119,9 @@ export class GradesService {
    * PUT /grades/:assignmentId/:enrollmentId (RF-41, RF-42, RF-45, RF-46, RF-50).
    * Docente asignado o ADMIN (modo soporte, queda en la bitácora). 404 tarea o matrícula;
    * 403 sin permiso; 409 período o año cerrado (RN-10); 422 con code NO_SUBMISSION,
-   * HAS_SUBMISSION, NOT_OVERDUE, ENROLLMENT_OUT_OF_SECTION o ENROLLMENT_NOT_ELIGIBLE.
+   * HAS_SUBMISSION, NOT_OVERDUE, ENROLLMENT_OUT_OF_SECTION, ENROLLMENT_NOT_ELIGIBLE o
+   * NE_LITERAL_REQUIRED; 400 si la nota no usa la escala del nivel (value en SECUNDARIA,
+   * literal en INICIAL/PRIMARIA).
    */
   async put(
     assignmentId: string,
@@ -121,25 +133,42 @@ export class GradesService {
     const assignment = await this.submissions.getAssignmentForGrading(assignmentId);
     await assertCanWriteCourseSection(this.access, user, assignment.courseSectionId);
 
-    const [enrollment, cs] = await Promise.all([
+    const [enrollment, cs, extra] = await Promise.all([
       this.prisma.enrollment.findUnique({
         where: { id: enrollmentId },
         select: { sectionId: true }, // comprobación previa; la decisión usa la relectura en putInTx
       }),
       this.prisma.courseSection.findUniqueOrThrow({
         where: { id: assignment.courseSectionId },
-        select: { sectionId: true },
+        select: { sectionId: true, section: { select: { level: true } } },
+      }),
+      this.prisma.assignment.findUniqueOrThrow({
+        where: { id: assignmentId },
+        select: { noSubmissionLiteral: true },
       }),
     ]);
     if (!enrollment) throw new NotFoundException(GRADES_MSG.enrollmentNotFound);
     if (enrollment.sectionId !== cs.sectionId) this.reject('ENROLLMENT_OUT_OF_SECTION');
+    const scale = scaleForLevel(cs.section.level);
+    const scaleIssue = checkGradeInputScale(input, scale);
+    if (scaleIssue) {
+      // Mismo formato que ZodValidationPipe.
+      throw new BadRequestException({ message: [scaleIssue] });
+    }
 
     // 409 antes de las reglas de negocio: con el período cerrado no se califica (RF-50).
     await this.access.assertCourseSectionWritable(assignment.courseSectionId, assignment.periodId);
 
     const result = await this.withRetry(() =>
       this.prisma.$transaction(async (tx) => {
-        const r = await this.putInTx(tx, assignment, enrollmentId, cs.sectionId, input);
+        const r = await this.putInTx(
+          tx,
+          { ...assignment, noSubmissionLiteral: extra.noSubmissionLiteral },
+          enrollmentId,
+          cs.sectionId,
+          input,
+          scale,
+        );
         // D-047: la bitácora va en la misma transacción que la nota.
         if (r.changed.length > 0) {
           await recordGrading(
@@ -180,10 +209,17 @@ export class GradesService {
 
   private async putInTx(
     tx: Prisma.TransactionClient,
-    assignment: { id: string; periodId: string; dueAt: string; noSubmissionGrade: string },
+    assignment: {
+      id: string;
+      periodId: string;
+      dueAt: string;
+      noSubmissionGrade: string;
+      noSubmissionLiteral: GradeLiteralCode | null;
+    },
     enrollmentId: string,
     sectionId: string,
     input: GradeInputDto,
+    scale: GradingScale,
   ): Promise<TxResult> {
     // Orden de bloqueos (igual que submissions): AcademicPeriod FOR SHARE → Enrollment FOR SHARE.
     await lockOpenPeriod(tx, assignment.periodId);
@@ -211,6 +247,8 @@ export class GradesService {
       dueAt: new Date(assignment.dueAt),
       now,
       noSubmissionGrade: assignment.noSubmissionGrade,
+      scale,
+      noSubmissionLiteral: assignment.noSubmissionLiteral,
       enrollment: {
         isCurrent: Number(enrollment.isCurrent) === 1,
         effectiveFrom: new Date(enrollment.effectiveFrom),

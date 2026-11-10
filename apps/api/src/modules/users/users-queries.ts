@@ -1,3 +1,4 @@
+import type { EducationLevel } from '@aula/shared';
 import { ConflictException, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import type { Prisma } from '../../generated/prisma/client.js';
 import { lockYearForShare } from './users-locks.js';
@@ -19,6 +20,7 @@ export async function assertEmailFree(db: Db, email: string, exceptId?: string):
 export type TargetSection = {
   id: string;
   academicYearId: string;
+  level: EducationLevel;
   gradeLevel: number;
   isActive: boolean;
 };
@@ -32,7 +34,7 @@ export type TargetSection = {
 export async function resolveTargetSection(tx: Db, sectionId: string): Promise<TargetSection> {
   const section = await tx.section.findUnique({
     where: { id: sectionId },
-    select: { id: true, academicYearId: true, gradeLevel: true, isActive: true },
+    select: { id: true, academicYearId: true, level: true, gradeLevel: true, isActive: true },
   });
   if (!section) throw new NotFoundException(USERS_MSG.sectionNotFound);
   const year = await lockYearForShare(tx, section.academicYearId);
@@ -48,4 +50,24 @@ export async function resolveTargetSection(tx: Db, sectionId: string): Promise<T
   }
   if (!section.isActive) throw new ConflictException(USERS_MSG.sectionInactive);
   return section;
+}
+
+/**
+ * Tres niveles (09/11/2026): un niño de INICIAL no tiene login. Rechaza emitir o reemitir
+ * credenciales a un STUDENT sin LocalCredential cuya matrícula vigente es de INICIAL.
+ */
+export async function isStudentWithoutAccount(db: Db, userId: string): Promise<boolean> {
+  const u = await db.user.findUnique({
+    where: { id: userId },
+    select: {
+      role: true,
+      localCredential: { select: { userId: true } },
+      enrollments: {
+        where: { isCurrent: true },
+        select: { section: { select: { level: true } } },
+      },
+    },
+  });
+  if (!u || u.role !== 'STUDENT' || u.localCredential) return false;
+  return u.enrollments.some((e) => e.section.level === 'INICIAL');
 }
