@@ -4,7 +4,10 @@ import { Skeleton } from '@/components/ui/skeleton';
 /** Estructura estable para el contenido de las rutas privadas mientras llega cada página. */
 export function PageLoadingSkeleton() {
   return (
-    <section aria-busy="true" className="mx-auto flex w-full max-w-5xl flex-col gap-6 p-4 sm:p-8">
+    <section
+      aria-busy="true"
+      className="loading-appear mx-auto flex w-full max-w-5xl flex-col gap-6 p-4 sm:p-8"
+    >
       <span className="sr-only" role="status">
         Cargando contenido de la página…
       </span>
@@ -39,7 +42,7 @@ export function PageLoadingSkeleton() {
 /** Esqueleto de sesión: mantiene el espacio del menú lateral durante la primera validación. */
 export function AppShellLoadingSkeleton() {
   return (
-    <div aria-busy="true" className="flex min-h-svh w-full bg-background">
+    <div aria-busy="true" className="loading-appear flex min-h-svh w-full bg-background">
       <span className="sr-only" role="status">
         Cargando tu aula virtual…
       </span>

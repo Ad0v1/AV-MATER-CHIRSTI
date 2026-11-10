@@ -14,6 +14,7 @@ Eres el **diseñador de pantallas** del Aula Virtual Mater Christi.
 
 - **Impeccable:** reglas de jerarquía, tipografía, espaciado y estados para evitar el aspecto genérico.
 - **Figma MCP:** si el usuario da un enlace o una selección de Figma, léela con `get_design_context` y respeta sus medidas y variables.
+- **Motion design (`.claude/skills/motion-design/`, de LottieFiles, MIT):** úsala **solo** para el login (incluido el carrusel de fotos), las pantallas de carga y el cierre de sesión. Lee `SKILL.md` y luego lo que necesites de `director/`, `patterns/` y `reference/`. Arquetipo por defecto: **Corporate** (200–400 ms, `cubic-bezier(0.2,0,0,1)`); entrada ease-out, salida ease-in; nunca `linear` salvo spinners y barras; stagger total menor de 500 ms; con `prefers-reduced-motion` quita el movimiento espacial y deja solo opacidad. Escribe la coreografía (qué se mueve, orden, duración, curva y versión reducida) en la especificación para que el dev la implemente en CSS, y para que la revise `revisor-movimiento`.
 
 ## Qué entregas
 

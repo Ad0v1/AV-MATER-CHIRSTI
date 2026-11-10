@@ -42,3 +42,20 @@ Vueltas de corrección: 0/2
 - curador (general-purpose Sonnet): 11 webp de Pexels en `apps/web/public/maqueta/img/` (766 KB) y CREDITOS.md. Pendiente: el balón de Ed. Física puede tener marca; `inicio.webp` es vertical.
 - disenador-ui: maqueta v1.1 LISTO (login, tarjetas con foto, ImageBanner, banner de inicio, aviso con miniatura).
 - Orquestador: borró `_ref/`; agregó `unoptimized` a las `<Image>` de la maqueta (el optimizador de Next pide la imagen sin cookie y el proxy lo redirige al login); tsc y eslint ok; revisión en el navegador a 1280 px ok.
+
+## 10/11/2026 — Elección y motion
+
+- El usuario eligió la **opción B (cálido con fotos, Brightspace)** entre las 3 de https://claude.ai/artifact/BoKGRNHugy96ntJ1LnyVRU.
+- Skill `motion-design` (LottieFiles, MIT, solo Markdown) copiada a `.claude/skills/motion-design/` desde un clon del repo, sin ejecutar `npx skills`. Asignada a `disenador-ui`, solo para el login, la carga y el cierre de sesión.
+- Fotos del colegio: no se encontraron fotos publicadas del Colegio Mater Christi de Cañete (solo homónimos en Surco, Brasil y Australia). Se piden al usuario el enlace oficial o las fotos, con la autorización del colegio.
+
+## 10/11/2026 — Integración y motion (orquestador, sin subagentes, con la skill motion-design)
+
+- Integración: `origin/main` (PR #22, mismo contenido) registrado con `-s ours`; los cambios de David (PR #21 en develop: d4ca2a6..0783065) se aplicaron con 3-way. Conflictos: el login se queda con el diseño de David; el sidebar sigue siendo de servidor (SchoolBrand y Mis cursos) y el menú pasa a `sidebar-nav.tsx` (cliente). `RootRouteTransition` va dentro de Suspense (arregla el build del PR #21). Commits b540b59 y bc6726d.
+- Motion (arquetipo Corporate):
+  - login: entrada escalonada de 320 ms (60 ms de desfase, 500 ms en total) y carrusel `login-carousel.tsx` con fundido de 700 ms cada 7 s, acercamiento ambiente a 1,04, pausa con mouse o foco y botón de pausa (WCAG 2.2.2);
+  - carga: el skeleton aparece a los 150 ms con un fundido de 200 ms;
+  - cierre de sesión: salida ease-in de 200 ms de `[data-app-shell]`;
+  - reduced motion: solo opacidad, la mitad de duración, sin avance automático ni zoom.
+- Fotos del carrusel: la fachada real (asset de David) y el aula de Pexels (`public/brand/login-aula.webp`, pública porque `/maqueta` exige sesión). Faltan las fotos del colegio.
+- Verificación: tsc 0, lint 0, web 560 ok, build 5/5 (antes del motion), y en el navegador el carrusel avanza y pausa.
