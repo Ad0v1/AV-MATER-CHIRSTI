@@ -148,8 +148,8 @@
   --sidebar-foreground: var(--ink-inverse);
   --sidebar-primary: var(--gold);
   --sidebar-primary-foreground: var(--brand-dark);
-  --sidebar-accent: var(--gold);
-  --sidebar-accent-foreground: var(--brand-dark);
+  --sidebar-accent: rgb(255 255 255 / 12%);
+  --sidebar-accent-foreground: var(--ink-inverse);
   --sidebar-border: rgb(255 255 255 / 12%);
   --sidebar-ring: var(--gold);
 }

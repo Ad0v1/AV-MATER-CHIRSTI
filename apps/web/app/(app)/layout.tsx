@@ -1,12 +1,14 @@
 import { Suspense } from 'react';
 import { redirect } from 'next/navigation';
 import { AppSidebar } from '@/components/layout/app-sidebar';
+import { AppShellLoadingSkeleton } from '@/components/layout/page-loading-skeleton';
+import { RouteTransition } from '@/components/layout/route-transition';
 import { SidebarInset, SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar';
 import { requireUser } from '@/lib/session';
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   return (
-    <Suspense fallback={<p className="p-4 text-sm text-muted-foreground">Cargando…</p>}>
+    <Suspense fallback={<AppShellLoadingSkeleton />}>
       <AuthenticatedShell>{children}</AuthenticatedShell>
     </Suspense>
   );
@@ -26,10 +28,10 @@ async function AuthenticatedShell({ children }: { children: React.ReactNode }) {
     <SidebarProvider>
       <AppSidebar role={user.role} />
       <SidebarInset>
-        <header className="flex h-12 items-center gap-2 border-b px-4">
+        <header className="flex h-12 shrink-0 items-center gap-2 border-b px-4">
           <SidebarTrigger />
         </header>
-        {children}
+        <RouteTransition>{children}</RouteTransition>
       </SidebarInset>
     </SidebarProvider>
   );
