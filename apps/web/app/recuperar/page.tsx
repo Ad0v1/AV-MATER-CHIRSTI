@@ -5,7 +5,7 @@ export const metadata = { title: 'Recuperar contraseña' };
 
 export default function RecoverPage() {
   return (
-    <main className="flex min-h-dvh items-center justify-center bg-canvas px-4 py-10 sm:px-8">
+    <main className="flex min-h-dvh items-center justify-center px-4 py-10 sm:px-8">
       <div className="w-full max-w-sm rounded-2xl border border-line bg-surface p-6 shadow-sm sm:p-8">
         <h1 className="text-2xl font-semibold text-ink">Recuperar contraseña</h1>
         <p className="mt-1 mb-6 text-sm text-ink-2">

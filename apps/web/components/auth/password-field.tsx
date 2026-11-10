@@ -13,6 +13,7 @@ type Props = {
   autoComplete: 'current-password' | 'new-password';
   disabled?: boolean;
   describedBy?: string;
+  invalid?: boolean;
   placeholder?: string;
   inputClassName?: string;
   labelClassName?: string;
@@ -27,6 +28,7 @@ export function PasswordField({
   autoComplete,
   disabled,
   describedBy,
+  invalid,
   placeholder,
   inputClassName,
   labelClassName,
@@ -48,6 +50,7 @@ export function PasswordField({
           onChange={(e) => onChange(e.target.value)}
           disabled={disabled}
           aria-describedby={describedBy}
+          aria-invalid={invalid || undefined}
           className={cn('h-11 bg-surface pr-11', inputClassName)}
         />
         <button

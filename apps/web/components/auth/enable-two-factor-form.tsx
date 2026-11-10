@@ -6,6 +6,7 @@ import { Check, CircleAlert, Copy, Loader2 } from 'lucide-react';
 import { RecoveryCodesView } from '@/components/auth/recovery-codes-view';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { fetchNextPath } from '@/lib/onboarding';
 
 type ApiError = { error?: { code?: string; message?: string } };
 type Setup = { secret: string; otpauthUrl: string };
@@ -71,8 +72,8 @@ export function EnableTwoFactorForm({ homePath }: { homePath: string }) {
       <RecoveryCodesView
         codes={codes}
         actionLabel="Continuar"
-        onDone={() => {
-          router.replace(homePath);
+        onDone={async () => {
+          router.replace(await fetchNextPath(homePath));
           router.refresh();
         }}
       />

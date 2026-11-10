@@ -80,10 +80,7 @@ export function AppShellLoadingSkeleton() {
 /** Esqueleto de las rutas públicas de acceso y recuperación. */
 export function AuthPageLoadingSkeleton() {
   return (
-    <main
-      aria-busy="true"
-      className="grid min-h-dvh place-items-center bg-canvas px-4 py-10 sm:px-8"
-    >
+    <main aria-busy="true" className="grid min-h-dvh place-items-center px-4 py-10 sm:px-8">
       <span className="sr-only" role="status">
         Cargando formulario…
       </span>

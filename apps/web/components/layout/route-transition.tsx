@@ -7,7 +7,7 @@ const PUBLIC_PATHS = new Set([
   '/login',
   '/recuperar',
   '/verificar-correo',
-  '/politica',
+  '/politica-de-privacidad',
   '/cambiar-clave',
   '/mi-perfil',
   '/verificacion-dos-pasos',
