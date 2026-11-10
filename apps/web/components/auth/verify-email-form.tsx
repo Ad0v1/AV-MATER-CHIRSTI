@@ -188,10 +188,7 @@ export function VerifyEmailForm({ role, homePath }: { role: Role; homePath: stri
         </form>
       ) : (
         <form onSubmit={verify} className="grid gap-5" noValidate>
-          <div
-            role="status"
-            className="flex items-start gap-3 rounded-2xl border border-line bg-surface-2/70 p-4"
-          >
+          <div role="status" className="flex items-start gap-3">
             <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-success-soft text-success">
               <MailCheck className="size-5" aria-hidden="true" />
             </span>

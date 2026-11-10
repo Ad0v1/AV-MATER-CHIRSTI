@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation';
 import { HOME_BY_ROLE } from '@/lib/roles';
+import { apiServer } from '@/lib/api/server';
 import { requireUser } from '@/lib/session';
 import { PanelInicio } from './_inicio/panel-inicio';
 
@@ -9,5 +10,7 @@ export const metadata = { title: 'Inicio' };
 export default async function Home() {
   const user = await requireUser();
   if (user.role !== 'TEACHER' && user.role !== 'STUDENT') redirect(HOME_BY_ROLE[user.role]);
-  return <PanelInicio role={user.role} />;
+  // El nombre solo adorna el saludo: si la API no responde, se muestra sin él.
+  const profile = await apiServer.get<{ fullName?: string }>('/auth/profile').catch(() => null);
+  return <PanelInicio role={user.role} nombre={profile?.fullName?.trim() || null} />;
 }
