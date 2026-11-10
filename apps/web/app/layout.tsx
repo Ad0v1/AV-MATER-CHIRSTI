@@ -36,7 +36,8 @@ export default function RootLayout({ children }: LayoutProps<'/'>) {
     >
       <body className="min-h-full flex flex-col">
         <TooltipProvider>
-          <Suspense>
+          {/* usePathname() es un dato de la peticion: Next exige Suspense para poder prerenderizar. */}
+          <Suspense fallback={null}>
             <RootRouteTransition>{children}</RootRouteTransition>
           </Suspense>
         </TooltipProvider>
