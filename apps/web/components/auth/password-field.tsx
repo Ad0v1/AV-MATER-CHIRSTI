@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { Eye, EyeOff } from 'lucide-react';
 import { Input } from '@/components/ui/input';
+import { cn } from 'cn';
 
 type Props = {
   id: string;
@@ -12,6 +13,9 @@ type Props = {
   autoComplete: 'current-password' | 'new-password';
   disabled?: boolean;
   describedBy?: string;
+  placeholder?: string;
+  inputClassName?: string;
+  labelClassName?: string;
 };
 
 // Campo de contraseña con botón para mostrarla u ocultarla (compartido por el login y el cambio de clave).
@@ -23,11 +27,14 @@ export function PasswordField({
   autoComplete,
   disabled,
   describedBy,
+  placeholder,
+  inputClassName,
+  labelClassName,
 }: Props) {
   const [show, setShow] = useState(false);
   return (
     <div className="grid gap-1.5">
-      <label htmlFor={id} className="text-sm font-medium text-ink">
+      <label htmlFor={id} className={cn('text-sm font-medium text-ink', labelClassName)}>
         {label}
       </label>
       <div className="relative">
@@ -35,12 +42,13 @@ export function PasswordField({
           id={id}
           type={show ? 'text' : 'password'}
           autoComplete={autoComplete}
+          placeholder={placeholder}
           required
           value={value}
           onChange={(e) => onChange(e.target.value)}
           disabled={disabled}
           aria-describedby={describedBy}
-          className="h-11 bg-surface pr-11"
+          className={cn('h-11 bg-surface pr-11', inputClassName)}
         />
         <button
           type="button"

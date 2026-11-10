@@ -37,7 +37,7 @@ async function ProfileContent() {
   if (user.mustChangePassword) redirect('/cambiar-clave');
   if (user.mustAcceptPolicy) redirect('/politica');
   if (user.mustVerifyEmail) redirect('/verificar-correo');
-  if (user.mustEnableTwoFactor) redirect('/activar-2fa');
+  if (user.mustEnableTwoFactor) redirect('/verificacion-dos-pasos');
 
   let profile: Profile;
   try {

@@ -2,7 +2,7 @@
 
 import { useState, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
-import { CircleAlert, Loader2 } from 'lucide-react';
+import { Check, CircleAlert, Copy, Loader2 } from 'lucide-react';
 import { RecoveryCodesView } from '@/components/auth/recovery-codes-view';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -23,6 +23,8 @@ export function EnableTwoFactorForm({ homePath }: { homePath: string }) {
   const [codes, setCodes] = useState<string[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  const [secretCopied, setSecretCopied] = useState(false);
+  const [copyMessage, setCopyMessage] = useState<string | null>(null);
 
   async function call(path: string, body?: object): Promise<Response | null> {
     setError(null);
@@ -89,17 +91,34 @@ export function EnableTwoFactorForm({ homePath }: { homePath: string }) {
 
   if (!setup) {
     return (
-      <div className="grid gap-4">
-        <ol className="list-decimal space-y-1 pl-5 text-sm text-ink-2">
-          <li>Instala una aplicación autenticadora en tu teléfono (Google Authenticator, etc.).</li>
-          <li>Registra en ella la clave que te mostraremos.</li>
-          <li>Escribe aquí el código de 6 dígitos que te muestra la aplicación.</li>
+      <div className="grid gap-5">
+        <ol className="grid gap-4">
+          <li className="flex items-center gap-4 text-sm leading-relaxed text-ink-2">
+            <span className="grid size-8 shrink-0 place-items-center rounded-full bg-gold-soft text-xs font-bold text-brand">
+              1
+            </span>
+            <span>
+              Instala una aplicación autenticadora en tu teléfono (Google Authenticator, etc.).
+            </span>
+          </li>
+          <li className="flex items-center gap-4 text-sm leading-relaxed text-ink-2">
+            <span className="grid size-8 shrink-0 place-items-center rounded-full bg-gold-soft text-xs font-bold text-brand">
+              2
+            </span>
+            <span>Registra en ella la clave que te mostraremos.</span>
+          </li>
+          <li className="flex items-center gap-4 text-sm leading-relaxed text-ink-2">
+            <span className="grid size-8 shrink-0 place-items-center rounded-full bg-gold-soft text-xs font-bold text-brand">
+              3
+            </span>
+            <span>Escribe aquí el código de 6 dígitos que te muestra la aplicación.</span>
+          </li>
         </ol>
         {errorBox}
         <Button
           type="button"
           variant="gold"
-          className="h-11 text-base"
+          className="h-12 rounded-xl text-base font-semibold"
           disabled={pending}
           onClick={() => void start()}
         >
@@ -112,14 +131,45 @@ export function EnableTwoFactorForm({ homePath }: { homePath: string }) {
     );
   }
 
+  const secret = setup.secret;
+
+  async function copySecret() {
+    try {
+      await navigator.clipboard.writeText(secret);
+      setSecretCopied(true);
+      setCopyMessage('Clave copiada.');
+    } catch {
+      setSecretCopied(false);
+      setCopyMessage('No se pudo copiar. Selecciona la clave y cópiala manualmente.');
+    }
+  }
+
   return (
     <form onSubmit={confirm} className="grid gap-5" noValidate>
       <div className="grid gap-1.5">
-        <p className="text-sm font-medium text-ink">Clave para tu aplicación</p>
-        <p className="rounded-lg border border-line bg-canvas px-3 py-2.5 font-mono text-sm break-all tabular-nums select-all">
-          {groups(setup.secret)}
+        <p className="text-sm font-semibold text-brand">Clave para tu aplicación</p>
+        <div className="flex items-center gap-2 rounded-xl border border-line bg-canvas/80 px-3 py-2">
+          <p className="min-w-0 flex-1 py-1 font-mono text-sm leading-relaxed break-all tabular-nums select-all">
+            {groups(setup.secret)}
+          </p>
+          <button
+            type="button"
+            onClick={() => void copySecret()}
+            aria-label={secretCopied ? 'Clave copiada' : 'Copiar clave de configuración'}
+            title={secretCopied ? 'Clave copiada' : 'Copiar clave'}
+            className="grid size-11 shrink-0 place-items-center rounded-lg text-ink-2 transition-colors hover:text-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2"
+          >
+            {secretCopied ? (
+              <Check className="size-4" aria-hidden="true" />
+            ) : (
+              <Copy className="size-4" aria-hidden="true" />
+            )}
+          </button>
+        </div>
+        <p role="status" aria-live="polite" className="min-h-5 text-xs text-ink-2">
+          {copyMessage}
         </p>
-        <p className="text-xs text-ink-3">
+        <p className="text-sm leading-relaxed text-ink-2">
           En tu aplicación elige «Ingresar una clave de configuración», escribe un nombre
           cualquiera, pega esta clave y deja el tipo «Basado en tiempo». Esta clave no se vuelve a
           mostrar.
@@ -127,7 +177,7 @@ export function EnableTwoFactorForm({ homePath }: { homePath: string }) {
       </div>
 
       <div className="grid gap-1.5">
-        <label htmlFor="totp-enable" className="text-sm font-medium text-ink">
+        <label htmlFor="totp-enable" className="text-sm font-semibold text-brand">
           Código de verificación
         </label>
         <Input
@@ -141,7 +191,7 @@ export function EnableTwoFactorForm({ homePath }: { homePath: string }) {
           value={code}
           onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
           disabled={pending}
-          className="h-11 bg-surface text-center text-lg tracking-[0.4em] tabular-nums"
+          className="h-12 rounded-xl bg-surface-2 text-center text-lg tracking-[0.4em] tabular-nums"
         />
       </div>
 
@@ -151,7 +201,7 @@ export function EnableTwoFactorForm({ homePath }: { homePath: string }) {
         type="submit"
         variant="gold"
         disabled={pending || code.length !== 6}
-        className="h-11 text-base"
+        className="h-12 rounded-xl text-base font-semibold"
       >
         {pending && (
           <Loader2 className="animate-spin motion-reduce:animate-none" aria-hidden="true" />

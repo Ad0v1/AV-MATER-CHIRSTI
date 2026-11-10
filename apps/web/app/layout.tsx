@@ -1,10 +1,17 @@
 import type { Metadata } from 'next';
-import { Geist, Geist_Mono } from 'next/font/google';
+import { Geist_Mono, Lexend, Source_Sans_3 } from 'next/font/google';
+import { Suspense } from 'react';
+import { RootRouteTransition } from '@/components/layout/route-transition';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import './globals.css';
 
-const geistSans = Geist({
-  variable: '--font-geist-sans',
+const lexend = Lexend({
+  variable: '--font-lexend',
+  subsets: ['latin'],
+});
+
+const sourceSans = Source_Sans_3({
+  variable: '--font-source-sans-3',
   subsets: ['latin'],
 });
 
@@ -23,9 +30,16 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: LayoutProps<'/'>) {
   return (
-    <html lang="es" className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}>
+    <html
+      lang="es"
+      className={`${lexend.variable} ${sourceSans.variable} ${geistMono.variable} h-full antialiased`}
+    >
       <body className="min-h-full flex flex-col">
-        <TooltipProvider>{children}</TooltipProvider>
+        <TooltipProvider>
+          <Suspense>
+            <RootRouteTransition>{children}</RootRouteTransition>
+          </Suspense>
+        </TooltipProvider>
       </body>
     </html>
   );

@@ -1,56 +1,83 @@
 import Image from 'next/image';
 import { LoginForm } from '@/components/auth/login-form';
+import loginBackground from '../../assets/fondo_login_av.webp';
 
 export const metadata = { title: 'Iniciar sesión' };
 
 export default function LoginPage() {
   return (
-    <main className="grid min-h-dvh grid-cols-[minmax(0,1fr)] grid-rows-[auto_1fr] lg:grid-rows-1 lg:grid-cols-[minmax(0,5fr)_minmax(0,4fr)]">
-      <aside className="flex flex-col justify-between gap-12 border-b-4 border-gold bg-brand px-6 py-6 text-ink-inverse lg:border-r-0 lg:border-b-0 lg:p-12">
-        <div className="flex items-center gap-3">
+    <main className="grid h-dvh grid-rows-[auto_minmax(0,1fr)] overflow-hidden bg-canvas lg:grid-cols-[1.08fr_0.92fr] lg:grid-rows-1">
+      <aside className="relative isolate hidden min-h-0 flex-col overflow-hidden bg-brand px-5 py-3 text-ink-inverse lg:flex lg:px-12 lg:py-10">
+        <div className="absolute inset-0 -z-10 overflow-hidden" aria-hidden="true">
           <Image
-            src="/brand/logo-mater-christi.webp"
+            src={loginBackground}
             alt=""
-            width={44}
-            height={44}
-            unoptimized
-            className="size-11 object-contain"
+            fill
+            priority
+            sizes="(min-width: 1024px) 54vw, 100vw"
+            className="object-cover object-[center_46%]"
           />
-          <span className="text-lg font-semibold">Aula Virtual</span>
+          <div className="absolute inset-0 bg-gradient-to-b from-brand-dark/80 via-brand-dark/15 to-brand-dark/90" />
         </div>
 
-        <div className="hidden max-w-md lg:block">
-          <span className="mb-6 block h-1 w-14 rounded-full bg-gold" aria-hidden="true" />
-          <p className="text-4xl leading-tight font-semibold text-balance">
-            Tu aula, tus cursos y tus notas en un solo lugar.
-          </p>
-          <p className="mt-4 text-base leading-relaxed text-ink-inverse">
-            Plataforma del colegio para estudiantes, docentes y familias de inicial, primaria y
-            secundaria.
-          </p>
+        <div className="flex items-center gap-3.5">
+          <Image
+            src="/brand/escudo.webp"
+            alt=""
+            width={60}
+            height={72}
+            unoptimized
+            className="h-12 w-10 object-contain sm:h-[68px] sm:w-14"
+          />
+          <div>
+            <p className="text-xl font-semibold tracking-tight sm:text-2xl">Mater Christi</p>
+            <p className="mt-0.5 text-sm text-ink-inverse/80 sm:text-base">Aula virtual</p>
+          </div>
         </div>
 
-        <p className="hidden text-sm text-ink-inverse lg:block">Inicial · Primaria · Secundaria</p>
+        <div className="mt-auto max-w-xl pt-4 lg:pb-5 lg:pt-16">
+          <span className="mb-3 block h-1 w-12 rounded-full bg-gold lg:mb-5" />
+          <p className="max-w-lg text-2xl leading-tight font-semibold tracking-tight text-balance sm:text-4xl lg:text-5xl">
+            Un espacio para seguir aprendiendo.
+          </p>
+          <p className="mt-3 hidden max-w-md text-base leading-relaxed text-ink-inverse/85 sm:block sm:text-lg lg:mt-4">
+            Tu comunidad educativa, siempre cerca.
+          </p>
+        </div>
       </aside>
 
-      <section className="flex items-center justify-center bg-canvas px-4 py-10 sm:px-8">
-        <div className="w-full max-w-sm rounded-2xl border border-line bg-surface p-6 shadow-sm sm:p-8">
-          <Image
-            src="/brand/logo-mater-christi.webp"
-            alt="Logo del colegio Mater Christi, Cañete"
-            width={112}
-            height={112}
-            priority
-            unoptimized
-            className="mx-auto mb-5 h-28 w-auto"
-          />
-          <h1 className="text-center text-2xl font-semibold text-ink">Iniciar sesión</h1>
-          <p className="mt-1 mb-6 text-center text-sm text-ink-2">
-            Ingresa con tu código de usuario y tu contraseña.
-          </p>
+      <section className="flex min-h-0 flex-col overflow-y-auto overscroll-contain bg-canvas px-5 py-6 sm:px-10 sm:py-8 lg:px-12 lg:py-7">
+        <div className="my-auto w-full max-w-md self-center">
+          <div className="mb-6 flex items-center gap-3 lg:hidden">
+            <Image
+              src="/brand/escudo.webp"
+              alt=""
+              width={48}
+              height={56}
+              unoptimized
+              className="h-12 w-10 object-contain"
+            />
+            <div>
+              <p className="text-lg font-semibold tracking-tight text-brand">Mater Christi</p>
+              <p className="text-sm text-ink-2">Aula virtual</p>
+            </div>
+          </div>
+          <div className="mb-6 lg:mb-8">
+            <p className="mb-3 hidden text-sm font-semibold tracking-[0.12em] text-brand uppercase lg:block">
+              Aula virtual
+            </p>
+            <h1 className="text-4xl leading-tight font-semibold tracking-tight text-brand sm:text-5xl">
+              Bienvenido
+            </h1>
+            <p className="mt-3 text-base leading-relaxed text-ink-2 sm:text-lg">
+              Ingresa a tu cuenta para continuar.
+            </p>
+          </div>
+
           <LoginForm />
-          <p className="mt-6 border-t border-line pt-4 text-xs text-ink-3">
-            Si no puedes ingresar, comunícate con el administrador del colegio.
+
+          <p className="mt-9 text-center text-sm text-ink-2">
+            ¿Necesitas ayuda? Comunícate con la administración del colegio.
           </p>
         </div>
       </section>

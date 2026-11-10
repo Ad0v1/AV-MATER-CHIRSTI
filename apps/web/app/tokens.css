@@ -7,10 +7,32 @@
  * Capa 3 (shadcn): mapea las variables semanticas de shadcn (primary, ring, sidebar...) a la marca,
  *   de modo que todos los componentes de components/ui adoptan la paleta sin editarse.
  *
+ * Tipografia: aqui se centralizan la escala de tamanos y los pesos para toda la interfaz.
  * En los componentes se usan las utilidades o las variables semanticas, nunca HEX sueltos.
  */
 
 :root {
+  /* Tipografia: escala en rem para respetar el tamano base del usuario. */
+  --type-size-xs: 0.75rem;
+  --type-size-sm: 0.875rem;
+  --type-size-base: 1rem;
+  --type-size-lg: 1.125rem;
+  --type-size-xl: 1.25rem;
+  --type-size-2xl: 1.5rem;
+  --type-size-3xl: 1.875rem;
+  --type-size-4xl: 2.25rem;
+  --type-size-5xl: 3rem;
+  --type-size-6xl: 3.75rem;
+  --type-size-7xl: 4.5rem;
+  --type-size-8xl: 6rem;
+  --type-size-9xl: 8rem;
+
+  /* Pesos compartidos por titulos, etiquetas y texto de lectura. */
+  --type-weight-regular: 400;
+  --type-weight-medium: 500;
+  --type-weight-semibold: 600;
+  --type-weight-bold: 700;
+
   /* Institucional */
   --brand: #592719;
   --brand-dark: #431c12;
@@ -49,6 +71,27 @@
 }
 
 @theme inline {
+  /* Escala de tamanos expuesta a las utilidades text-* de Tailwind. */
+  --text-xs: var(--type-size-xs);
+  --text-sm: var(--type-size-sm);
+  --text-base: var(--type-size-base);
+  --text-lg: var(--type-size-lg);
+  --text-xl: var(--type-size-xl);
+  --text-2xl: var(--type-size-2xl);
+  --text-3xl: var(--type-size-3xl);
+  --text-4xl: var(--type-size-4xl);
+  --text-5xl: var(--type-size-5xl);
+  --text-6xl: var(--type-size-6xl);
+  --text-7xl: var(--type-size-7xl);
+  --text-8xl: var(--type-size-8xl);
+  --text-9xl: var(--type-size-9xl);
+
+  /* Pesos expuestos a las utilidades font-* de Tailwind. */
+  --font-weight-normal: var(--type-weight-regular);
+  --font-weight-medium: var(--type-weight-medium);
+  --font-weight-semibold: var(--type-weight-semibold);
+  --font-weight-bold: var(--type-weight-bold);
+
   --color-brand: var(--brand);
   --color-brand-dark: var(--brand-dark);
   --color-brand-soft: var(--brand-soft);
@@ -105,8 +148,8 @@
   --sidebar-foreground: var(--ink-inverse);
   --sidebar-primary: var(--gold);
   --sidebar-primary-foreground: var(--brand-dark);
-  --sidebar-accent: var(--gold);
-  --sidebar-accent-foreground: var(--brand-dark);
+  --sidebar-accent: rgb(255 255 255 / 12%);
+  --sidebar-accent-foreground: var(--ink-inverse);
   --sidebar-border: rgb(255 255 255 / 12%);
   --sidebar-ring: var(--gold);
 }

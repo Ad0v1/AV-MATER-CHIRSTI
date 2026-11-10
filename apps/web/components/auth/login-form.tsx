@@ -22,6 +22,20 @@ export function LoginForm() {
   const [needsTotp, setNeedsTotp] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  const [codeTouched, setCodeTouched] = useState(false);
+
+  // Aviso inmediato, sin enviar el formulario: con los 10 dígitos completos (o al salir del
+  // campo) se valida la forma y el dígito de control. Solo la API sabe si el código existe.
+  const codeIssue =
+    code.length === 0
+      ? null
+      : code.length === USER_CODE_LENGTH
+        ? isValidUserCode(code)
+          ? null
+          : 'Este código de usuario no es válido. Revisa que esté bien escrito.'
+        : codeTouched
+          ? `El código de usuario debe tener ${USER_CODE_LENGTH} dígitos (llevas ${code.length}).`
+          : null;
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -64,7 +78,7 @@ export function LoginForm() {
             : data.mustVerifyEmail
               ? '/verificar-correo'
               : data.mustEnableTwoFactor
-                ? '/activar-2fa'
+                ? '/verificacion-dos-pasos'
                 : data.mustCompleteContact
                   ? '/mi-perfil'
                   : isRole(data.role)
@@ -100,9 +114,9 @@ export function LoginForm() {
   }
 
   return (
-    <form onSubmit={onSubmit} className="grid gap-5" noValidate>
-      <div className="grid gap-1.5">
-        <label htmlFor="code" className="text-sm font-medium text-ink">
+    <form onSubmit={onSubmit} className="grid gap-5 sm:gap-6" noValidate>
+      <div className="grid gap-2">
+        <label htmlFor="code" className="text-sm font-semibold text-brand sm:text-base">
           Código de usuario
         </label>
         <Input
@@ -112,15 +126,24 @@ export function LoginForm() {
           maxLength={USER_CODE_LENGTH}
           required
           autoFocus
+          placeholder="Ingresa tu código de usuario"
           value={code}
-          onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
+          onChange={(e) => {
+            setCode(e.target.value.replace(/\D/g, ''));
+            setError(null);
+          }}
+          onBlur={() => setCodeTouched(true)}
+          aria-invalid={codeIssue ? true : undefined}
+          aria-describedby={codeIssue ? 'code-error' : undefined}
           disabled={pending || needsTotp}
-          aria-describedby="code-help"
-          className="h-11 bg-surface tracking-widest tabular-nums"
+          className="h-12 rounded-xl border-line bg-surface-2 px-4 tracking-widest tabular-nums placeholder:tracking-normal"
         />
-        <p id="code-help" className="text-xs text-ink-3">
-          Son {USER_CODE_LENGTH} dígitos y te lo entregó el colegio.
-        </p>
+        {codeIssue && (
+          <p id="code-error" role="alert" className="flex items-start gap-1.5 text-sm text-danger">
+            <CircleAlert className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+            <span>{codeIssue}</span>
+          </p>
+        )}
       </div>
 
       <PasswordField
@@ -130,6 +153,9 @@ export function LoginForm() {
         onChange={setPassword}
         autoComplete="current-password"
         disabled={pending || needsTotp}
+        placeholder="Ingresa tu contraseña"
+        labelClassName="font-semibold text-brand sm:text-base"
+        inputClassName="h-12 rounded-xl border-line bg-surface-2 pl-4 pr-12"
       />
 
       {needsTotp && useRecovery && (
@@ -207,7 +233,14 @@ export function LoginForm() {
         </p>
       )}
 
-      <Button type="submit" variant="gold" disabled={pending} className="h-11 text-base">
+      <Link
+        href="/recuperar"
+        className="min-h-11 justify-self-end py-2 text-sm font-medium text-brand underline-offset-4 transition-colors hover:underline focus-visible:rounded-sm focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring"
+      >
+        ¿Olvidaste tu contraseña?
+      </Link>
+
+      <Button type="submit" disabled={pending} className="h-14 rounded-xl text-base font-semibold">
         {pending && (
           <Loader2 className="animate-spin motion-reduce:animate-none" aria-hidden="true" />
         )}
@@ -217,12 +250,6 @@ export function LoginForm() {
       <p className="text-xs text-ink-3">
         Después de 5 intentos fallidos seguidos, el ingreso se bloquea 15 minutos.
       </p>
-      <Link
-        href="/recuperar"
-        className="min-h-11 text-sm text-brand underline-offset-2 hover:underline"
-      >
-        ¿Olvidaste tu contraseña?
-      </Link>
     </form>
   );
 }
