@@ -26,7 +26,7 @@ async function VerifyEmailContent() {
   if (!user.mustVerifyEmail) {
     redirect(
       user.mustEnableTwoFactor
-        ? '/activar-2fa'
+        ? '/verificacion-dos-pasos'
         : user.mustCompleteContact
           ? '/mi-perfil'
           : HOME_BY_ROLE[user.role],
