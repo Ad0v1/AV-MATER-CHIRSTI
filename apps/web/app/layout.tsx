@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { Geist_Mono, Lexend, Source_Sans_3 } from 'next/font/google';
+import { Suspense } from 'react';
 import { RootRouteTransition } from '@/components/layout/route-transition';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import './globals.css';
@@ -35,7 +36,10 @@ export default function RootLayout({ children }: LayoutProps<'/'>) {
     >
       <body className="min-h-full flex flex-col">
         <TooltipProvider>
-          <RootRouteTransition>{children}</RootRouteTransition>
+          {/* usePathname() es un dato de la peticion: Next exige Suspense para poder prerenderizar. */}
+          <Suspense fallback={null}>
+            <RootRouteTransition>{children}</RootRouteTransition>
+          </Suspense>
         </TooltipProvider>
       </body>
     </html>
