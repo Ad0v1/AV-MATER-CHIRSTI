@@ -42,7 +42,7 @@ export function PageLoadingSkeleton() {
 /** Esqueleto de sesión: mantiene el espacio del menú lateral durante la primera validación. */
 export function AppShellLoadingSkeleton() {
   return (
-    <div aria-busy="true" className="loading-appear flex min-h-svh w-full bg-background">
+    <div aria-busy="true" className="loading-appear flex min-h-svh w-full">
       <span className="sr-only" role="status">
         Cargando tu aula virtual…
       </span>
@@ -83,10 +83,7 @@ export function AppShellLoadingSkeleton() {
 /** Esqueleto de las rutas públicas de acceso y recuperación. */
 export function AuthPageLoadingSkeleton() {
   return (
-    <main
-      aria-busy="true"
-      className="grid min-h-dvh place-items-center bg-canvas px-4 py-10 sm:px-8"
-    >
+    <main aria-busy="true" className="grid min-h-dvh place-items-center px-4 py-10 sm:px-8">
       <span className="sr-only" role="status">
         Cargando formulario…
       </span>
