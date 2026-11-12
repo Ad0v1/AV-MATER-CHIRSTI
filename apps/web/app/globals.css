@@ -115,7 +115,18 @@
     inset: 0;
     z-index: -1;
     pointer-events: none;
+    /* Escritorio por defecto; móvil y tablet tienen su propia imagen vertical. */
     background: var(--canvas) url('../assets/fondo_paginas.webp') center / cover no-repeat;
+  }
+  @media (max-width: 1023px) {
+    body::before {
+      background-image: url('../assets/fondo_paginas_tablet.webp');
+    }
+  }
+  @media (max-width: 639px) {
+    body::before {
+      background-image: url('../assets/fondo_paginas_mobil.webp');
+    }
   }
   html {
     @apply font-sans;
