@@ -298,3 +298,40 @@ html[data-leaving] [data-app-shell] {
     animation-duration: 100ms;
   }
 }
+
+/* Toasts de SweetAlert2: color sólido por tipo, texto e iconos blancos. */
+.swal2-popup.av-toast {
+  color: #fff;
+  border-radius: 0.5rem;
+}
+.swal2-popup.av-toast .swal2-title,
+.swal2-popup.av-toast .swal2-close {
+  color: #fff;
+}
+.swal2-popup.av-toast .swal2-close:hover {
+  color: #fff;
+  background: rgb(255 255 255 / 0.2);
+}
+.swal2-popup.av-toast .swal2-timer-progress-bar {
+  background: rgb(255 255 255 / 0.6);
+}
+.swal2-popup.av-toast .swal2-icon {
+  color: #fff;
+  border-color: #fff;
+}
+.swal2-popup.av-toast .swal2-icon .swal2-success-ring {
+  border-color: rgb(255 255 255 / 0.35);
+}
+.swal2-popup.av-toast .swal2-icon [class^='swal2-success-line'],
+.swal2-popup.av-toast .swal2-icon .swal2-x-mark-line-left,
+.swal2-popup.av-toast .swal2-icon .swal2-x-mark-line-right {
+  background-color: #fff;
+}
+.swal2-popup.av-toast .swal2-icon [class^='swal2-success-circular-line'],
+.swal2-popup.av-toast .swal2-icon .swal2-success-fix {
+  background: transparent;
+}
+.swal2-popup.av-toast-success { background: #15803d; }
+.swal2-popup.av-toast-error { background: #b91c1c; }
+.swal2-popup.av-toast-warning { background: #d97706; }
+.swal2-popup.av-toast-info { background: #1d4ed8; }

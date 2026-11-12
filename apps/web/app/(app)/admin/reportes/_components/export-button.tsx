@@ -51,7 +51,10 @@ export function ExportButton({
     const timer = setTimeout(async () => {
       if (polls.current >= POLL_MAX) {
         setStopped(true);
-        announce('La exportación sigue en curso. Recarga la página para ver si terminó.');
+        announce(
+          'La exportación sigue en curso. Recarga la página para ver si terminó.',
+          'warning',
+        );
         return;
       }
       polls.current++;

@@ -8,9 +8,16 @@
 import { createContext, useCallback, useContext, useEffect, type ReactNode } from 'react';
 import Swal from 'sweetalert2';
 
-const VISIBLE_MS = 10_000;
+const VISIBLE_MS = 4_000;
 
-type Announce = (message: string) => void;
+export type AnnounceType = 'success' | 'error' | 'warning' | 'info';
+type Announce = (message: string, type?: AnnounceType) => void;
+
+// Si quien llama no indica el tipo, se deduce del texto (mensajes de fallo => rojo).
+function inferType(message: string): AnnounceType {
+  if (/no se pudo|rechazad|no se encontr|fall[óo]|error/i.test(message)) return 'error';
+  return 'success';
+}
 
 const FeedbackContext = createContext<Announce>(() => {});
 
@@ -19,13 +26,15 @@ export function useAnnounce(): Announce {
 }
 
 export function ActionFeedbackProvider({ children }: { children: ReactNode }) {
-  const announce = useCallback<Announce>((message) => {
+  const announce = useCallback<Announce>((message, type) => {
     if (!message) return;
+    const kind = type ?? inferType(message);
     const mobile = window.matchMedia('(max-width: 639px)').matches;
     void Swal.fire({
       toast: true,
       position: mobile ? 'bottom' : 'bottom-end',
-      icon: 'success',
+      icon: kind,
+      customClass: { popup: `av-toast av-toast-${kind}` },
       title: message,
       showConfirmButton: false,
       showCloseButton: true,

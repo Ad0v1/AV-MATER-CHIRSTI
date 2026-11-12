@@ -1,5 +1,6 @@
 // Piezas de presentación sin estado (Server Components) de las pantallas de administración.
 import Link from 'next/link';
+import { Info } from 'lucide-react';
 import { Breadcrumbs } from '@/components/layout/breadcrumbs';
 import type { ReactNode } from 'react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -168,9 +169,12 @@ export function ReadOnlyNotice({
   title?: string;
 }) {
   return (
-    <Alert role="note">
-      <AlertTitle>{title}</AlertTitle>
-      <AlertDescription>{children}</AlertDescription>
-    </Alert>
+    <div role="note" className="flex items-start gap-3 rounded-xl bg-surface-2 px-4 py-3 text-sm">
+      <Info className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+      <div className="flex flex-col gap-0.5">
+        <p className="font-medium">{title}</p>
+        <div className="text-muted-foreground">{children}</div>
+      </div>
+    </div>
   );
 }
