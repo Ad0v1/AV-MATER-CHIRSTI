@@ -15,6 +15,26 @@ import {
 
 export type ImportTemplate = { filename: string; contentType: string; body: Buffer };
 
+/** Sección ya creada en el sistema (año activo): alimenta las listas desplegables de estudiantes. */
+export type TemplateSection = { gradeLevel: number; code: string };
+export type TemplateOptions = { sections?: TemplateSection[] };
+
+/** Códigos de sección por grado, ordenados. */
+function groupSections(sections: TemplateSection[]): Map<number, string[]> {
+  const byGrade = new Map<number, string[]>();
+  for (const s of [...sections].sort(
+    (a, b) => a.gradeLevel - b.gradeLevel || a.code.localeCompare(b.code, 'es'),
+  )) {
+    const codes = byGrade.get(s.gradeLevel) ?? [];
+    if (!codes.includes(s.code)) codes.push(s.code);
+    byGrade.set(s.gradeLevel, codes);
+  }
+  return byGrade;
+}
+
+/** Filas que alcanza a ver la lista desplegable de secciones de un grado. */
+const MAX_CODES_PER_GRADE = 100;
+
 const UTF8_BOM = '﻿';
 
 // Colores de la marca del colegio.
@@ -48,10 +68,14 @@ const COLUMN_HELP: Record<ImportType, ColumnHelp[]> = {
       help: 'Nombres y apellidos del estudiante (3 a 120 caracteres).',
       example: 'Ana Lucía Pérez Ramos',
     },
-    { name: 'grado', help: 'Número del grado, del 1 al 5.', example: '3' },
+    {
+      name: 'grado',
+      help: 'Elige el grado de la lista desplegable (los que tienen secciones creadas en el año activo).',
+      example: '3',
+    },
     {
       name: 'seccion',
-      help: 'Código de la sección del año activo (1 a 8 letras o dígitos).',
+      help: 'Elige la sección de la lista desplegable: muestra solo las del grado que escogiste.',
       example: 'A',
     },
     {
@@ -136,6 +160,14 @@ export function buildCsvTemplate(type: ImportType): ImportTemplate {
   return { filename: templateFilename(type, 'csv'), contentType: CSV_CONTENT_TYPE, body };
 }
 
+/** Letra de columna de Excel (1 → A). */
+function columnLetter(n: number): string {
+  let out = '';
+  for (let x = n; x > 0; x = Math.floor((x - 1) / 26))
+    out = String.fromCharCode(65 + ((x - 1) % 26)) + out;
+  return out;
+}
+
 const solid = (argb: string): ExcelJS.Fill => ({
   type: 'pattern',
   pattern: 'solid',
@@ -157,10 +189,18 @@ const heightFor = (text: string, charsPerLine: number): number =>
  * 8 dígitos. Hoja "Instrucciones": leyenda de colores, qué escribir en cada columna con un
  * ejemplo, los pasos y las reglas.
  */
-export async function buildXlsxTemplate(type: ImportType): Promise<ImportTemplate> {
+export async function buildXlsxTemplate(
+  type: ImportType,
+  options: TemplateOptions = {},
+): Promise<ImportTemplate> {
   const workbook = new ExcelJS.Workbook();
   workbook.creator = 'Aula virtual';
   const columns = IMPORT_COLUMNS[type];
+  const byGrade =
+    type === 'students' ? groupSections(options.sections ?? []) : new Map<number, string[]>();
+  const grades = [...byGrade.keys()];
+  const hasSections = grades.length > 0;
+  const gradeAt = columns.indexOf('grado' as never) + 1;
 
   // --- Hoja "Datos" ---
   const data = workbook.addWorksheet('Datos', {
@@ -194,14 +234,35 @@ export async function buildXlsxTemplate(type: ImportType): Promise<ImportTemplat
   columns.forEach((name, index) => {
     const letter = data.getColumn(index + 1).letter;
     if (name === 'grado') {
+      const lastGrade = hasSections ? `$${columnLetter(grades.length)}$1` : '';
       for (let row = 2; row <= MAX_ROWS + 1; row++) {
         data.getCell(`${letter}${row}`).dataValidation = {
           type: 'list',
           allowBlank: true,
-          formulae: ['"1,2,3,4,5"'],
+          formulae: [hasSections ? `Listas!$A$1:${lastGrade}` : '"1,2,3,4,5"'],
           showErrorMessage: true,
+          errorStyle: hasSections ? 'warning' : 'stop',
           errorTitle: 'Grado no válido',
-          error: 'Elige un grado del 1 al 5',
+          error: hasSections
+            ? 'Elige un grado de la lista (los que tienen secciones creadas).'
+            : 'Elige un grado del 1 al 5',
+        };
+      }
+    } else if (name === 'seccion' && hasSections && gradeAt > 0) {
+      // Lista que depende del grado elegido en la misma fila: la columna de ese grado en "Listas".
+      const gradeCol = columnLetter(gradeAt);
+      const headers = `Listas!$A$1:$${columnLetter(grades.length)}$1`;
+      for (let row = 2; row <= MAX_ROWS + 1; row++) {
+        const col = `MATCH(VALUE($${gradeCol}${row}),${headers},0)-1`;
+        const start = `OFFSET(Listas!$A$2,0,${col},${MAX_CODES_PER_GRADE},1)`;
+        data.getCell(`${letter}${row}`).dataValidation = {
+          type: 'list',
+          allowBlank: true,
+          formulae: [`IFERROR(OFFSET(Listas!$A$2,0,${col},COUNTA(${start}),1),Listas!$Z$2)`],
+          showErrorMessage: true,
+          errorStyle: 'warning',
+          errorTitle: 'Sección no válida',
+          error: 'Elige primero el grado y luego una sección de la lista.',
         };
       }
     } else if (name.startsWith('dni')) {
@@ -314,10 +375,47 @@ export async function buildXlsxTemplate(type: ImportType): Promise<ImportTemplat
   section('Reglas importantes', COLOR.optionalText);
   list([...TYPE_NOTES[type], ...RULES], false, COLOR.optionalText, COLOR.optional);
 
+  // --- Hoja "Listas": las secciones que ya existen en el sistema (año activo) ---
+  if (hasSections) {
+    const lists = workbook.addWorksheet('Listas', {
+      properties: { tabColor: { argb: COLOR.ok } },
+      views: [{ state: 'frozen', ySplit: 1 }],
+    });
+    grades.forEach((grade, i) => {
+      const col = lists.getColumn(i + 1);
+      col.width = 14;
+      const head = lists.getCell(1, i + 1);
+      head.value = grade; // número: la lista de secciones lo busca con MATCH
+      head.numFmt = '"Grado "0';
+      head.font = { bold: true, color: { argb: COLOR.white } };
+      head.fill = solid(COLOR.ok);
+      head.alignment = { horizontal: 'center', vertical: 'middle' };
+      head.border = box(COLOR.ok);
+      (byGrade.get(grade) ?? []).forEach((code, j) => {
+        const cell = lists.getCell(j + 2, i + 1);
+        cell.value = code;
+        cell.numFmt = '@';
+        cell.alignment = { horizontal: 'center' };
+        cell.border = box(COLOR.line);
+        if (j % 2 === 1) cell.fill = solid(COLOR.okSoft);
+      });
+    });
+    lists.getRow(1).height = 26;
+    const note = lists.getCell(1, grades.length + 2);
+    note.value = 'Secciones del año activo. Esta hoja se genera al descargar la plantilla.';
+    note.font = { italic: true, color: { argb: COLOR.text } };
+  }
+
   const body = Buffer.from(await workbook.xlsx.writeBuffer());
   return { filename: templateFilename(type, 'xlsx'), contentType: XLSX_CONTENT_TYPE, body };
 }
 
-export function buildTemplate(type: ImportType, format: ImportFormat): Promise<ImportTemplate> {
-  return format === 'csv' ? Promise.resolve(buildCsvTemplate(type)) : buildXlsxTemplate(type);
+export function buildTemplate(
+  type: ImportType,
+  format: ImportFormat,
+  options: TemplateOptions = {},
+): Promise<ImportTemplate> {
+  return format === 'csv'
+    ? Promise.resolve(buildCsvTemplate(type))
+    : buildXlsxTemplate(type, options);
 }

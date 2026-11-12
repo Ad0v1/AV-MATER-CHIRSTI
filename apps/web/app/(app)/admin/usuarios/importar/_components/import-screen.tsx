@@ -14,8 +14,7 @@ import {
   CheckCircle2,
   Download,
   FileCheck2,
-  FileSpreadsheet,
-  FileText,
+  Loader2,
   GraduationCap,
   ListChecks,
   Lock,
@@ -127,6 +126,18 @@ async function send(action: 'preview' | 'commit', form: FormData): Promise<Reply
   return { status: res.status, body };
 }
 
+/** Guarda un archivo en memoria como descarga del navegador. */
+function saveBlob(blob: Blob, name: string) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = name;
+  document.body.append(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
 export function ImportScreen() {
   const [state, dispatch] = useReducer(importReducer, undefined, () => initialImportState());
   const file = useRef<File | null>(null);
@@ -155,10 +166,36 @@ export function ImportScreen() {
 
   const busy = isBusy(state);
 
+  // Las plantillas se piden en segundo plano al elegir el tipo; al hacer clic ya están listas.
+  const templates = useRef(new Map<string, Promise<Blob | null>>());
+  function fetchTemplate(type: ImportType, format: ImportFormat): Promise<Blob | null> {
+    const key = `${type}.${format}`;
+    let pending = templates.current.get(key);
+    if (!pending) {
+      pending = fetch(templateHref(type, format), { credentials: 'same-origin' })
+        .then((res) => (res.ok ? res.blob() : null))
+        .catch(() => null);
+      templates.current.set(key, pending);
+    }
+    return pending;
+  }
+  useEffect(() => {
+    void fetchTemplate(state.type, 'xlsx');
+    void fetchTemplate(state.type, 'csv');
+  }, [state.type]);
+
   async function downloadTemplate(format: ImportFormat) {
     setTemplateError(null);
     setDownloading(format);
     try {
+      const ready = await fetchTemplate(state.type, format);
+      if (ready) {
+        saveBlob(ready, `plantilla-${state.type}.${format}`);
+        announce(`Plantilla de ${TYPE_LABELS[state.type].toLowerCase()} descargada.`);
+        return;
+      }
+      // Sin copia lista (falló la precarga): se pide de nuevo para mostrar el error real.
+      templates.current.delete(`${state.type}.${format}`);
       let res: Response;
       try {
         res = await fetch(templateHref(state.type, format), {
@@ -181,15 +218,7 @@ export function ImportScreen() {
         announce(`No se pudo descargar la plantilla. ${message}`);
         return;
       }
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `plantilla-${state.type}.${format}`;
-      document.body.append(a);
-      a.click();
-      a.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 0);
+      saveBlob(await res.blob(), `plantilla-${state.type}.${format}`);
       announce(`Plantilla de ${TYPE_LABELS[state.type].toLowerCase()} descargada.`);
     } finally {
       setDownloading(null);
@@ -353,56 +382,31 @@ export function ImportScreen() {
           </div>
         </Block>
 
-        <Block label="Descarga la plantilla">
-          <p className="text-sm">
-            Descarga la plantilla de {TYPE_LABELS[state.type].toLowerCase()}, llénala y guárdala sin
-            cambiar los encabezados. La de Excel trae colores y una hoja de instrucciones.
+        <Block label="Plantilla">
+          <p className="text-sm text-muted-foreground">
+            Descárgala, llénala y guárdala sin cambiar los encabezados.
           </p>
-          <div className="grid gap-3 sm:grid-cols-2 sm:max-w-2xl">
-            {(['xlsx', 'csv'] as const).map((format) => {
-              const excel = format === 'xlsx';
-              const Icon = excel ? FileSpreadsheet : FileText;
-              return (
-                <button
-                  key={format}
-                  type="button"
-                  disabled={downloading !== null}
-                  aria-busy={downloading === format || undefined}
-                  onClick={() => void downloadTemplate(format)}
-                  className={cn(
-                    'group flex min-h-16 cursor-pointer items-center gap-3 rounded-xl border p-3 text-left transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-line-active disabled:cursor-not-allowed disabled:opacity-60',
-                    excel
-                      ? 'border-emerald-600/40 bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/30 dark:hover:bg-emerald-950/50'
-                      : 'border-line bg-brand-soft/50 hover:bg-brand-soft',
-                  )}
-                >
-                  <span
-                    className={cn(
-                      'grid size-10 shrink-0 place-items-center rounded-lg text-white',
-                      excel ? 'bg-emerald-700' : 'bg-brand',
-                    )}
-                  >
-                    <Icon className="size-5" aria-hidden="true" />
-                  </span>
-                  <span className="flex min-w-0 flex-1 flex-col">
-                    <span className="text-sm font-semibold">
-                      {downloading === format
-                        ? 'Descargando…'
-                        : excel
-                          ? 'Plantilla Excel (.xlsx)'
-                          : 'Plantilla CSV'}
-                    </span>
-                    <span className="text-xs text-muted-foreground">
-                      {excel ? 'Recomendada: con colores e instrucciones' : 'Solo los encabezados'}
-                    </span>
-                  </span>
-                  <Download
-                    className="size-4 shrink-0 text-muted-foreground group-hover:text-foreground"
+          <div className="flex flex-wrap gap-x-5 gap-y-1">
+            {(['xlsx', 'csv'] as const).map((format) => (
+              <button
+                key={format}
+                type="button"
+                disabled={downloading === format}
+                aria-busy={downloading === format || undefined}
+                onClick={() => void downloadTemplate(format)}
+                className="group inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-md text-sm font-medium text-brand hover:underline hover:underline-offset-4 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-line-active disabled:cursor-wait disabled:opacity-60 md:min-h-9"
+              >
+                {downloading === format ? (
+                  <Loader2
+                    className="size-4 animate-spin motion-reduce:animate-none"
                     aria-hidden="true"
                   />
-                </button>
-              );
-            })}
+                ) : (
+                  <Download className="size-4" aria-hidden="true" />
+                )}
+                {format === 'xlsx' ? 'Excel (.xlsx)' : 'CSV'}
+              </button>
+            ))}
           </div>
           {templateError ? (
             <p className="text-sm text-destructive" role="alert">
@@ -627,13 +631,11 @@ function Total({ label, value, tone }: { label: string; value: number; tone: key
   );
 }
 
-/** Bloque de un paso: etiqueta pequeña y contenido, con el estilo suave de las demás páginas. */
+/** Subsección de un paso: solo una etiqueta pequeña y su contenido (sin cajas anidadas). */
 function Block({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <div className="flex flex-col gap-3 rounded-xl border border-line/70 bg-background/60 p-4">
-      <h3 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
-        {label}
-      </h3>
+    <div className="flex flex-col gap-2">
+      <h3 className="text-sm font-semibold text-ink-2">{label}</h3>
       {children}
     </div>
   );
