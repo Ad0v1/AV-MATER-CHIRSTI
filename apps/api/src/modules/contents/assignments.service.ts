@@ -1,9 +1,11 @@
 import {
+  BadRequestException,
   ConflictException,
   Injectable,
   NotFoundException,
   UnprocessableEntityException,
 } from '@nestjs/common';
+import type { GradeLiteralCode } from '@aula/shared';
 import { AuditService } from '../../common/audit/audit.service.js';
 import type { AuthenticatedUser } from '../../common/auth/roles.js';
 import { PrismaService } from '../../common/prisma/prisma.service.js';
@@ -18,6 +20,7 @@ import type {
 } from './assignments.dto.js';
 import {
   auditSnapshot,
+  checkNoSubmissionLiteral,
   diffAssignment,
   isDueAtAcceptable,
   type AssignmentFields,
@@ -36,6 +39,8 @@ export type AssignmentView = {
   dueAt: string;
   maxSizeBytes: number;
   noSubmissionGrade: string;
+  /** NE en escala literal (INICIAL/PRIMARIA); null en SECUNDARIA o sin definir. */
+  noSubmissionLiteral: GradeLiteralCode | null;
   allowLate: boolean;
   attachmentFileId: string | null;
   /** RN-10: false si el período o su año están cerrados (la tarea ya no se edita). */
@@ -51,6 +56,7 @@ export const MSG = {
   invalidAttachment: 'El archivo adjunto no es válido para esta tarea',
   attachmentInUse: 'El archivo adjunto ya está en uso',
   hasSubmissions: 'La tarea ya tiene entregas y no se puede eliminar',
+  hasGrades: 'La tarea ya tiene notas y no se puede eliminar',
 } as const;
 
 const assignmentInclude = {
@@ -69,6 +75,7 @@ function toView(a: AssignmentRow): AssignmentView {
     dueAt: a.dueAt.toISOString(),
     maxSizeBytes: a.maxSizeBytes,
     noSubmissionGrade: a.noSubmissionGrade.toFixed(2),
+    noSubmissionLiteral: a.noSubmissionLiteral,
     allowLate: a.allowLate,
     attachmentFileId: a.attachmentFileId,
     periodIsOpen: periodIsOpen(a.period, a.period.academicYear),
@@ -83,6 +90,7 @@ const fieldsOf = (a: AssignmentRow): AssignmentFields => ({
   dueAt: a.dueAt,
   maxSizeBytes: a.maxSizeBytes,
   noSubmissionGrade: a.noSubmissionGrade.toFixed(2),
+  noSubmissionLiteral: a.noSubmissionLiteral,
   allowLate: a.allowLate,
   attachmentFileId: a.attachmentFileId,
 });
@@ -105,6 +113,7 @@ export class AssignmentsService {
   ): Promise<AssignmentView> {
     await assertCanWriteCourseSection(this.access, user, courseSectionId);
     await this.access.assertCourseSectionWritable(courseSectionId, dto.periodId);
+    await this.assertNoSubmissionLiteral(courseSectionId, dto.noSubmissionLiteral);
     if (!isDueAtAcceptable(dto.dueAt, new Date())) {
       throw new UnprocessableEntityException(MSG.dueAtPast);
     }
@@ -115,7 +124,7 @@ export class AssignmentsService {
         if (dto.attachmentFileId !== null) {
           await this.assertAttachmentUsable(tx, dto.attachmentFileId, courseSectionId, null);
         }
-        return tx.assignment.create({
+        const row = await tx.assignment.create({
           data: {
             courseSectionId,
             periodId: dto.periodId,
@@ -124,19 +133,27 @@ export class AssignmentsService {
             dueAt: dto.dueAt,
             maxSizeBytes: dto.maxSizeBytes,
             noSubmissionGrade: dto.noSubmissionGrade,
+            noSubmissionLiteral: dto.noSubmissionLiteral,
             allowLate: dto.allowLate,
             attachmentFileId: dto.attachmentFileId,
             createdById: actor.id,
           },
           include: assignmentInclude,
         });
+        const rowFields = fieldsOf(row);
+        await recordContents(
+          this.audit,
+          actor,
+          'assignment.created',
+          'Assignment',
+          row.id,
+          { after: auditSnapshot({ ...rowFields, courseSectionId, periodId: row.periodId }) },
+          tx,
+        );
+        return row;
       })
       .catch((e: unknown) => this.mapError(e));
 
-    const fields = fieldsOf(created);
-    await recordContents(this.audit, actor, 'assignment.created', 'Assignment', created.id, {
-      after: auditSnapshot({ ...fields, courseSectionId, periodId: created.periodId }),
-    });
     this.events.publish({
       type: 'assignment.created.v1',
       payload: {
@@ -149,6 +166,22 @@ export class AssignmentsService {
       },
     });
     return toView(created);
+  }
+
+  /** 400 si se envía un literal de NE en una sección de SECUNDARIA (tres niveles). */
+  private async assertNoSubmissionLiteral(
+    courseSectionId: string,
+    literal: GradeLiteralCode | null | undefined,
+  ): Promise<void> {
+    if (literal === null || literal === undefined) return;
+    const cs = await this.prisma.courseSection.findUnique({
+      where: { id: courseSectionId },
+      select: { section: { select: { level: true } } },
+    });
+    const message = cs ? checkNoSubmissionLiteral(cs.section.level, literal) : null;
+    if (message) {
+      throw new BadRequestException({ message: [{ path: 'noSubmissionLiteral', message }] });
+    }
   }
 
   // RF-28: lista de tareas del curso-sección para sus miembros (sin apoderado; lo filtra @Roles).
@@ -182,6 +215,7 @@ export class AssignmentsService {
     const current = await this.findOrFail(id);
     await assertCanWriteCourseSection(this.access, user, current.courseSectionId);
     await this.access.assertCourseSectionWritable(current.courseSectionId, current.periodId);
+    await this.assertNoSubmissionLiteral(current.courseSectionId, dto.noSubmissionLiteral);
 
     const change = diffAssignment(fieldsOf(current), dto);
     if (change.changedFields.length === 0) return toView(current);
@@ -205,19 +239,32 @@ export class AssignmentsService {
             dueAt: dto.dueAt,
             maxSizeBytes: dto.maxSizeBytes,
             noSubmissionGrade: dto.noSubmissionGrade,
+            noSubmissionLiteral: dto.noSubmissionLiteral,
             allowLate: dto.allowLate,
             attachmentFileId: dto.attachmentFileId,
           },
         });
         if (count === 0) throw new NotFoundException(MSG.notFound);
-        return tx.assignment.findUniqueOrThrow({ where: { id }, include: assignmentInclude });
+        const row = await tx.assignment.findUniqueOrThrow({
+          where: { id },
+          include: assignmentInclude,
+        });
+        await recordContents(
+          this.audit,
+          actor,
+          'assignment.updated',
+          'Assignment',
+          id,
+          {
+            before: change.before,
+            after: { ...change.after, changedFields: change.changedFields },
+          },
+          tx,
+        );
+        return row;
       })
       .catch((e: unknown) => this.mapError(e));
 
-    await recordContents(this.audit, actor, 'assignment.updated', 'Assignment', id, {
-      before: change.before,
-      after: { ...change.after, changedFields: change.changedFields },
-    });
     this.events.publish({
       type: 'assignment.updated.v1',
       payload: {
@@ -233,7 +280,7 @@ export class AssignmentsService {
     return toView(updated);
   }
 
-  // Borrado lógico (RN-14: no se pierde historial). 409 si ya hay alguna versión entregada.
+  // Borrado lógico (RN-14: no se pierde historial). 409 si ya hay alguna versión entregada o nota.
   async remove(id: string, user: AuthenticatedUser, actor: Actor): Promise<void> {
     const current = await this.findOrFail(id);
     await assertCanWriteCourseSection(this.access, user, current.courseSectionId);
@@ -253,14 +300,21 @@ export class AssignmentsService {
           where: { submission: { assignmentId: id } },
         });
         if (versions > 0) throw new ConflictException(MSG.hasSubmissions);
+        // RN-10: tampoco si ya tiene notas (p. ej. una NE registrada sin entrega).
+        const grades = await tx.grade.count({ where: { assignmentId: id } });
+        if (grades > 0) throw new ConflictException(MSG.hasGrades);
         await tx.assignment.update({ where: { id }, data: { deletedAt } });
+        await recordContents(
+          this.audit,
+          actor,
+          'assignment.deleted',
+          'Assignment',
+          id,
+          { before: { deletedAt: null }, after: { deletedAt: deletedAt.toISOString() } },
+          tx,
+        );
       })
       .catch((e: unknown) => this.mapError(e));
-
-    await recordContents(this.audit, actor, 'assignment.deleted', 'Assignment', id, {
-      before: { deletedAt: null },
-      after: { deletedAt: deletedAt.toISOString() },
-    });
   }
 
   /**

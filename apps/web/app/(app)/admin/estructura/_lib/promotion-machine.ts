@@ -6,23 +6,39 @@
 //   confirmando ──COMMIT_FAILED 409──▶ desactualizada (hay que volver a cargar la propuesta)
 //   confirmando ──COMMIT_FAILED otro──▶ editando (con el mensaje y los errores por fila)
 //   editando | desactualizada ──LOAD (propuesta nueva)──▶ editando
+import { gradeLabel, nextGrade, sectionLabel, type EducationLevel } from './levels';
 import { isUuid } from './validation';
 
 export const PROMOTION_ACTIONS = ['PROMOTE', 'REPEAT', 'GRADUATE', 'EXCLUDE'] as const;
 export type PromotionAction = (typeof PROMOTION_ACTIONS)[number];
 export type PromotionFlag = 'INACTIVE' | 'WITHDRAWN' | 'NO_TARGET_SECTION' | 'ALREADY_ENROLLED';
 
-export const MAX_GRADE = 5;
+/** Tres niveles (09/11/2026): INICIAL 5 años → PRIMARIA 1.°, PRIMARIA 6.° → SECUNDARIA 1.°, SECUNDARIA 5.° egresa. */
+export type LevelGrade = { level: EducationLevel; gradeLevel: number };
+type FromGrade = { level?: EducationLevel; gradeLevel: number };
+const levelOf = (s: { level?: EducationLevel }): EducationLevel => s.level ?? 'SECUNDARIA';
+const isFinalGrade = (from: FromGrade): boolean =>
+  nextGrade(levelOf(from), from.gradeLevel) === null;
+const LEVEL_ORDER: Record<EducationLevel, number> = { INICIAL: 0, PRIMARIA: 1, SECUNDARIA: 2 };
+
+/** Etiqueta de la sección de origen o destino: "3.° Primaria A" (sin nivel, SECUNDARIA). */
+export const promotionSectionLabel = (s: FromGrade & { code: string }): string =>
+  sectionLabel(levelOf(s), s.gradeLevel, s.code);
 export const MAX_DECISIONS = 2000;
 
-export type TargetSection = { id: string; gradeLevel: number; code: string };
+export type TargetSection = {
+  id: string;
+  level?: EducationLevel;
+  gradeLevel: number;
+  code: string;
+};
 
 export type PromotionItem = {
   enrollmentId: string;
   studentId: string;
   fullName: string;
   status: 'ACTIVE' | 'INACTIVE' | 'WITHDRAWN';
-  from: { sectionId: string; gradeLevel: number; code: string };
+  from: { sectionId: string; level?: EducationLevel; gradeLevel: number; code: string };
   proposed: { action: PromotionAction; sectionId: string | null };
   flags: PromotionFlag[];
 };
@@ -115,17 +131,21 @@ export function allowedActions(item: Pick<PromotionItem, 'flags' | 'from'>): Pro
   if (item.flags.includes('WITHDRAWN') || item.flags.includes('ALREADY_ENROLLED')) {
     return ['EXCLUDE'];
   }
-  return item.from.gradeLevel >= MAX_GRADE
+  return isFinalGrade(item.from)
     ? ['GRADUATE', 'REPEAT', 'EXCLUDE']
     : ['PROMOTE', 'REPEAT', 'EXCLUDE'];
 }
 
-/** Grado de la sección destino que exige la acción; null si no lleva sección. */
-export function targetGradeFor(action: PromotionAction, fromGrade: number): number | null {
-  if (action === 'PROMOTE') return fromGrade + 1;
-  if (action === 'REPEAT') return fromGrade;
+/** Nivel y grado de la sección destino que exige la acción; null si no lleva sección. */
+export function targetGradeFor(action: PromotionAction, from: FromGrade): LevelGrade | null {
+  const level = levelOf(from);
+  if (action === 'PROMOTE') return nextGrade(level, from.gradeLevel);
+  if (action === 'REPEAT') return { level, gradeLevel: from.gradeLevel };
   return null;
 }
+
+/** "1.° Secundaria" o "5 años": texto del grado destino. */
+export const targetGradeLabel = (t: LevelGrade): string => gradeLabel(t.level, t.gradeLevel);
 
 /** Secciones que se pueden elegir para la acción de la fila. */
 export function sectionChoices(
@@ -133,8 +153,10 @@ export function sectionChoices(
   action: PromotionAction,
   sections: readonly TargetSection[],
 ): TargetSection[] {
-  const grade = targetGradeFor(action, item.from.gradeLevel);
-  return grade === null ? [] : sections.filter((s) => s.gradeLevel === grade);
+  const grade = targetGradeFor(action, item.from);
+  return grade === null
+    ? []
+    : sections.filter((s) => levelOf(s) === grade.level && s.gradeLevel === grade.gradeLevel);
 }
 
 /** Sección por defecto: la del mismo código; si no, la única del grado; si no, ninguna. */
@@ -156,7 +178,7 @@ const isValidSection = (
   sections: readonly TargetSection[],
 ): boolean =>
   sectionId === null
-    ? targetGradeFor(action, item.from.gradeLevel) === null
+    ? targetGradeFor(action, item.from) === null
     : sectionChoices(item, action, sections).some((s) => s.id === sectionId);
 
 // --- Estado ------------------------------------------------------------------------------------
@@ -190,7 +212,7 @@ function applyRow(
   if (sectionId !== undefined && isValidSection(item, action, sectionId, sections)) {
     return { action, sectionId };
   }
-  if (targetGradeFor(action, item.from.gradeLevel) === null) return { action, sectionId: null };
+  if (targetGradeFor(action, item.from) === null) return { action, sectionId: null };
   if (action === item.proposed.action && item.proposed.sectionId !== null) {
     return { action, sectionId: item.proposed.sectionId };
   }
@@ -235,7 +257,7 @@ export function promotionReducer(state: PromotionState, event: PromotionEvent): 
       ) {
         return state;
       }
-      if (event.sectionId === null && targetGradeFor(action, item.from.gradeLevel) === null) {
+      if (event.sectionId === null && targetGradeFor(action, item.from) === null) {
         return state;
       }
       return {
@@ -351,6 +373,7 @@ export function mapDetails(
 
 export type SectionGroup = {
   sectionId: string;
+  level: EducationLevel;
   gradeLevel: number;
   code: string;
   items: PromotionItem[];
@@ -365,6 +388,7 @@ export function groupBySection(items: readonly PromotionItem[]): SectionGroup[] 
     if (!group) {
       group = {
         sectionId: item.from.sectionId,
+        level: levelOf(item.from),
         gradeLevel: item.from.gradeLevel,
         code: item.from.code,
         items: [],
@@ -374,14 +398,19 @@ export function groupBySection(items: readonly PromotionItem[]): SectionGroup[] 
     }
     group.items.push(item);
   }
-  return groups.sort((a, b) => a.gradeLevel - b.gradeLevel || (a.code < b.code ? -1 : 1));
+  return groups.sort(
+    (a, b) =>
+      LEVEL_ORDER[a.level] - LEVEL_ORDER[b.level] ||
+      a.gradeLevel - b.gradeLevel ||
+      (a.code < b.code ? -1 : 1),
+  );
 }
 
 /** Acciones que se pueden aplicar en bloque a una sección (las de sus filas no retiradas). */
-export function bulkActions(group: Pick<SectionGroup, 'gradeLevel'>): PromotionAction[] {
-  return group.gradeLevel >= MAX_GRADE
-    ? ['GRADUATE', 'REPEAT', 'EXCLUDE']
-    : ['PROMOTE', 'REPEAT', 'EXCLUDE'];
+export function bulkActions(
+  group: Pick<SectionGroup, 'gradeLevel'> & { level?: EducationLevel },
+): PromotionAction[] {
+  return isFinalGrade(group) ? ['GRADUATE', 'REPEAT', 'EXCLUDE'] : ['PROMOTE', 'REPEAT', 'EXCLUDE'];
 }
 
 const plural = (n: number, one: string, many: string): string => `${n} ${n === 1 ? one : many}`;
@@ -487,7 +516,7 @@ export function rowError(
   const apiError = state.rowErrors[item.enrollmentId];
   if (apiError) return apiError;
   const d = state.decisions[item.enrollmentId];
-  const needs = targetGradeFor(d.action, item.from.gradeLevel) !== null;
+  const needs = targetGradeFor(d.action, item.from) !== null;
   return needs && d.sectionId === null ? 'Elige la sección de destino.' : null;
 }
 
@@ -511,7 +540,7 @@ export function firstErrorFieldId(
   if (!item) return null;
   const d = state.decisions[item.enrollmentId];
   const ids = rowFieldIds(item.enrollmentId);
-  return targetGradeFor(d.action, item.from.gradeLevel) !== null ? ids.section : ids.action;
+  return targetGradeFor(d.action, item.from) !== null ? ids.section : ids.action;
 }
 
 /** Mensaje tras un 422, con el número de filas. */
@@ -553,7 +582,7 @@ export function bulkAnnouncement(
   const items = state.proposal.items.filter((i) => i.from.sectionId === fromSectionId);
   const applied = items.filter((i) => allowedActions(i).includes(action)).length;
   const kept = items.length - applied;
-  const label = items[0] ? `${items[0].from.gradeLevel}.º ${items[0].from.code}` : '';
+  const label = items[0] ? promotionSectionLabel(items[0].from) : '';
   const base = `Se aplicó «${ACTION_LABELS[action]}» a ${plural(applied, 'estudiante', 'estudiantes')} de ${label}`;
   if (kept === 0) return `${base}.`;
   return `${base}; ${kept === 1 ? 'se mantuvo 1 excluido' : `se mantuvieron ${kept} excluidos`}.`;

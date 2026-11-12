@@ -1,5 +1,6 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { AuditService } from '../../common/audit/audit.service.js';
+import type { EducationLevel } from '@aula/shared';
 import { PrismaService } from '../../common/prisma/prisma.service.js';
 import { recordAcademic } from './academic-audit.js';
 import { AcademicAccessService } from './academic-access.service.js';
@@ -11,6 +12,7 @@ import type { Actor } from './request-user.js';
 export type SectionView = {
   id: string;
   academicYearId: string;
+  level: EducationLevel;
   gradeLevel: number;
   code: string;
   isActive: boolean;
@@ -19,6 +21,7 @@ export type SectionView = {
 const toView = (s: SectionView): SectionView => ({
   id: s.id,
   academicYearId: s.academicYearId,
+  level: s.level,
   gradeLevel: s.gradeLevel,
   code: s.code,
   isActive: s.isActive,
@@ -38,28 +41,40 @@ export class SectionsService {
     await this.findYear(academicYearId);
     const rows = await this.prisma.section.findMany({
       where: { academicYearId },
-      orderBy: [{ gradeLevel: 'asc' }, { code: 'asc' }],
+      orderBy: [{ level: 'asc' }, { gradeLevel: 'asc' }, { code: 'asc' }],
     });
     const items = rows.map(toView);
     return { items, total: items.length };
   }
 
-  // RF-12: sección (grado 1..5 + código) en un año editable.
+  // RF-12: sección (nivel + grado del nivel + código) en un año editable.
   async create(academicYearId: string, dto: CreateSectionDto, actor: Actor): Promise<SectionView> {
     const year = await this.findYear(academicYearId);
     if (await this.access.isYearReadOnly(year)) throw new ConflictException(MSG.readOnlyYear);
     const duplicate = await this.prisma.section.findFirst({
-      where: { academicYearId, gradeLevel: dto.gradeLevel, code: dto.code },
+      where: { academicYearId, level: dto.level, gradeLevel: dto.gradeLevel, code: dto.code },
       select: { id: true },
     });
     if (duplicate) throw new ConflictException(DUPLICATE);
 
     const created = await this.prisma.section
-      .create({ data: { academicYearId, gradeLevel: dto.gradeLevel, code: dto.code } })
+      .create({
+        data: {
+          academicYearId,
+          level: dto.level,
+          gradeLevel: dto.gradeLevel,
+          code: dto.code,
+        },
+      })
       .catch((e: unknown) => mapPrismaError(e, DUPLICATE));
 
     await recordAcademic(this.audit, actor, 'section.create', 'Section', created.id, {
-      after: { academicYearId, gradeLevel: created.gradeLevel, code: created.code },
+      after: {
+        academicYearId,
+        level: created.level,
+        gradeLevel: created.gradeLevel,
+        code: created.code,
+      },
     });
     return toView(created);
   }
@@ -88,6 +103,7 @@ export class SectionsService {
       const duplicate = await this.prisma.section.findFirst({
         where: {
           academicYearId: section.academicYearId,
+          level: section.level,
           gradeLevel: section.gradeLevel,
           code: dto.code,
           id: { not: id },

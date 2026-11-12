@@ -1,10 +1,13 @@
 import { computeDisplayStatus, lateBySeconds } from './display-status.js';
 import { submitSchema } from './submissions.dto.js';
+import { ConflictException } from '@nestjs/common';
 import {
+  assertSubmissionsAllowed,
   evaluateTiming,
   isLateAt,
   nextVersionNumber,
   toReceipts,
+  submissionsAllowedForLevel,
   type VersionRow,
 } from './submissions.policy.js';
 
@@ -50,7 +53,54 @@ describe('computeDisplayStatus (RF-38, docs/04)', () => {
   });
 });
 
+describe('computeDisplayStatus: tabla de precedencia (docs/04)', () => {
+  const versions = [null, { isLate: false }, { isLate: true }] as const;
+  const grades = [null, 'GRADED', 'NE', 'EXEMPT'] as const;
+
+  it.each(versions.flatMap((v) => grades.map((g) => [v, g] as const)))(
+    'versión %j + nota %s',
+    (latestVersion, gradeState) => {
+      const r = computeDisplayStatus({
+        latestVersion,
+        gradeState,
+        dueAt: due,
+        allowLate: false,
+        now: after,
+      });
+      const bySubmission = latestVersion?.isLate ? 'SUBMITTED_LATE' : 'SUBMITTED';
+      const expected =
+        gradeState === 'EXEMPT' || gradeState === 'GRADED'
+          ? gradeState
+          : gradeState === 'NE'
+            ? 'NOT_SUBMITTED'
+            : latestVersion === null
+              ? 'PENDING'
+              : bySubmission;
+      expect(r.status).toBe(expected);
+      expect(r.isLate).toBe(latestVersion?.isLate ?? false);
+      expect(r.isOverdue).toBe(latestVersion === null);
+    },
+  );
+
+  it('isOverdue: justo en dueAt no vence; +1 ms sí (sin tardías)', () => {
+    const input = { latestVersion: null, gradeState: null, dueAt: due, allowLate: false } as const;
+    expect(computeDisplayStatus({ ...input, now: due }).isOverdue).toBe(false);
+    expect(computeDisplayStatus({ ...input, now: new Date(due.getTime() + 1) }).isOverdue).toBe(
+      true,
+    );
+  });
+});
+
 describe('puntualidad (RF-37, RN-06)', () => {
+  it('QA-008/009: borde de 1 ms: dueAt exacto a tiempo; dueAt + 1 ms tarde', () => {
+    const plus1 = new Date(due.getTime() + 1);
+    expect(evaluateTiming(due, due, false)).toEqual({ accepted: true, isLate: false });
+    expect(evaluateTiming(plus1, due, false)).toEqual({ accepted: false });
+    expect(evaluateTiming(plus1, due, true)).toEqual({ accepted: true, isLate: true });
+    expect(lateBySeconds(plus1, due)).toBe(0);
+    expect(lateBySeconds(new Date(due.getTime() + 1999), due)).toBe(1);
+  });
+
   it('justo en el plazo es a tiempo; después es tarde', () => {
     expect(isLateAt(due, due)).toBe(false);
     expect(isLateAt(after, due)).toBe(true);
@@ -107,5 +157,25 @@ describe('submitSchema', () => {
     expect(submitSchema.safeParse({ fileId: id }).success).toBe(true);
     expect(submitSchema.safeParse({ fileId: 'x' }).success).toBe(false);
     expect(submitSchema.safeParse({ fileId: id, late: true }).success).toBe(false);
+  });
+});
+
+describe('INICIAL sin entregas (decisión del usuario 09/11/2026)', () => {
+  it('INICIAL no admite entregas; PRIMARIA y SECUNDARIA sí', () => {
+    expect(submissionsAllowedForLevel('INICIAL')).toBe(false);
+    expect(submissionsAllowedForLevel('PRIMARIA')).toBe(true);
+    expect(submissionsAllowedForLevel('SECUNDARIA')).toBe(true);
+  });
+  it('assertSubmissionsAllowed lanza 409 con código NO_SUBMISSIONS_IN_LEVEL', () => {
+    expect(() => assertSubmissionsAllowed('PRIMARIA')).not.toThrow();
+    try {
+      assertSubmissionsAllowed('INICIAL');
+      throw new Error('no lanzó');
+    } catch (e) {
+      expect(e).toBeInstanceOf(ConflictException);
+      expect((e as ConflictException).getResponse()).toMatchObject({
+        code: 'NO_SUBMISSIONS_IN_LEVEL',
+      });
+    }
   });
 });

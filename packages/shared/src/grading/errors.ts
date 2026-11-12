@@ -1,7 +1,8 @@
 import type { LiteralScaleIssue } from './literal-scale';
 
 /** Códigos de error del motor de notas. */
-export type GradingErrorCode = 'INVALID_GRADE' | 'INVALID_STATE' | 'INVALID_SCALE';
+export type GradingErrorCode =
+  'INVALID_GRADE' | 'INVALID_STATE' | 'INVALID_SCALE' | 'INVALID_INPUT';
 
 /**
  * Error del motor de notas. La API lo traduce a una respuesta de validación;

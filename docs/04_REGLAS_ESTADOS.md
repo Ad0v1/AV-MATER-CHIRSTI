@@ -4,11 +4,11 @@
 
 | Regla | Criterio que se debe preservar | Módulo principal |
 |---|---|---|
-| RN-01 | Nota numérica 0..20 | Dev 4 |
-| RN-02 | Promedio simple, ninguna ponderación | Dev 4 |
+| RN-01 | Nota numérica 0..20 (SECUNDARIA). INICIAL y PRIMARIA: literal AD/A/B/C (tres niveles, 09/11/2026) | Dev 4 |
+| RN-02 | Promedio simple, ninguna ponderación (solo escala numérica; en escala literal el docente elige el logro del bimestre) | Dev 4 |
 | RN-03 | Redondear **una sola vez**, .5 hacia arriba, cálculo decimal exacto | Dev 4 |
 | RN-04 | Tabla configurable; por defecto AD 18..20, A 14..17, B 11..13, C 0..10 | Dev 4/5 |
-| RN-05 | Nota NE por tarea, 0..20, predeterminada 0; cuenta en promedio | Dev 4, configuración Dev 3 |
+| RN-05 | Nota NE por tarea, 0..20, predeterminada 0; cuenta en promedio. Escala literal: `noSubmissionLiteral` por tarea (literal por defecto pendiente del usuario) | Dev 4, configuración Dev 3 |
 | RN-06 | Tardía solo si tarea permite; sin descuento automático | Dev 3 y Dev 4 |
 | RN-07 | Exoneración no cuenta en promedio | Dev 4 |
 | RN-08 | Solo PDF; 20 MB predeterminado, máximo 50 MB | **Dev 3** |

@@ -1,5 +1,6 @@
 // Prisma simulado para los .spec.ts del módulo users. El nombre termina en "-spec.ts": el build lo
 // excluye (**/*spec.ts) y vitest no lo ejecuta como suite (solo **/*.spec.ts).
+import type { Mock } from 'vitest';
 import type { PrismaService } from '../../common/prisma/prisma.service.js';
 import type { CredentialIssuerService } from '../auth/credential-issuer.service.js';
 import type { LockedUser } from './users-locks.js';
@@ -14,6 +15,10 @@ export type RawState = {
   searchIds: string[];
 };
 
+// Anotado como Mock: el tipo inferido de vi.fn no es portable con declaration: true (TS2883).
+const fn = (): Mock => vi.fn();
+const mock = vi.fn as unknown as (impl?: (...args: never[]) => unknown) => Mock;
+
 export function makePrisma() {
   const raw: RawState = {
     users: new Map(),
@@ -24,7 +29,7 @@ export function makePrisma() {
   // Registro del orden de los bloqueos y de los parámetros de cada $queryRaw.
   const rawCalls: { sql: string; values: unknown[] }[] = [];
 
-  const queryRaw = vi.fn((strings: TemplateStringsArray, ...values: unknown[]) => {
+  const queryRaw: Mock = mock((strings: TemplateStringsArray, ...values: unknown[]) => {
     const sql = strings.join('?');
     rawCalls.push({ sql, values });
     if (sql.includes('LOCATE')) return Promise.resolve(raw.searchIds.map((id) => ({ id })));
@@ -44,33 +49,33 @@ export function makePrisma() {
 
   const prisma = {
     $queryRaw: queryRaw,
-    $transaction: vi.fn(),
+    $transaction: fn(),
     user: {
-      findUnique: vi.fn(),
-      findUniqueOrThrow: vi.fn(),
-      findMany: vi.fn(),
-      count: vi.fn(),
-      create: vi.fn(),
-      update: vi.fn(),
+      findUnique: fn(),
+      findUniqueOrThrow: fn(),
+      findMany: fn(),
+      count: fn(),
+      create: fn(),
+      update: fn(),
     },
     enrollment: {
-      findFirst: vi.fn(),
-      findMany: vi.fn(),
-      findUniqueOrThrow: vi.fn(),
-      updateMany: vi.fn(),
-      create: vi.fn(),
+      findFirst: fn(),
+      findMany: fn(),
+      findUniqueOrThrow: fn(),
+      updateMany: fn(),
+      create: fn(),
     },
-    section: { findUnique: vi.fn() },
-    academicYear: { findFirst: vi.fn() },
+    section: { findUnique: fn() },
+    academicYear: { findFirst: fn() },
     guardianStudent: {
-      findFirst: vi.fn(),
-      findMany: vi.fn(),
-      findUnique: vi.fn(),
-      findUniqueOrThrow: vi.fn(),
-      create: vi.fn(),
-      count: vi.fn().mockResolvedValue(0),
-      update: vi.fn(),
-      updateMany: vi.fn(),
+      findFirst: mock(),
+      findMany: mock(),
+      findUnique: mock(),
+      findUniqueOrThrow: mock(),
+      create: mock(),
+      count: mock().mockResolvedValue(0),
+      update: mock(),
+      updateMany: mock(),
     },
   };
   // La transacción usa el mismo cliente simulado.
@@ -85,18 +90,18 @@ export function makePrisma() {
  */
 export function makeIssuer() {
   const issuer = {
-    createUser: vi.fn(
+    createUser: mock(
       (_tx: unknown, input: { role: 'STUDENT' | 'TEACHER' | 'GUARDIAN' | 'ADMIN' }) =>
         Promise.resolve({
           user: userRow(input.role === 'GUARDIAN' ? 'gnuevo' : 'nuevo', input.role),
           credentials: { code: '2600000000', initialPassword: 'Clave-Inicial-9' },
         }),
     ),
-    findByDni: vi.fn().mockResolvedValue(null),
-    assertDniFree: vi.fn().mockResolvedValue(undefined),
-    hashDni: vi.fn((dni: string) => `hash-${dni}`),
-    dniData: vi.fn((dni: string) => ({ dniEncrypted: `enc-${dni}`, dniHash: `hash-${dni}` })),
-    reissue: vi.fn().mockResolvedValue({
+    findByDni: mock().mockResolvedValue(null),
+    assertDniFree: mock().mockResolvedValue(undefined),
+    hashDni: mock((dni: string) => `hash-${dni}`),
+    dniData: mock((dni: string) => ({ dniEncrypted: `enc-${dni}`, dniHash: `hash-${dni}` })),
+    reissue: mock().mockResolvedValue({
       code: '2600000000',
       initialPassword: 'Clave-Temporal-7',
       previousCode: null,

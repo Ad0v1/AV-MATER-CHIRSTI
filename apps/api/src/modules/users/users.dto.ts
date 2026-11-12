@@ -1,3 +1,4 @@
+import { EDUCATION_LEVELS, isValidGradeForLevel } from '@aula/shared';
 import { z } from 'zod';
 
 // Esquemas de entrada del módulo users (Decisiones 3 y 4). Todos estrictos: un campo
@@ -67,7 +68,9 @@ export const listUsersQuerySchema = z
     // RF-87: estado de las credenciales. NONE = sin contraseña, PENDING = no cambió la inicial.
     credentials: z.enum(['NONE', 'PENDING', 'READY']).optional(),
     emailVerified: z.enum(['true', 'false']).optional(),
-    gradeLevel: z.coerce.number().int().min(1).max(5).optional(),
+    // Tres niveles (09/11/2026): con level, el grado se valida contra su rango; sin level, 1..6.
+    level: z.enum(EDUCATION_LEVELS).optional(),
+    gradeLevel: z.coerce.number().int().min(1).max(6).optional(),
     sectionId: idSchema.optional(),
     academicYearId: idSchema.optional(),
     // Tope 1000: con pageSize 100 alcanza para 100 000 usuarios y evita OFFSET enormes.
@@ -76,8 +79,17 @@ export const listUsersQuerySchema = z
   })
   // El grado y la sección se buscan en la matrícula: exigen role=STUDENT explícito.
   .refine(
-    (v) => (v.gradeLevel === undefined && v.sectionId === undefined) || v.role === 'STUDENT',
-    { message: 'El grado y la sección solo aplican con role=STUDENT', path: ['role'] },
+    (v) =>
+      (v.level === undefined && v.gradeLevel === undefined && v.sectionId === undefined) ||
+      v.role === 'STUDENT',
+    { message: 'El nivel, el grado y la sección solo aplican con role=STUDENT', path: ['role'] },
+  )
+  .refine(
+    (v) =>
+      v.level === undefined ||
+      v.gradeLevel === undefined ||
+      isValidGradeForLevel(v.level, v.gradeLevel),
+    { message: 'Grado fuera del rango del nivel', path: ['gradeLevel'] },
   );
 export type ListUsersQuery = z.output<typeof listUsersQuerySchema>;
 
@@ -112,13 +124,18 @@ export const createStudentSchema = z
     email: emailSchema.optional(),
     fullName: fullNameSchema,
     sectionId: idSchema,
-    ...dniFields,
+    // DNI opcional solo para INICIAL: el servicio lo exige en PRIMARIA y SECUNDARIA (tres niveles).
+    dni: dniSchema.optional(),
+    dniConfirm: dniSchema.optional(),
+    dniVerified: z.boolean().optional(),
     // Hasta 2 apoderados; el primero es el principal (RF-86).
     guardians: z.array(guardianRefSchema).min(1).max(2),
   })
-  .refine(dniMatches, DNI_MISMATCH)
+  .refine((v) => v.dni === v.dniConfirm, DNI_MISMATCH)
   .refine(
-    (v) => new Set([v.dni, ...v.guardians.map((g) => g.dni)]).size === v.guardians.length + 1,
+    (v) =>
+      new Set([...(v.dni ? [v.dni] : []), ...v.guardians.map((g) => g.dni)]).size ===
+      v.guardians.length + (v.dni ? 1 : 0),
     {
       message: 'El alumno y sus apoderados deben tener DNI distintos',
       path: ['guardians'],

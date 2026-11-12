@@ -4,6 +4,7 @@ import {
   pickSection,
   promotionFingerprint,
   proposePromotion,
+  targetGradeFor,
   validateDecisions,
   type SourceEnrollment,
   type TargetSection,
@@ -230,8 +231,8 @@ describe('validateDecisions (RF-16)', () => {
       [swap('e8', { action: 'PROMOTE', sectionId: 't3A' }), 'e8', 'La acción no está permitida'],
       [swap('e5', { action: 'PROMOTE', sectionId: 't5A' }), 'e5', 'La acción no está permitida'],
       [swap('e2', { action: 'GRADUATE' }), 'e2', 'La acción no está permitida'],
-      [swap('e2', { action: 'PROMOTE', sectionId: 't2A' }), 'e2', 'debe ser de 3.º grado'],
-      [swap('e2', { action: 'REPEAT', sectionId: 't3A' }), 'e2', 'debe ser de 2.º grado'],
+      [swap('e2', { action: 'PROMOTE', sectionId: 't2A' }), 'e2', 'debe ser de 3.° Secundaria'],
+      [swap('e2', { action: 'REPEAT', sectionId: 't3A' }), 'e2', 'debe ser de 2.° Secundaria'],
       [swap('e2', { action: 'PROMOTE', sectionId: 'otra' }), 'e2', 'no es una sección activa'],
       [swap('e5', { action: 'GRADUATE', sectionId: 't5A' }), 'e5', 'no lleva sección'],
       [swap('e8', { action: 'EXCLUDE', sectionId: 't3A' }), 'e8', 'no lleva sección'],
@@ -353,5 +354,62 @@ describe('promotionFingerprint (RF-16)', () => {
       promotionFingerprint(source, target, new Set()),
     ];
     for (const fp of changed) expect(fp).not.toBe(base);
+  });
+});
+
+describe('tres niveles (RF-16, 09/11/2026)', () => {
+  const lvl = (
+    n: number,
+    level: 'INICIAL' | 'PRIMARIA' | 'SECUNDARIA',
+    grade: number,
+  ): SourceEnrollment => ({
+    enrollmentId: `L${n}`,
+    studentId: `Ls${n}`,
+    fullName: `Alumno ${n}`,
+    status: 'ACTIVE',
+    section: { id: `src-${level}-${grade}`, level, gradeLevel: grade, code: 'A' },
+  });
+  const targets: TargetSection[] = [
+    { id: 'ini5A', level: 'INICIAL', gradeLevel: 5, code: 'A' },
+    { id: 'pri1A', level: 'PRIMARIA', gradeLevel: 1, code: 'A' },
+    { id: 'pri5A', level: 'PRIMARIA', gradeLevel: 5, code: 'A' },
+    { id: 'sec1A', level: 'SECUNDARIA', gradeLevel: 1, code: 'A' },
+    { id: 'sec5A', level: 'SECUNDARIA', gradeLevel: 5, code: 'A' },
+  ];
+
+  it('INICIAL 5 años pasa a PRIMARIA 1.°, PRIMARIA 6.° a SECUNDARIA 1.° y SECUNDARIA 5.° egresa', () => {
+    const p = proposePromotion(
+      [lvl(1, 'INICIAL', 4), lvl(2, 'INICIAL', 5), lvl(3, 'PRIMARIA', 6), lvl(4, 'SECUNDARIA', 5)],
+      targets,
+      new Set(),
+    );
+    const by = new Map(p.items.map((i) => [i.enrollmentId, i.proposed]));
+    expect(by.get('L1')).toEqual({ action: 'PROMOTE', sectionId: 'ini5A' });
+    expect(by.get('L2')).toEqual({ action: 'PROMOTE', sectionId: 'pri1A' });
+    expect(by.get('L3')).toEqual({ action: 'PROMOTE', sectionId: 'sec1A' });
+    expect(by.get('L4')).toEqual({ action: 'GRADUATE', sectionId: null });
+    expect(p.items.map((i) => i.from.level)).toEqual([
+      'INICIAL',
+      'INICIAL',
+      'PRIMARIA',
+      'SECUNDARIA',
+    ]);
+  });
+
+  it('PRIMARIA 5.° no egresa y el mismo número de otro nivel no sirve de destino', () => {
+    expect(allowedActions({ flags: [], from: { level: 'PRIMARIA', gradeLevel: 5 } })).toEqual([
+      'PROMOTE',
+      'REPEAT',
+      'EXCLUDE',
+    ]);
+    expect(targetGradeFor('PROMOTE', { level: 'PRIMARIA', gradeLevel: 6 })).toEqual({
+      level: 'SECUNDARIA',
+      gradeLevel: 1,
+    });
+    const p = proposePromotion([lvl(1, 'PRIMARIA', 4)], targets, new Set());
+    const { issues } = validateDecisions(p.items, targets, [
+      { enrollmentId: 'L1', action: 'PROMOTE', sectionId: 'sec5A' },
+    ]);
+    expect(issues[0]?.message).toContain('5.° Primaria');
   });
 });

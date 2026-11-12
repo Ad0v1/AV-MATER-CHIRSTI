@@ -21,6 +21,10 @@ import { createDbTestApp, MemoryAuditSink } from './helpers.js';
 
 // Fase 3c de Dev 3 (RF-28/29, RN-05/08/10/12/14). MySQL real con el seed cargado (solo local).
 config({ path: fileURLToPath(new URL('../../../.env', import.meta.url)), quiet: true });
+// Confirmación explícita del DDL de limpieza (INFORME 12): este e2e quita y repone el trigger de
+// SubmissionVersion. La guarda sigue exigiendo BD local y esperada, sin CI ni production; quien
+// ejecute fuera de ese entorno recibe el error de la guarda antes de cualquier DDL.
+process.env.E2E_ALLOW_DDL ??= '1';
 
 const API = '/api/v1';
 const TITLE_PREFIX = 'QA-3C ';
@@ -141,6 +145,7 @@ describe.skipIf(!process.env.DATABASE_URL)('Tareas de Dev 3, fase 3c (e2e, MySQL
         }),
       );
     }
+    await prisma.grade.deleteMany({ where: { assignmentId: { in: assignmentIds } } });
     await prisma.submission.deleteMany({ where: { assignmentId: { in: assignmentIds } } });
     await prisma.storedFile.deleteMany({
       where: { objectKey: { startsWith: KEY_PREFIX }, purpose: 'SUBMISSION' },
@@ -648,6 +653,27 @@ describe.skipIf(!process.env.DATABASE_URL)('Tareas de Dev 3, fase 3c (e2e, MySQL
       const row = await prisma.assignment.findUniqueOrThrow({ where: { id: created.id } });
       expect(row.deletedAt).toBeNull();
       await get('estudiante01', `/assignments/${created.id}`).expect(200);
+      expect(auditOf('contents.assignment.deleted')).toHaveLength(0);
+    });
+
+    it('RN-10: con notas (p. ej. una NE sin entrega): 409 y la tarea sigue visible', async () => {
+      const { body: created } = await createAs('docente01', cs3AMath).expect(201);
+      await prisma.grade.create({
+        data: {
+          assignmentId: created.id,
+          enrollmentId: enrollment01In3A,
+          state: 'NE',
+          value: '0',
+          gradedAt: new Date(),
+        },
+      });
+      sink.records.length = 0;
+
+      const res = await del('docente01', `/assignments/${created.id}`).expect(409);
+      expect(JSON.stringify(res.body)).toContain('ya tiene notas');
+      await del('admin', `/assignments/${created.id}`).expect(409);
+      const row = await prisma.assignment.findUniqueOrThrow({ where: { id: created.id } });
+      expect(row.deletedAt).toBeNull();
       expect(auditOf('contents.assignment.deleted')).toHaveLength(0);
     });
   });

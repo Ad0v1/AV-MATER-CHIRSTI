@@ -6,7 +6,7 @@ import {
   NotFoundException,
   UnprocessableEntityException,
 } from '@nestjs/common';
-import { AuditService } from '../../common/audit/audit.service.js';
+import { AuditService, type AuditTx, type AuditEvent } from '../../common/audit/audit.service.js';
 import type { AuthenticatedUser } from '../../common/auth/roles.js';
 import { PrismaService } from '../../common/prisma/prisma.service.js';
 import type { Prisma } from '../../generated/prisma/client.js';
@@ -22,6 +22,7 @@ import {
   toReceipt,
   toReceipts,
   type VersionRow,
+  assertSubmissionsAllowed,
 } from './submissions.policy.js';
 import type {
   MySubmissionView,
@@ -94,6 +95,8 @@ export class SubmissionsService {
     actor: Actor,
   ): Promise<{ created: boolean; body: SubmissionAccepted }> {
     const assignment = await this.findAssignmentOrFail(assignmentId);
+    // INICIAL: actividades sin entrega (409 NO_SUBMISSIONS_IN_LEVEL).
+    assertSubmissionsAllowed(assignment.courseSection?.section.level);
     const enrollmentId = await this.currentEnrollmentOf(user, assignment.courseSectionId);
 
     // Idempotencia antes de RN-10: repetir una entrega ya hecha no falla aunque el período cierre.
@@ -103,14 +106,23 @@ export class SubmissionsService {
     await this.access.assertCourseSectionWritable(assignment.courseSectionId, assignment.periodId);
 
     const result = await this.withRetry(() =>
-      this.prisma.$transaction((tx) =>
-        this.submitInTx(tx, assignmentId, assignment.periodId, fileId, enrollmentId, user.id),
-      ),
+      this.prisma.$transaction(async (tx) => {
+        const r = await this.submitInTx(
+          tx,
+          assignmentId,
+          assignment.periodId,
+          fileId,
+          enrollmentId,
+          user.id,
+        );
+        // D-047: la bitácora va en la misma transacción que la versión.
+        if (r.created) await this.recordVersion(actor, assignmentId, enrollmentId, r.version, tx);
+        return r;
+      }),
     );
 
     const view = this.accepted(result.version, { id: assignmentId, dueAt: result.dueAt });
     if (result.created) {
-      await this.recordVersion(actor, assignmentId, enrollmentId, result.version);
       this.events.publish({
         type: 'submission.accepted.v1',
         payload: {
@@ -136,11 +148,16 @@ export class SubmissionsService {
       where: { assignmentId_enrollmentId: { assignmentId, enrollmentId } },
       include: { versions: { include: versionInclude } },
     });
+    // B2: solo el estado de la nota; ni valor, ni comentario, ni exemptionReason (D-049).
+    const grade = await this.prisma.grade.findUnique({
+      where: { assignmentId_enrollmentId: { assignmentId, enrollmentId } },
+      select: { state: true },
+    });
     const versions = submission ? toReceipts(submission.versions, assignment) : [];
     const latest = versions[0] ?? null;
     const display = computeDisplayStatus({
       latestVersion: latest,
-      gradeState: null, // Dev 4 completará con Grade.state
+      gradeState: grade?.state ?? null,
       dueAt: assignment.dueAt,
       allowLate: assignment.allowLate,
       now: new Date(),
@@ -212,6 +229,12 @@ export class SubmissionsService {
       },
     });
     const byEnrollment = new Map(submissions.map((s) => [s.enrollmentId, s]));
+    // B2: una sola consulta para todas las notas de la tarea (sin N+1); solo el estado (D-049).
+    const grades = await this.prisma.grade.findMany({
+      where: { assignmentId },
+      select: { enrollmentId: true, state: true },
+    });
+    const gradeByEnrollment = new Map(grades.map((g) => [g.enrollmentId, g.state]));
     const now = new Date();
     const items = enrollments.map((e): TeacherSubmissionItem => {
       const s = byEnrollment.get(e.enrollmentId);
@@ -221,7 +244,7 @@ export class SubmissionsService {
       );
       const display = computeDisplayStatus({
         latestVersion: latest ?? null,
-        gradeState: null,
+        gradeState: gradeByEnrollment.get(e.enrollmentId) ?? null,
         dueAt: assignment.dueAt,
         allowLate: assignment.allowLate,
         now,
@@ -296,8 +319,9 @@ export class SubmissionsService {
       include: { ...versionInclude, submission: { select: { enrollmentId: true } } },
     });
     if (used) {
+      // Archivo de otro alumno: el mismo 422 genérico, sin revelar que ya se entregó (INFORME 12).
       if (used.submission.enrollmentId !== enrollmentId) {
-        throw new ConflictException(SUBMISSION_MSG.fileUsedElsewhere);
+        throw new UnprocessableEntityException(SUBMISSION_MSG.invalidFile);
       }
       return { created: false, version: used, dueAt: assignment.dueAt };
     }
@@ -376,10 +400,12 @@ export class SubmissionsService {
       },
     });
     if (!version) return null;
-    if (
-      version.submission.assignmentId !== assignmentId ||
-      version.submission.enrollmentId !== enrollmentId
-    ) {
+    // Archivo de otro alumno: el mismo 422 genérico que un archivo inválido (sin oráculo, INFORME 12).
+    if (version.submission.enrollmentId !== enrollmentId) {
+      throw new UnprocessableEntityException(SUBMISSION_MSG.invalidFile);
+    }
+    // Archivo propio ya entregado en otra tarea: 409 (no revela nada ajeno).
+    if (version.submission.assignmentId !== assignmentId) {
       throw new ConflictException(SUBMISSION_MSG.fileUsedElsewhere);
     }
     return version;
@@ -413,6 +439,7 @@ export class SubmissionsService {
         dueAt: true,
         allowLate: true,
         maxSizeBytes: true,
+        courseSection: { select: { section: { select: { level: true } } } },
       },
     });
     if (!assignment) throw new NotFoundException(SUBMISSION_MSG.assignmentNotFound);
@@ -428,18 +455,19 @@ export class SubmissionsService {
   }
 
   /**
-   * Bitácora `submissions.version.created` después del commit: solo ids, número, hora y
-   * puntualidad (nunca el nombre del alumno ni originalName). Nunca lanza.
+   * Bitácora `submissions.version.created` dentro de la transacción (D-047; con tx lanza): solo ids, número, hora y
+   * puntualidad (nunca el nombre del alumno ni originalName). Sin `tx` nunca lanza; con `tx` relanza (D-047).
    */
   private async recordVersion(
     actor: Actor,
     assignmentId: string,
     enrollmentId: string,
     version: VersionRow,
+    tx?: AuditTx,
   ): Promise<void> {
     const action = 'submissions.version.created';
     try {
-      await this.audit.record({
+      const event: AuditEvent = {
         actorId: actor.id,
         ip: actor.ip,
         module: 'submissions',
@@ -455,8 +483,11 @@ export class SubmissionsService {
           receivedAt: version.receivedAt.toISOString(),
           isLate: version.isLate,
         },
-      });
+      };
+      // Sin tx se llama con un solo argumento (firma de siempre).
+      await (tx ? this.audit.record(event, tx) : this.audit.record(event));
     } catch (error: unknown) {
+      if (tx) throw error;
       logger.error(
         `Fallo al registrar la bitácora: ${JSON.stringify({
           action,

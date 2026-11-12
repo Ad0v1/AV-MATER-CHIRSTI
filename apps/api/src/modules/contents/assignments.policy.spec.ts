@@ -1,6 +1,8 @@
 import { createAssignmentSchema, updateAssignmentSchema } from './assignments.dto.js';
 import {
   auditSnapshot,
+  checkNoSubmissionLiteral,
+  NO_SUBMISSION_LITERAL_NUMERIC,
   DEFAULT_MAX_SIZE_BYTES,
   diffAssignment,
   isDueAtAcceptable,
@@ -146,6 +148,7 @@ describe('diffAssignment y auditSnapshot (sin textos libres)', () => {
     dueAt: new Date('2099-01-01T00:00:00Z'),
     maxSizeBytes: 20971520,
     noSubmissionGrade: '0.00',
+    noSubmissionLiteral: null,
     allowLate: false,
     attachmentFileId: null,
   };
@@ -176,5 +179,31 @@ describe('diffAssignment y auditSnapshot (sin textos libres)', () => {
     expect(snap).not.toHaveProperty('title');
     expect(snap).not.toHaveProperty('instructions');
     expect(snap).toMatchObject({ dueAt: '2099-01-01T00:00:00.000Z', noSubmissionGrade: '0.00' });
+  });
+});
+
+describe('checkNoSubmissionLiteral (tres niveles)', () => {
+  it('RN-05: el literal de NE vale en INICIAL y PRIMARIA y se rechaza en SECUNDARIA', () => {
+    expect(checkNoSubmissionLiteral('INICIAL', 'C')).toBeNull();
+    expect(checkNoSubmissionLiteral('PRIMARIA', 'B')).toBeNull();
+    expect(checkNoSubmissionLiteral('PRIMARIA', null)).toBeNull();
+    expect(checkNoSubmissionLiteral('SECUNDARIA', null)).toBeNull();
+    expect(checkNoSubmissionLiteral('SECUNDARIA', 'A')).toBe(NO_SUBMISSION_LITERAL_NUMERIC);
+  });
+
+  it('RN-05: el DTO solo acepta AD, A, B o C y por defecto null', () => {
+    const base = {
+      periodId: '00000000-0000-7000-8000-000000000001',
+      title: 'T',
+      instructions: 'I',
+      dueAt: '2099-01-01T00:00:00Z',
+    };
+    expect(createAssignmentSchema.parse(base).noSubmissionLiteral).toBeNull();
+    expect(
+      createAssignmentSchema.parse({ ...base, noSubmissionLiteral: 'AD' }).noSubmissionLiteral,
+    ).toBe('AD');
+    expect(createAssignmentSchema.safeParse({ ...base, noSubmissionLiteral: 'D' }).success).toBe(
+      false,
+    );
   });
 });

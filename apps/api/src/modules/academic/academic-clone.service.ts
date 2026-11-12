@@ -121,6 +121,7 @@ export class AcademicCloneService {
           await tx.section.create({
             data: {
               academicYearId: targetId,
+              level: section.level,
               gradeLevel: section.gradeLevel,
               code: section.code,
               courseSections:
@@ -155,6 +156,7 @@ export class AcademicCloneService {
     return db.section.findMany({
       where: { academicYearId: sourceYearId },
       select: {
+        level: true,
         gradeLevel: true,
         code: true,
         isActive: true,

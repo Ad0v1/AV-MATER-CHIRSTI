@@ -32,7 +32,13 @@ export const USERS_MSG = {
   ownStatus: 'No puedes cambiar tu propio estado',
   lastAdmin: 'Debe quedar al menos un administrador activo',
   inactiveActor: 'Tu cuenta no está activa',
+  studentWithoutAccount: 'Los estudiantes de inicial no tienen cuenta de acceso',
+  studentDniRequired: 'El DNI del estudiante es obligatorio en primaria y secundaria',
+  emailInicial: 'Los estudiantes de inicial no llevan correo',
 } as const;
+
+/** Código de error estable para los niños de INICIAL, que no tienen login (tres niveles). */
+export const STUDENT_WITHOUT_ACCOUNT = 'STUDENT_WITHOUT_ACCOUNT';
 
 /**
  * Mensajes de la importación masiva (RF-21) a nivel de archivo. Fijos: nunca repiten el nombre del

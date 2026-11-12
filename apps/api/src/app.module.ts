@@ -15,6 +15,23 @@ import { UsersModule } from './modules/users/users.module.js';
 // Módulos de Dev 3, registrados con autorización del usuario (29/10/2026); pendiente de revisión por Dev 1.
 import { ContentsModule } from './modules/contents/contents.module.js';
 import { FilesModule } from './modules/files/files.module.js';
+import { GradingModule } from './modules/grading/grading.module.js';
+// Colas y trabajos de Dev 5 (RNF-19), registrados con autorización del usuario (30/10/2026).
+import { JobsModule } from './modules/jobs/jobs.module.js';
+import { QueueModule } from './modules/queue/queue.module.js';
+// Configuración institucional (RF-61) y calendario (RF-54) de Dev 5, autorizados el 30/10/2026.
+import { CalendarModule } from './modules/notifications/calendar.module.js';
+// Anuncios (RF-32) y notificaciones (RF-53) de Dev 5, autorizados el 30/10/2026 (fase 5d).
+import { AnnouncementsModule } from './modules/announcements/announcements.module.js';
+import { NotificationsModule } from './modules/notifications/notifications.module.js';
+// Bitácora (RF-62, RF-55/56), ciclo de vida (RF-63, RF-65..67) y descarga de trabajos de Dev 5,
+// autorizados el 30/10/2026 (fase 5g).
+import { AdminAuditModule } from './modules/admin-audit/admin-audit.module.js';
+import { JobsHttpModule } from './modules/jobs/jobs-http.module.js';
+import { LifecycleModule } from './modules/lifecycle/lifecycle.module.js';
+import { ReportsModule } from './modules/reports/reports.module.js';
+import { LiteralScaleModule } from './modules/settings/literal-scale.provider.js';
+import { SettingsModule } from './modules/settings/settings.module.js';
 import { SubmissionsModule } from './modules/submissions/submissions.module.js';
 import { AuthService } from './modules/auth/auth.service.js';
 import { CredentialsModule } from './modules/auth/credentials.module.js';
@@ -43,6 +60,18 @@ import { PasswordRecoveryService } from './modules/auth/password-recovery.servic
     FilesModule,
     ContentsModule,
     SubmissionsModule,
+    GradingModule,
+    QueueModule,
+    JobsModule,
+    LiteralScaleModule,
+    SettingsModule,
+    CalendarModule,
+    AnnouncementsModule,
+    NotificationsModule,
+    AdminAuditModule,
+    JobsHttpModule,
+    LifecycleModule,
+    ReportsModule,
   ],
   controllers: [HealthController, AuthController],
   providers: [

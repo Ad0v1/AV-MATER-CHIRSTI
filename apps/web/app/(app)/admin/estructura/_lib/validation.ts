@@ -18,6 +18,7 @@ export const MAX_YEAR = 2100;
 export const PERIOD_COUNT = 4;
 export const COURSE_NAME_MAX = 120;
 export const SECTION_CODE_PATTERN = /^[A-Z0-9]{1,8}$/;
+/** Grados de SECUNDARIA (compatibilidad). Para otros niveles usa gradesForLevel de @aula/shared. */
 export const GRADE_LEVELS = [1, 2, 3, 4, 5] as const;
 
 /** Límites de los motivos (texto libre que va a la bitácora). */

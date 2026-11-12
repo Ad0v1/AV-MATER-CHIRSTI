@@ -1,4 +1,9 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  Injectable,
+  NotFoundException,
+  UnprocessableEntityException,
+} from '@nestjs/common';
 import { AuditService } from '../../common/audit/audit.service.js';
 import { PrismaService } from '../../common/prisma/prisma.service.js';
 import { SessionService } from '../../common/session/session.service.js';
@@ -34,7 +39,7 @@ import {
   readUserRole,
 } from './users-locks.js';
 import { assertStatusChangeAllowed, buildUserSearchWhere, closeInstant } from './users-policy.js';
-import { assertEmailFree } from './users-queries.js';
+import { assertEmailFree, isStudentWithoutAccount } from './users-queries.js';
 import type {
   ChangeStatusDto,
   CorrectDniDto,
@@ -42,7 +47,7 @@ import type {
   ListUsersQuery,
   UpdateUserDto,
 } from './users.dto.js';
-import { USERS_MSG } from './users.errors.js';
+import { STUDENT_WITHOUT_ACCOUNT, USERS_MSG } from './users.errors.js';
 
 export type UserListPage = {
   items: UserListItem[];
@@ -327,11 +332,22 @@ export class UsersService {
    * obliga a cambiarla en su siguiente ingreso. Si el usuario es anterior al login por codigo y no
    * tiene codigo o credencial, se le asignan. La contrasena solo viaja en esta respuesta.
    */
+  /** Tres niveles: 422 STUDENT_WITHOUT_ACCOUNT si el usuario es un niño de INICIAL sin login. */
+  private async assertHasAccount(tx: Parameters<typeof isStudentWithoutAccount>[0], id: string) {
+    if (await isStudentWithoutAccount(tx, id)) {
+      throw new UnprocessableEntityException({
+        code: STUDENT_WITHOUT_ACCOUNT,
+        message: USERS_MSG.studentWithoutAccount,
+      });
+    }
+  }
+
   async resetPassword(id: string, actor: Actor): Promise<ReissuedCredentials> {
     const { user, credentials } = await this.prisma
       .$transaction(async (tx) => {
         const target = await lockUserForUpdate(tx, id);
         if (!target) throw new NotFoundException(USERS_MSG.userNotFound);
+        await this.assertHasAccount(tx, id);
         const issued = await this.issuer.reissue(tx, id);
         return {
           user: await tx.user.findUniqueOrThrow({ where: { id } }),
@@ -355,6 +371,7 @@ export class UsersService {
       .$transaction(async (tx) => {
         const target = await lockUserForUpdate(tx, id);
         if (!target) throw new NotFoundException(USERS_MSG.userNotFound);
+        await this.assertHasAccount(tx, id);
         const current = await tx.user.findUniqueOrThrow({ where: { id } });
         if (current.dniHash === this.issuer.hashDni(dto.dni)) {
           throw new ConflictException(USERS_MSG.sameDni);
@@ -421,7 +438,7 @@ export class UsersService {
       where: { studentId: { in: studentIds }, academicYearId, isCurrent: true },
       select: {
         studentId: true,
-        section: { select: { id: true, gradeLevel: true, code: true } },
+        section: { select: { id: true, level: true, gradeLevel: true, code: true } },
       },
     });
     for (const r of rows) map.set(r.studentId, sectionRef(r.section));

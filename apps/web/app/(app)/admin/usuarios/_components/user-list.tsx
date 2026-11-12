@@ -15,7 +15,7 @@ import {
 import { cn } from '@/lib/utils';
 import { StatusBadge } from '../../_shared/components/page-bits';
 import { TOUCH } from '../../_shared/components/styles';
-import { sectionLabel } from '../../_shared/lib/format';
+import { sectionLabel } from '../../estructura/_lib/format';
 import type { UserListItem } from '../_lib/types';
 import {
   CREDENTIAL_SHORT,
@@ -33,7 +33,7 @@ const sectionText = (u: UserListItem) =>
   u.role !== 'STUDENT'
     ? '—'
     : u.currentSection
-      ? sectionLabel(u.currentSection.gradeLevel, u.currentSection.code)
+      ? sectionLabel(u.currentSection.gradeLevel, u.currentSection.code, u.currentSection.level)
       : 'Sin matrícula vigente';
 
 export function UserResults({ items, caption }: { items: UserListItem[]; caption: string }) {

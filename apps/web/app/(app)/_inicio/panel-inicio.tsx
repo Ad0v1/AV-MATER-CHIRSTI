@@ -35,13 +35,17 @@ export function PanelInicio({ role, nombre }: { role: PanelRole; nombre: string 
     ? [
         { label: 'Cursos a cargo', valor: String(CURSOS_DEMO.length) },
         { label: 'Por calificar', valor: String(totalPorCalificar) },
-        { label: 'Entregas nuevas hoy', valor: '12' },
-        { label: 'Estudiantes', valor: '142' },
+        { label: 'Entregas nuevas hoy', valor: '0' },
+        { label: 'Estudiantes', valor: '0' },
       ]
     : [
         { label: 'Tareas pendientes', valor: String(ENTREGAS_DEMO.length) },
-        { label: 'Próxima entrega', valor: etiquetaDias(ENTREGAS_DEMO[0].dias), alerta: true },
-        { label: 'Promedio actual', valor: '16,4' },
+        {
+          label: 'Próxima entrega',
+          valor: ENTREGAS_DEMO.length > 0 ? etiquetaDias(ENTREGAS_DEMO[0].dias) : '—',
+          alerta: ENTREGAS_DEMO.length > 0,
+        },
+        { label: 'Promedio actual', valor: '—' },
         { label: 'Cursos', valor: String(CURSOS_DEMO.length) },
       ];
 
@@ -90,13 +94,17 @@ export function PanelInicio({ role, nombre }: { role: PanelRole; nombre: string 
             </h2>
             <span className="text-sm text-ink-2">{CURSOS_DEMO.length} este año</span>
           </div>
-          <ul className="grid gap-4 sm:grid-cols-2">
-            {CURSOS_DEMO.map((curso) => (
-              <li key={`${curso.nombre}-${curso.seccion}`}>
-                <TarjetaCurso curso={curso} esDocente={esDocente} />
-              </li>
-            ))}
-          </ul>
+          {CURSOS_DEMO.length === 0 ? (
+            <Vacio>Aún no tienes cursos asignados.</Vacio>
+          ) : (
+            <ul className="grid gap-4 sm:grid-cols-2">
+              {CURSOS_DEMO.map((curso) => (
+                <li key={`${curso.nombre}-${curso.seccion}`}>
+                  <TarjetaCurso curso={curso} esDocente={esDocente} />
+                </li>
+              ))}
+            </ul>
+          )}
         </section>
 
         {/* Lateral: una sola superficie, secciones separadas por espacio y una línea fina */}
@@ -104,6 +112,7 @@ export function PanelInicio({ role, nombre }: { role: PanelRole; nombre: string 
           {esDocente ? (
             <>
               <Seccion titulo="Por calificar">
+                {POR_CALIFICAR_DEMO.length === 0 && <Vacio>No hay entregas por calificar.</Vacio>}
                 <ul className="grid gap-5">
                   {POR_CALIFICAR_DEMO.map((p) => {
                     const pct = Math.round((p.entregadas / p.total) * 100);
@@ -134,21 +143,11 @@ export function PanelInicio({ role, nombre }: { role: PanelRole; nombre: string 
                   })}
                 </ul>
               </Seccion>
-              <Seccion titulo="Acciones rápidas">
-                <ul className="grid gap-1">
-                  <Enlace href={COURSE_ROUTES.tareas('demo')}>Crear una tarea</Enlace>
-                  <Enlace href={COURSE_ROUTES.lecturas('demo')}>Subir una lectura</Enlace>
-                  <Enlace href={COURSE_ROUTES.registro('demo')}>Abrir registro auxiliar</Enlace>
-                </ul>
-              </Seccion>
             </>
           ) : (
             <>
-              <Seccion
-                titulo="Próximas entregas"
-                href={COURSE_ROUTES.tareas('demo')}
-                verTodo="Ver tareas"
-              >
+              <Seccion titulo="Próximas entregas">
+                {ENTREGAS_DEMO.length === 0 && <Vacio>No tienes entregas pendientes.</Vacio>}
                 <ul className="grid gap-5">
                   {ENTREGAS_DEMO.map((e) => (
                     <li key={e.titulo} className="flex items-start justify-between gap-4">
@@ -168,6 +167,7 @@ export function PanelInicio({ role, nombre }: { role: PanelRole; nombre: string 
                 </ul>
               </Seccion>
               <Seccion titulo="Últimas notas" href={ROUTES.misNotas} verTodo="Ver mis notas">
+                {NOTAS_DEMO.length === 0 && <Vacio>Aún no tienes notas.</Vacio>}
                 <ul className="grid gap-5">
                   {NOTAS_DEMO.map((n) => (
                     <li key={n.tarea} className="flex items-center justify-between gap-4">
@@ -190,6 +190,7 @@ export function PanelInicio({ role, nombre }: { role: PanelRole; nombre: string 
           )}
 
           <Seccion titulo="Avisos">
+            {AVISOS_DEMO.length === 0 && <Vacio>No hay avisos.</Vacio>}
             <ul className="grid gap-5">
               {AVISOS_DEMO.map((a) => (
                 <li key={a.titulo}>
@@ -204,12 +205,12 @@ export function PanelInicio({ role, nombre }: { role: PanelRole; nombre: string 
           </Seccion>
         </aside>
       </div>
-
-      <p className="text-xs text-ink-3">
-        Vista con datos de ejemplo hasta conectar los cursos reales.
-      </p>
     </div>
   );
+}
+
+function Vacio({ children }: { children: React.ReactNode }) {
+  return <p className="text-sm text-ink-2">{children}</p>;
 }
 
 function TarjetaCurso({ curso, esDocente }: { curso: CursoDemo; esDocente: boolean }) {
@@ -312,22 +313,5 @@ function Seccion({
         </Link>
       )}
     </section>
-  );
-}
-
-function Enlace({ href, children }: { href: string; children: React.ReactNode }) {
-  return (
-    <li>
-      <Link
-        href={href}
-        className="group/enlace -mx-2 flex min-h-11 items-center justify-between rounded-lg px-2 text-sm font-medium text-ink transition-colors hover:bg-row-hover hover:text-brand focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-line-active motion-reduce:transition-none"
-      >
-        {children}
-        <ArrowRight
-          className="size-4 text-ink-disabled group-hover/enlace:text-brand"
-          aria-hidden="true"
-        />
-      </Link>
-    </li>
   );
 }

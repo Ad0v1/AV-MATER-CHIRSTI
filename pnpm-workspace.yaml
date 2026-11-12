@@ -11,6 +11,8 @@ allowBuilds:
   prisma: true
   '@prisma/engines': true
   argon2: true
+  # Dependencia nativa opcional de bullmq (vía msgpackr); sin compilar cae a la versión en JS.
+  msgpackr-extract: false
 
 # Versiones forzadas por seguridad (27/10/2026): @nestjs/platform-express 12.x fija multer 2.4.0 y
 # express 5.3.0 trae body-parser 2.3.x, ambas con avisos altos de DoS. Quitar cuando Nest las actualice.

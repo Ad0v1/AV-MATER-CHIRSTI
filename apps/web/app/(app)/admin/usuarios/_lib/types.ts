@@ -1,11 +1,14 @@
 // Formas de respuesta de la API de usuarios (docs/03, "API de usuarios (Dev 2, F3)").
 // Si cambia el contrato, se actualiza aquí y en docs/03.
 
+import type { EducationLevel } from '../../estructura/_lib/levels';
+
 export type UserRole = 'STUDENT' | 'TEACHER' | 'ADMIN' | 'GUARDIAN';
 export type UserStatus = 'ACTIVE' | 'INACTIVE' | 'WITHDRAWN';
 export type EnrollmentEndReason = 'TRANSFER' | 'WITHDRAWAL' | 'YEAR_END' | 'CORRECTION';
 
-export type SectionRef = { id: string; gradeLevel: number; code: string };
+/** `level` (tres niveles, 09/11/2026); si falta se asume SECUNDARIA. */
+export type SectionRef = { id: string; level?: EducationLevel; gradeLevel: number; code: string };
 
 export type CredentialStatus = 'NONE' | 'PENDING' | 'READY';
 
@@ -100,6 +103,7 @@ export type List<T> = { items: T[]; total: number };
 export type SectionOption = {
   id: string;
   academicYearId: string;
+  level?: EducationLevel;
   gradeLevel: number;
   code: string;
   isActive: boolean;

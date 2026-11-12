@@ -9,13 +9,20 @@ export function LogoutButton() {
   const router = useRouter();
   const [pending, setPending] = useState(false);
 
+  // Salida (motion-design): el contenido se desvanece con ease-in mientras se cierra la sesión,
+  // y luego se vuelve al login. Con movimiento reducido dura la mitad y es solo opacidad.
   async function logout() {
     setPending(true);
+    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    document.documentElement.setAttribute('data-leaving', '');
+    const exit = new Promise((r) => window.setTimeout(r, reduce ? 100 : 200));
     try {
-      await fetch('/api/v1/auth/logout', { method: 'POST' });
+      await Promise.all([fetch('/api/v1/auth/logout', { method: 'POST' }), exit]);
     } finally {
       router.replace('/login');
       router.refresh();
+      // El login no tiene [data-app-shell]; se limpia la marca cuando ya se navegó.
+      window.setTimeout(() => document.documentElement.removeAttribute('data-leaving'), 600);
     }
   }
 

@@ -6,6 +6,7 @@ import { RouteTransition } from '@/components/layout/route-transition';
 import { SidebarInset, SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar';
 import { ONBOARDING_ROUTES } from '@/lib/onboarding';
 import { requireUser } from '@/lib/session';
+import { NotificationBell } from './_notifications/notification-bell';
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -26,11 +27,15 @@ async function AuthenticatedShell({ children }: { children: React.ReactNode }) {
   if (user.mustCompleteContact) redirect('/mi-perfil');
 
   return (
-    <SidebarProvider>
+    <SidebarProvider data-app-shell="">
       <AppSidebar role={user.role} />
-      <SidebarInset className="bg-transparent">
-        <header className="flex h-12 shrink-0 items-center gap-2 border-b bg-surface/70 px-4 backdrop-blur-sm">
+      <SidebarInset>
+        <header className="flex h-12 shrink-0 items-center gap-2 border-b px-4">
           <SidebarTrigger />
+          {/* RF-53 (Dev 5): campana de avisos, cambio mínimo autorizado el 06/11/2026. */}
+          <div className="ml-auto">
+            <NotificationBell role={user.role} />
+          </div>
         </header>
         <RouteTransition>{children}</RouteTransition>
       </SidebarInset>

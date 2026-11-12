@@ -54,6 +54,32 @@ services:
       timeout: 5s
       retries: 5
 
+  # A3 (Dev 1): regla de ciclo de vida del bucket: borra incoming/ (cuarentena de subidas) a 1 dia.
+  # Idempotente: crea el bucket si falta y agrega la regla solo si no hay ya una para incoming/;
+  # nunca borra ni reemplaza otras reglas del bucket. Termina
+  # al aplicarla. Reaplicar a mano: `docker compose run --rm minio-init`. En R2: docs/manuales/tecnico.md.
+  minio-init:
+    image: bitnamilegacy/minio:latest
+    depends_on:
+      minio:
+        condition: service_healthy
+    restart: 'no'
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+      S3_BUCKET: ${S3_BUCKET}
+    entrypoint: ['/bin/sh', '-ec']
+    command:
+      - |
+        mc alias set local http://minio:9000 "$$MINIO_ROOT_USER" "$$MINIO_ROOT_PASSWORD" >/dev/null
+        mc mb --ignore-existing "local/$$S3_BUCKET"
+        if mc ilm rule ls "local/$$S3_BUCKET" --json 2>/dev/null | grep -q '"prefix":"incoming/"\|"Prefix":"incoming/"'; then
+          echo "minio-init: la regla de incoming/ ya existe, no se cambia nada."
+        else
+          mc ilm rule add --prefix incoming/ --expire-days 1 "local/$$S3_BUCKET"
+        fi
+        mc ilm rule ls "local/$$S3_BUCKET"
+
   clamav:
     image: clamav/clamav:stable
     restart: unless-stopped
@@ -83,6 +109,39 @@ services:
       test: ['CMD', '/mailpit', 'readyz']
       interval: 10s
       timeout: 3s
+      retries: 5
+
+  # Dev 5 (RF-58, U4), autorizado por el usuario: HTML -> PDF de los reportes. Solo en 127.0.0.1
+  # (3001). Chromium sin JavaScript y solo con archivos locales del propio formulario: el HTML
+  # viene escapado y sin recursos externos (el logo va embebido en base64).
+  gotenberg:
+    image: gotenberg/gotenberg:8
+    restart: unless-stopped
+    command:
+      - gotenberg
+      - --chromium-disable-javascript=true
+      - --chromium-allow-list=^file:///tmp/.*
+      - --api-timeout=60s
+      - --libreoffice-disable-routes=true
+      - --webhook-disable=true
+      - --api-body-limit=10MB
+      - --chromium-max-queue-size=10
+      - --chromium-restart-after=50
+    # Endurecido (seguridad 5f): sin capacidades y raíz de solo lectura. Chromium necesita escribir
+    # en /tmp y en su HOME (/home/gotenberg): ambos van en memoria (tmpfs).
+    mem_limit: 1g
+    cpus: 1.0
+    cap_drop: [ALL]
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /home/gotenberg
+    ports:
+      - '127.0.0.1:${GOTENBERG_PORT:-3001}:3000'
+    healthcheck:
+      test: ['CMD', 'curl', '-fsS', 'http://127.0.0.1:3000/health']
+      interval: 10s
+      timeout: 5s
       retries: 5
 
 volumes:

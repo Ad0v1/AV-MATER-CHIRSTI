@@ -3,3 +3,7 @@ export * from './errors';
 export * from './grade-value';
 export * from './average';
 export * from './literal-scale';
+export * from './effective-entry';
+export * from './gradebook';
+export * from './grade-input';
+export * from './literal-grade';

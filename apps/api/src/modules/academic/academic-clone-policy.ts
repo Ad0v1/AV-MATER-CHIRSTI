@@ -1,6 +1,8 @@
 // RF-15: qué se copia al clonar la estructura de un año en otro (INFORME 1 de F6, regla A2).
 // Lógica pura (sin Prisma), probada en academic-clone-policy.spec.ts.
 
+import { EDUCATION_LEVELS, type EducationLevel } from '@aula/shared';
+
 export type CloneSourceCourseSection = {
   courseId: string;
   teacherId: string | null;
@@ -9,6 +11,8 @@ export type CloneSourceCourseSection = {
 };
 
 export type CloneSourceSection = {
+  /** Nivel educativo; si falta se asume SECUNDARIA (valor por defecto del esquema). */
+  level?: EducationLevel;
   gradeLevel: number;
   code: string;
   isActive: boolean;
@@ -29,6 +33,7 @@ export type CloneSkipped = {
 };
 
 export type ClonePlanSection = {
+  level: EducationLevel;
   gradeLevel: number;
   code: string;
   courseSections: { courseId: string; teacherId: string | null }[];
@@ -63,7 +68,10 @@ export function planClone(
   const sections: ClonePlanSection[] = [];
 
   const ordered = [...source].sort(
-    (a, b) => a.gradeLevel - b.gradeLevel || (a.code < b.code ? -1 : a.code > b.code ? 1 : 0),
+    (a, b) =>
+      levelOrder(a.level) - levelOrder(b.level) ||
+      a.gradeLevel - b.gradeLevel ||
+      (a.code < b.code ? -1 : a.code > b.code ? 1 : 0),
   );
   for (const section of ordered) {
     if (!section.isActive) {
@@ -94,7 +102,12 @@ export function planClone(
       }
       courseSections.push({ courseId: cs.courseId, teacherId });
     }
-    sections.push({ gradeLevel: section.gradeLevel, code: section.code, courseSections });
+    sections.push({
+      level: section.level ?? 'SECUNDARIA',
+      gradeLevel: section.gradeLevel,
+      code: section.code,
+      courseSections,
+    });
     created.sections += 1;
     created.courseSections += courseSections.length;
   }
@@ -123,4 +136,8 @@ export function cloneYearIssue(
   if (source.id === target.id) return 'SAME_YEAR';
   if (source.year >= target.year) return 'SOURCE_NOT_EARLIER';
   return null;
+}
+
+function levelOrder(level: EducationLevel | undefined): number {
+  return EDUCATION_LEVELS.indexOf(level ?? 'SECUNDARIA');
 }

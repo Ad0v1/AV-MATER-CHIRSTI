@@ -1,9 +1,14 @@
 // Lógica pura de /admin/usuarios (RF-18..20, 22..25; RN-13), probada con Vitest.
 // La API es la autoridad: estas reglas solo arman las consultas, eligen qué mostrar y dan
 // mensajes junto al campo. Límites copiados de apps/api/src/modules/users/users.dto.ts (docs/03).
+import {
+  isEducationLevel,
+  isValidGradeForLevel,
+  type EducationLevel,
+} from '../../estructura/_lib/levels';
 import type { ReasonLimits } from '../../_shared/lib/validation';
 import { isUuid } from '../../_shared/lib/validation';
-import { sectionLabel } from '../../_shared/lib/format';
+import { sectionLabel } from '../../estructura/_lib/format';
 import type { StatusTone } from '../../_shared/lib/format';
 import type {
   CredentialStatus,
@@ -95,6 +100,8 @@ export type UserFilters = {
   /** RF-87: estado de las credenciales y correo verificado. */
   credentials?: CredentialStatus;
   emailVerified?: 'true' | 'false';
+  /** Nivel educativo (tres niveles, 09/11/2026). */
+  level?: EducationLevel;
   gradeLevel?: number;
   sectionId?: string;
   page: number;
@@ -112,9 +119,20 @@ export function parsePage(raw: unknown): number {
   return n >= 1 && n <= MAX_PAGE ? n : 1;
 }
 
-/** Grado 1..5 o undefined. */
-export function parseGradeLevel(raw: unknown): number | undefined {
-  return typeof raw === 'string' && /^[1-5]$/.test(raw) ? Number(raw) : undefined;
+/**
+ * Grado válido o undefined. Con nivel, dentro de su rango (INICIAL 3..5, PRIMARIA 1..6,
+ * SECUNDARIA 1..5); sin nivel, 1..5 como antes (enlaces viejos).
+ */
+export function parseGradeLevel(raw: unknown, level?: EducationLevel): number | undefined {
+  if (typeof raw !== 'string' || !/^[1-9]$/.test(raw)) return undefined;
+  const n = Number(raw);
+  if (level) return isValidGradeForLevel(level, n) ? n : undefined;
+  return n <= 5 ? n : undefined;
+}
+
+/** Nivel educativo o undefined. */
+export function parseLevel(raw: unknown): EducationLevel | undefined {
+  return isEducationLevel(raw) ? raw : undefined;
 }
 
 /**
@@ -132,8 +150,10 @@ export function parseUserFilters(params: RawParams): UserFilters {
   const emailVerified = first(params.emailVerified);
   if (emailVerified === 'true' || emailVerified === 'false') filters.emailVerified = emailVerified;
   if (filters.role === 'STUDENT') {
-    const grade = parseGradeLevel(first(params.gradeLevel));
+    const level = parseLevel(first(params.level));
+    const grade = parseGradeLevel(first(params.gradeLevel), level);
     const sectionId = first(params.sectionId);
+    if (level !== undefined) filters.level = level;
     if (grade !== undefined) filters.gradeLevel = grade;
     if (isUuid(sectionId)) filters.sectionId = sectionId;
   }
@@ -174,7 +194,9 @@ export function buildUserListQuery(
     params.set('emailVerified', filters.emailVerified);
   }
   if (filters.role === 'STUDENT') {
-    if (filters.gradeLevel !== undefined && parseGradeLevel(String(filters.gradeLevel))) {
+    const level = parseLevel(filters.level);
+    if (level) params.set('level', level);
+    if (filters.gradeLevel !== undefined && parseGradeLevel(String(filters.gradeLevel), level)) {
       params.set('gradeLevel', String(filters.gradeLevel));
     }
     if (isUuid(filters.sectionId)) params.set('sectionId', filters.sectionId);
@@ -284,8 +306,13 @@ export const USER_REASON_LIMITS = {
 
 // --- Matrícula y traslado (RF-18, RF-20, RF-24) -------------------------------
 
+const LEVEL_ORDER: Record<EducationLevel, number> = { INICIAL: 0, PRIMARIA: 1, SECUNDARIA: 2 };
+const levelOf = (s: { level?: EducationLevel }): EducationLevel => s.level ?? 'SECUNDARIA';
+
 const bySection = (a: SectionOption, b: SectionOption) =>
-  a.gradeLevel - b.gradeLevel || a.code.localeCompare(b.code, 'es');
+  LEVEL_ORDER[levelOf(a)] - LEVEL_ORDER[levelOf(b)] ||
+  a.gradeLevel - b.gradeLevel ||
+  a.code.localeCompare(b.code, 'es');
 
 /** Secciones donde se puede matricular: las activas del año activo, por grado y código. */
 export function enrollTargets(sections: readonly SectionOption[]): SectionOption[] {
@@ -306,6 +333,7 @@ export function transferTargets(
       (s) =>
         s.isActive &&
         s.academicYearId === current.academicYear.id &&
+        levelOf(s) === levelOf(current.section) &&
         s.gradeLevel === current.section.gradeLevel &&
         s.id !== current.section.id,
     )
@@ -426,7 +454,11 @@ export function toStudentChoice(item: UserListItem): StudentChoice {
     code: item.code,
     status: item.status,
     sectionLabel: item.currentSection
-      ? sectionLabel(item.currentSection.gradeLevel, item.currentSection.code)
+      ? sectionLabel(
+          item.currentSection.gradeLevel,
+          item.currentSection.code,
+          item.currentSection.level,
+        )
       : null,
   };
 }

@@ -31,12 +31,36 @@ const fourPeriods = [1, 2, 3, 4].map((sequence) => ({
 describe('ZodValidationPipe', () => {
   it('devuelve el valor transformado si es válido', () => {
     const pipe = new ZodValidationPipe(createSectionSchema);
-    expect(pipe.transform({ gradeLevel: 3, code: ' c ' })).toEqual({ gradeLevel: 3, code: 'C' });
+    expect(pipe.transform({ level: 'PRIMARIA', gradeLevel: 6, code: ' c ' })).toEqual({
+      level: 'PRIMARIA',
+      gradeLevel: 6,
+      code: 'C',
+    });
+  });
+
+  it('rechaza el grado fuera del rango del nivel (tres niveles)', () => {
+    const pipe = new ZodValidationPipe(createSectionSchema);
+    for (const [level, gradeLevel] of [
+      ['INICIAL', 2],
+      ['INICIAL', 6],
+      ['PRIMARIA', 7],
+      ['SECUNDARIA', 6],
+    ] as const) {
+      const body = errorBody(() => pipe.transform({ level, gradeLevel, code: 'A' }));
+      expect(body.message.map((d) => d.path)).toEqual(['gradeLevel']);
+    }
+    expect(pipe.transform({ level: 'INICIAL', gradeLevel: 3, code: 'A' })).toMatchObject({
+      gradeLevel: 3,
+    });
   });
 
   it('400 con details [{ path, message }] en español', () => {
     const body = errorBody(() =>
-      new ZodValidationPipe(createSectionSchema).transform({ gradeLevel: 9, code: 'a-b' }),
+      new ZodValidationPipe(createSectionSchema).transform({
+        level: 'SECUNDARIA',
+        gradeLevel: 'x',
+        code: 'a-b',
+      }),
     );
     expect(body.message.map((d) => d.path)).toEqual(['gradeLevel', 'code']);
     expect(body.message[0].message).toMatch(/[áéíóúñ]|debe|esperaba/i);

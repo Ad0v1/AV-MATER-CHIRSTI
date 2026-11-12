@@ -27,6 +27,7 @@ import {
   safeDownloadFileName,
   type ObjectScope,
 } from '../storage/index.js';
+import { INTENT_SWEEP_GRACE_MS } from './file-lifecycle.service.js';
 import { FileScanner, ScannerUnavailableError } from './file-scanner.js';
 import { recordFiles } from './files-audit.js';
 import { FilesEventPublisher } from './files-events.js';
@@ -37,6 +38,7 @@ import type {
   UploadIntentDto,
   UploadIntentResponse,
 } from './files.dto.js';
+import { assertSubmissionsAllowed } from '../submissions/submissions.policy.js';
 import { inspectPdfStream, verdictOf } from './pdf-inspector.js';
 
 // Flujo de archivos de Dev 3 (RF-33..35, RF-40, RNF-03/18), fase 3b:
@@ -146,6 +148,12 @@ export class FilesService {
     if (!file || file.uploadedById !== user.id) throw new NotFoundException(NOT_FOUND);
     if (file.uploadStatus === 'COMPLETED') return replay(file);
     if (file.uploadStatus === 'EXPIRED') throw expired();
+    // Intent vencido (más el mismo margen del barrido): no se valida ni se acepta. La guarda
+    // optimista de expire() (uploadStatus PENDING) evita pisar un complete concurrente.
+    if (now.getTime() > file.intentExpiresAt.getTime() + INTENT_SWEEP_GRACE_MS) {
+      await this.expire(file, actor, null);
+      throw expired();
+    }
 
     // Los permisos se revisan otra vez: la matrícula, el plazo o el período pudieron cambiar.
     try {
@@ -501,6 +509,7 @@ export class FilesService {
             allowLate: true,
             maxSizeBytes: true,
             deletedAt: true,
+            courseSection: { select: { section: { select: { level: true } } } },
           },
         })
       : null;
@@ -511,6 +520,8 @@ export class FilesService {
     ) {
       throw new NotFoundException({ code: 'NOT_FOUND', message: 'La tarea no existe' });
     }
+    // INICIAL: actividades sin entrega (409 NO_SUBMISSIONS_IN_LEVEL).
+    assertSubmissionsAllowed(assignment.courseSection?.section.level);
     // Período cerrado bloquea entregas (decisión 2 del usuario), también las tardías.
     await this.access.assertCourseSectionWritable(target.courseSectionId, assignment.periodId);
     if (now.getTime() > assignment.dueAt.getTime() && !assignment.allowLate) {

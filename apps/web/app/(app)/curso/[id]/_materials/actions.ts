@@ -24,11 +24,23 @@ export type UploadIntent = {
   headers?: Record<string, string>;
 };
 
-export async function startUpload(courseSectionId: string, fileName: string, sizeBytes: number) {
+/** Sin `target` sube un material; con `target` sube la entrega de una tarea (Dev 3, fase 3f). */
+export type UploadTarget = { purpose: 'SUBMISSION'; assignmentId: string };
+
+export async function startUpload(
+  courseSectionId: string,
+  fileName: string,
+  sizeBytes: number,
+  target?: UploadTarget,
+) {
   if (!UUID.test(courseSectionId)) return { ok: false, message: 'Curso no válido.' } as const;
+  if (target && (target.purpose !== 'SUBMISSION' || !UUID.test(target.assignmentId))) {
+    return { ok: false, message: 'Tarea no válida.' } as const;
+  }
   return run(() =>
     apiServer.post<UploadIntent>('/files/upload-intents', {
-      purpose: 'MATERIAL',
+      purpose: target ? 'SUBMISSION' : 'MATERIAL',
+      ...(target ? { assignmentId: target.assignmentId } : {}),
       courseSectionId,
       fileName: fileName.slice(0, 200),
       sizeBytes,

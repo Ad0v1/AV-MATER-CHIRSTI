@@ -75,4 +75,6 @@ export const apiServer = {
     request<T>('POST', path, body ?? {}, options),
   patch: <T>(path: string, body: unknown) => request<T>('PATCH', path, body),
   put: <T>(path: string, body: unknown) => request<T>('PUT', path, body),
+  // Dev 5 (RF-32, retiro de anuncios), inserción mínima autorizada el 06/11/2026.
+  delete: <T>(path: string) => request<T>('DELETE', path),
 };

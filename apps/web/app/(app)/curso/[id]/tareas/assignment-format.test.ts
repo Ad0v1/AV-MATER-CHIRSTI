@@ -1,0 +1,261 @@
+import { describe, expect, it } from 'vitest';
+import {
+  acceptsSubmissions,
+  assignmentToInput,
+  buildAssignmentPatch,
+  isAssignmentInput,
+  isLiteralLevel,
+  isNoDeliveryLevel,
+  isoToLocal,
+  isSafeHttpUrl,
+  buildAssignmentBody,
+  checkPdf,
+  formatDelay,
+  formatSize,
+  localToIso,
+  statusLabel,
+  validateAssignment,
+  type NewAssignmentInput,
+} from './assignment-format';
+
+const NOW = new Date('2026-10-29T12:00:00-05:00');
+const base: NewAssignmentInput = {
+  periodId: '01a17953-1c63-7091-a5c5-ef1ae3d44596',
+  title: '  Práctica 1 ',
+  instructions: 'Resolver los ejercicios',
+  dueLocal: '2026-11-05T23:59',
+  noSubmissionGrade: '0',
+  maxSizeMiB: '20',
+  allowLate: false,
+};
+
+describe('localToIso', () => {
+  it('agrega la zona de Lima', () => {
+    expect(localToIso('2026-11-05T23:59')).toBe('2026-11-05T23:59:00-05:00');
+  });
+  it('rechaza valores vacíos o mal formados', () => {
+    expect(localToIso('')).toBeNull();
+    expect(localToIso('2026-11-05')).toBeNull();
+    expect(localToIso('2026-13-45T99:99')).toBeNull();
+  });
+});
+
+describe('buildAssignmentBody (RF-28, RN-05, RN-08)', () => {
+  it('arma el cuerpo con valores por defecto', () => {
+    const r = buildAssignmentBody(base, NOW);
+    expect(r).toEqual({
+      ok: true,
+      body: {
+        periodId: base.periodId,
+        title: 'Práctica 1',
+        instructions: 'Resolver los ejercicios',
+        dueAt: '2026-11-05T23:59:00-05:00',
+        noSubmissionGrade: '0',
+        maxSizeBytes: 20971520,
+        allowLate: false,
+      },
+    });
+  });
+
+  it('acepta coma decimal, 20 y 50 MiB', () => {
+    const r = buildAssignmentBody({ ...base, noSubmissionGrade: '10,5', maxSizeMiB: '50' }, NOW);
+    expect(r.ok && r.body).toMatchObject({ noSubmissionGrade: '10.5', maxSizeBytes: 52428800 });
+    expect(buildAssignmentBody({ ...base, noSubmissionGrade: '20.00' }, NOW).ok).toBe(true);
+  });
+
+  it.each([
+    [{ periodId: '' }],
+    [{ title: '   ' }],
+    [{ instructions: '' }],
+    [{ dueLocal: '' }],
+    [{ dueLocal: '2026-10-29T11:00' }],
+    [{ noSubmissionGrade: '20.01' }],
+    [{ noSubmissionGrade: '-1' }],
+    [{ noSubmissionGrade: '1.234' }],
+    [{ maxSizeMiB: '51' }],
+    [{ maxSizeMiB: '0' }],
+    [{ maxSizeMiB: '2.5' }],
+  ])('rechaza %j con un mensaje', (patch) => {
+    const r = buildAssignmentBody({ ...base, ...patch }, NOW);
+    expect(r.ok).toBe(false);
+    expect(!r.ok && r.message.length).toBeGreaterThan(5);
+  });
+});
+
+describe('formatos', () => {
+  it('rótulos de RF-38', () => {
+    expect(statusLabel('SUBMITTED_LATE')).toBe('Entregada con retraso');
+    expect(statusLabel('NOT_SUBMITTED')).toBe('No entregada (NE)');
+    expect(statusLabel('OTRO')).toBe('OTRO');
+  });
+  it('atraso y tamaño', () => {
+    expect(formatDelay(40)).toBe('40 s');
+    expect(formatDelay(125 * 60)).toBe('2 h 5 min');
+    expect(formatDelay(3 * 86_400 + 3_600)).toBe('3 d 1 h');
+    expect(formatSize(512)).toBe('1 KiB');
+    expect(formatSize(20971520)).toBe('20 MiB');
+  });
+  it('checkPdf', () => {
+    expect(checkPdf({ name: 'a.PDF', size: 10 }, 100)).toBeNull();
+    expect(checkPdf({ name: 'a.docx', size: 10 }, 100)).toMatch(/PDF/);
+    expect(checkPdf({ name: 'a.pdf', size: 0 }, 100)).toMatch(/vacío/);
+    expect(checkPdf({ name: 'a.pdf', size: 101 }, 100)).toMatch(/supera/);
+  });
+});
+
+describe('acceptsSubmissions (RF-37, RN-10)', () => {
+  const a = { periodIsOpen: true, allowLate: false, dueAt: '2026-10-29T12:00:00-05:00' };
+  it('antes del plazo sí; después solo con tardías; período cerrado nunca', () => {
+    expect(acceptsSubmissions(a, new Date('2026-10-29T11:59:00-05:00'))).toBe(true);
+    expect(acceptsSubmissions(a, new Date('2026-10-29T12:01:00-05:00'))).toBe(false);
+    expect(acceptsSubmissions({ ...a, allowLate: true }, new Date('2026-12-01'))).toBe(true);
+    expect(acceptsSubmissions({ ...a, periodIsOpen: false }, new Date('2026-01-01'))).toBe(false);
+  });
+});
+
+describe('validateAssignment (validación por campo)', () => {
+  it('devuelve un mensaje por campo y el primero en el orden del formulario', () => {
+    const r = validateAssignment(
+      { ...base, title: ' ', dueLocal: '2026-10-29T11:00', maxSizeMiB: '60' },
+      NOW,
+    );
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(Object.keys(r.errors).sort()).toEqual(['dueLocal', 'maxSizeMiB', 'title']);
+    expect(r.first).toBe('title');
+    expect(r.errors.dueLocal).toMatch(/futura/);
+  });
+
+  it('sin errores devuelve el cuerpo', () => {
+    expect(validateAssignment(base, NOW).ok).toBe(true);
+  });
+});
+
+describe('checkPdf: mensajes distintos para tipo y tamaño', () => {
+  it('tipo y tamaño no comparten mensaje', () => {
+    const tipo = checkPdf({ name: 'a.png', size: 10 }, 100);
+    const peso = checkPdf({ name: 'a.pdf', size: 2 * 1024 * 1024 }, 1024 * 1024);
+    expect(tipo).toMatch(/no es un PDF/);
+    expect(peso).toMatch(/2 MiB.*1 MiB/);
+  });
+});
+
+describe('edición (RF-29)', () => {
+  const published = {
+    periodId: base.periodId,
+    title: 'Práctica 1',
+    instructions: 'Resolver los ejercicios',
+    dueAt: '2026-11-06T04:59:00.000Z',
+    noSubmissionGrade: '0.00',
+    maxSizeBytes: 20 * 1024 * 1024,
+    allowLate: false,
+  };
+  it('isoToLocal convierte a hora de Lima', () => {
+    expect(isoToLocal('2026-11-06T04:59:00.000Z')).toBe('2026-11-05T23:59');
+    expect(isoToLocal('x')).toBe('');
+  });
+  it('assignmentToInput arma los valores iniciales', () => {
+    const i = assignmentToInput(published);
+    expect(i).toMatchObject({
+      dueLocal: '2026-11-05T23:59',
+      noSubmissionGrade: '0',
+      maxSizeMiB: '20',
+    });
+  });
+  it('sin cambios no hay patch', () => {
+    const o = assignmentToInput(published);
+    const r = buildAssignmentPatch(o, o, NOW);
+    expect(r).toEqual({ ok: true, patch: {}, changed: false });
+  });
+  it('envía solo los campos cambiados y nunca el período', () => {
+    const o = assignmentToInput(published);
+    const r = buildAssignmentPatch(
+      o,
+      { ...o, title: 'Nueva', periodId: 'otro', allowLate: true },
+      NOW,
+    );
+    expect(r).toEqual({ ok: true, patch: { title: 'Nueva', allowLate: true }, changed: true });
+  });
+  it('plazo vencido sin tocar no bloquea; cambiado a pasado sí', () => {
+    const o = assignmentToInput({ ...published, dueAt: '2026-10-01T05:00:00.000Z' });
+    expect(buildAssignmentPatch(o, { ...o, title: 'X' }, NOW).ok).toBe(true);
+    const r = buildAssignmentPatch(o, { ...o, dueLocal: '2026-10-02T10:00' }, NOW);
+    expect(r.ok).toBe(false);
+  });
+  it('incluye dueAt con zona de Lima al cambiarlo', () => {
+    const o = assignmentToInput(published);
+    const r = buildAssignmentPatch(o, { ...o, dueLocal: '2026-11-10T08:00' }, NOW);
+    expect(r).toMatchObject({ ok: true, patch: { dueAt: '2026-11-10T08:00:00-05:00' } });
+  });
+});
+
+describe('isSafeHttpUrl', () => {
+  it('solo acepta http(s)', () => {
+    expect(isSafeHttpUrl('https://bucket/x?sig=1')).toBe(true);
+    expect(isSafeHttpUrl('javascript:alert(1)')).toBe(false);
+    expect(isSafeHttpUrl('data:text/html,x')).toBe(false);
+    expect(isSafeHttpUrl(undefined)).toBe(false);
+  });
+});
+
+describe('isAssignmentInput', () => {
+  it('acepta la forma correcta y rechaza tipos erróneos', () => {
+    expect(isAssignmentInput(base)).toBe(true);
+    expect(isAssignmentInput({ ...base, allowLate: 'true' })).toBe(false);
+    expect(isAssignmentInput({ ...base, title: undefined })).toBe(false);
+    expect(isAssignmentInput(null)).toBe(false);
+  });
+});
+
+describe('escala literal de la NE (INICIAL/PRIMARIA)', () => {
+  const lit: NewAssignmentInput = { ...base, literalScale: true, noSubmissionLiteral: 'B' };
+  it('isLiteralLevel / isNoDeliveryLevel', () => {
+    expect(isLiteralLevel('INICIAL')).toBe(true);
+    expect(isLiteralLevel('PRIMARIA')).toBe(true);
+    expect(isLiteralLevel('SECUNDARIA')).toBe(false);
+    expect(isNoDeliveryLevel('INICIAL')).toBe(true);
+    expect(isNoDeliveryLevel('PRIMARIA')).toBe(false);
+  });
+  it('envía el literal y no valida la nota numérica', () => {
+    const r = buildAssignmentBody({ ...lit, noSubmissionGrade: 'xx' }, NOW);
+    expect(r).toMatchObject({
+      ok: true,
+      body: { noSubmissionLiteral: 'B', noSubmissionGrade: '0' },
+    });
+  });
+  it('vacío = null (opcional)', () => {
+    const r = buildAssignmentBody({ ...lit, noSubmissionLiteral: '' }, NOW);
+    expect(r).toMatchObject({ ok: true, body: { noSubmissionLiteral: null } });
+  });
+  it('rechaza un literal fuera de AD/A/B/C', () => {
+    expect(validateAssignment({ ...lit, noSubmissionLiteral: 'E' }, NOW).ok).toBe(false);
+    expect(isAssignmentInput({ ...lit, noSubmissionLiteral: 'E' })).toBe(false);
+    expect(isAssignmentInput(lit)).toBe(true);
+  });
+  it('SECUNDARIA no envía noSubmissionLiteral', () => {
+    const r = buildAssignmentBody(base, NOW);
+    expect(r.ok && 'noSubmissionLiteral' in r.body).toBe(false);
+  });
+  it('edición: PATCH solo con el literal cambiado', () => {
+    const o = assignmentToInput(
+      {
+        periodId: base.periodId,
+        title: 'T',
+        instructions: 'I',
+        dueAt: '2026-11-06T04:59:00.000Z',
+        noSubmissionGrade: '0.00',
+        noSubmissionLiteral: null,
+        maxSizeBytes: 20 * 1024 * 1024,
+        allowLate: false,
+      },
+      true,
+    );
+    expect(o).toMatchObject({ literalScale: true, noSubmissionLiteral: '' });
+    expect(buildAssignmentPatch(o, o, NOW)).toMatchObject({ changed: false });
+    expect(buildAssignmentPatch(o, { ...o, noSubmissionLiteral: 'AD' }, NOW)).toEqual({
+      ok: true,
+      patch: { noSubmissionLiteral: 'AD' },
+      changed: true,
+    });
+  });
+});

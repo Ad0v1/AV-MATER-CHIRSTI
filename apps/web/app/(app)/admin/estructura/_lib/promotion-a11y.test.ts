@@ -69,13 +69,13 @@ const ready = promotionReducer(start, {
 describe('anuncio de acciones en bloque', () => {
   it('cuenta las filas aplicadas y las que siguen excluidas', () => {
     expect(bulkAnnouncement({ proposal }, SEC_1A, 'REPEAT')).toBe(
-      'Se aplicó «Repite» a 1 estudiante de 1.º A; se mantuvieron 2 excluidos.',
+      'Se aplicó «Repite» a 1 estudiante de 1.° Secundaria A; se mantuvieron 2 excluidos.',
     );
     expect(bulkAnnouncement({ proposal }, SEC_2A, 'PROMOTE')).toBe(
-      'Se aplicó «Promueve» a 1 estudiante de 2.º A.',
+      'Se aplicó «Promueve» a 1 estudiante de 2.° Secundaria A.',
     );
     expect(bulkAnnouncement({ proposal }, SEC_1A, 'EXCLUDE')).toBe(
-      'Se aplicó «Se excluye (sigue en el año de origen)» a 3 estudiantes de 1.º A.',
+      'Se aplicó «Se excluye (sigue en el año de origen)» a 3 estudiantes de 1.° Secundaria A.',
     );
   });
 });

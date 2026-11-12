@@ -4,7 +4,21 @@
 import type { StatusTone } from '../../_shared/lib/format';
 import type { YearSummary } from './types';
 
-export { formatInstant, sectionLabel, type StatusTone } from '../../_shared/lib/format';
+import { sectionLabel as levelSectionLabel, type EducationLevel } from './levels';
+
+export { formatInstant, type StatusTone } from '../../_shared/lib/format';
+
+/**
+ * Etiqueta de sección con nivel (tres niveles, 09/11/2026): "3.° Primaria A", "5 años C".
+ * Sin nivel se asume SECUNDARIA (valor por defecto del esquema).
+ */
+export function sectionLabel(
+  gradeLevel: number,
+  code: string,
+  level: EducationLevel = 'SECUNDARIA',
+): string {
+  return levelSectionLabel(level, gradeLevel, code);
+}
 
 export type YearStatus = { label: string; tone: StatusTone; detail: string };
 

@@ -1,6 +1,6 @@
 # Manual del administrador
 
-> **Estado: PROPUESTA.** Por ahora cubre solo la estructura académica de la fase 6: copiar la estructura a un año nuevo y promover a los estudiantes. Las demás pantallas de administración se documentarán cuando estén aprobadas.
+> **Estado: PROPUESTA.** Cubre copiar la estructura a un año nuevo, promover a los estudiantes (Dev 2, fase 6) y tareas y materiales (Dev 3). Las demás pantallas de administración se documentarán cuando estén aprobadas.
 
 ## Copiar la estructura a un año nuevo (RF-15)
 
@@ -29,3 +29,14 @@ Reglas de la pantalla:
 - Los estudiantes retirados, o que ya están matriculados en el año nuevo, solo se pueden excluir.
 - Promover no borra las notas ni los contenidos del año anterior.
 - Los de quinto grado que egresan dejan de estar matriculados en el año, pero su cuenta sigue activa. Esto está pendiente de decisión.
+
+## Tareas y materiales (RF-26..31)
+
+> **Estado: PROPUESTA.** Como administrador puedes crear y cambiar tareas y materiales de cualquier curso. Cada cambio queda en la bitácora.
+
+- **Períodos:** las tareas se crean y cambian solo en períodos abiertos. Si el período o el año están cerrados, la pantalla no guarda nada.
+- **Materiales:** las clases y las lecturas son PDF de hasta 50 MiB. Un material puede no tener período.
+- **Tamaños:** cada tarea admite 20 MiB por defecto y 50 MiB como máximo. Los archivos con virus o protegidos con contraseña se rechazan.
+- **Entregas:** la pantalla de la tarea lista a cada estudiante con su estado (pendiente, entregada o entregada con retraso). Las notas llegarán con el módulo de calificaciones.
+- **Papelera:** un material borrado se puede restaurar durante 30 días. La API lo permite; la pantalla todavía no tiene el botón.
+- **Pendiente en pantalla:** editar o borrar una tarea y descargar el PDF de una entrega. Hoy se hace solo desde la API.

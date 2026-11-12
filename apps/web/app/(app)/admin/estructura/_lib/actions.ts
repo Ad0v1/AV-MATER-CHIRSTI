@@ -3,6 +3,7 @@
 // Escrituras de /admin/estructura (RF-09..14, RF-17) como Server Actions (D-037).
 // La API comprueba sesión, rol ADMIN y reglas (RN-10/11); aquí solo se valida la forma para
 // dar mensajes junto al campo. Tras escribir se refresca el router (`refresh`).
+import { LEVEL_GRADES, gradeLabel, isEducationLevel, isValidGradeForLevel } from './levels';
 import { refresh } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { ApiError, detailMessages, toUserMessage } from '@/lib/api/errors';
@@ -271,17 +272,25 @@ export async function createSectionAction(
   fd: FormData,
 ): Promise<ActionState> {
   if (!isUuid(yearId)) return invalid(BAD_ID);
-  const values = { gradeLevel: text(fd, 'gradeLevel'), code: text(fd, 'code') };
+  const values = {
+    level: text(fd, 'level'),
+    gradeLevel: text(fd, 'gradeLevel'),
+    code: text(fd, 'code'),
+  };
   const errors: Record<string, string> = {};
+  const level = values.level;
   const gradeLevel = Number(values.gradeLevel);
-  if (!Number.isInteger(gradeLevel) || gradeLevel < 1 || gradeLevel > 5) {
-    errors.gradeLevel = 'Elige un grado del 1.º al 5.º.';
+  if (!isEducationLevel(level)) {
+    errors.level = 'Elige el nivel: Inicial, Primaria o Secundaria.';
+  } else if (!isValidGradeForLevel(level, gradeLevel)) {
+    const { min, max } = LEVEL_GRADES[level];
+    errors.gradeLevel = `Elige un grado entre ${gradeLabel(level, min)} y ${gradeLabel(level, max)}.`;
   }
   const code = normalizeSectionCode(values.code);
   if (!code) errors.code = 'Usa de 1 a 8 letras (sin tildes ni ñ) o dígitos.';
   if (Object.keys(errors).length > 0) return fieldError(errors, values);
   return run(
-    () => apiServer.post(`/academic-years/${enc(yearId)}/sections`, { gradeLevel, code }),
+    () => apiServer.post(`/academic-years/${enc(yearId)}/sections`, { level, gradeLevel, code }),
     'Sección creada.',
     values,
   );

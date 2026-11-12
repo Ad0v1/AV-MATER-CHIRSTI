@@ -1,4 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
+import type { Prisma } from '../../generated/prisma/client.js';
+import { toAuditLogData } from './audit-log-data.js';
 
 // Campos alineados con el modelo AuditLog propuesto (RNF-14/15).
 export type AuditEvent = {
@@ -14,6 +16,9 @@ export type AuditEvent = {
   beforeState?: unknown;
   afterState?: unknown;
 };
+
+// Cliente de una transaccion interactiva de Prisma (solo se usa auditLog.create).
+export type AuditTx = Pick<Prisma.TransactionClient, 'auditLog'>;
 
 export type AuditRecord = AuditEvent & { occurredAt: Date };
 
@@ -40,7 +45,16 @@ export class LogAuditSink extends AuditSink {
 export class AuditService {
   constructor(private readonly sink: AuditSink) {}
 
-  async record(event: AuditEvent): Promise<void> {
-    await this.sink.write({ ...event, occurredAt: new Date() });
+  /**
+   * Sin `tx`, escribe en el destino configurado. Con `tx` (D-047), inserta la fila de AuditLog con
+   * el cliente de la transaccion: si falla, la transaccion se revierte y no queda accion sin rastro.
+   */
+  async record(event: AuditEvent, tx?: AuditTx): Promise<void> {
+    const record: AuditRecord = { ...event, occurredAt: new Date() };
+    if (tx) {
+      await tx.auditLog.create({ data: toAuditLogData(record) });
+      return;
+    }
+    await this.sink.write(record);
   }
 }

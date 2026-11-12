@@ -309,8 +309,10 @@ export class UserImportService {
   }
 
   private async readSections(db: Db, academicYearId: string): Promise<Map<string, SectionInfo>> {
+    // Tres niveles (09/11/2026): la plantilla CSV aún no tiene columna de nivel, así que el grado
+    // se busca solo en SECUNDARIA (comportamiento previo). Pendiente: columna `nivel`.
     const rows = await db.section.findMany({
-      where: { academicYearId },
+      where: { academicYearId, level: 'SECUNDARIA' },
       select: { id: true, academicYearId: true, gradeLevel: true, code: true, isActive: true },
     });
     return new Map(
