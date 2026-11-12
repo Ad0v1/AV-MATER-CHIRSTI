@@ -20,6 +20,10 @@ import { listAuditLogs } from './_lib/data';
 
 export const metadata = { title: 'Bitácora' };
 
+// Clave de los filtros SIN la acción: al buscar por acción en vivo el formulario no se vuelve a
+// montar (se conservan el foco y lo escrito); sí se reinicia si cambian módulo, fechas o actor.
+const filtersKey = (f: Filters) => [f.module, f.from, f.to, f.actorId].join('|');
+
 export default function Page({ searchParams }: PageProps<'/admin/bitacora'>) {
   return (
     <PageShell>
@@ -44,7 +48,7 @@ async function AuditView({
   if (invalid) {
     return (
       <>
-        <AuditFilters key={auditHref(filters)} filters={filters} dateError={invalid} />
+        <AuditFilters key={filtersKey(filters)} filters={filters} dateError={invalid} />
         <Alert variant="destructive">
           <AlertDescription>No se muestran registros: {invalid}</AlertDescription>
         </Alert>
@@ -57,7 +61,7 @@ async function AuditView({
   } catch (error) {
     return (
       <>
-        <AuditFilters key={auditHref(filters)} filters={filters} />
+        <AuditFilters key={filtersKey(filters)} filters={filters} />
         <LoadError error={error} />
       </>
     );
@@ -67,7 +71,7 @@ async function AuditView({
     : undefined;
   return (
     <>
-      <AuditFilters key={auditHref(filters)} filters={filters} actorName={actorName} />
+      <AuditFilters key={filtersKey(filters)} filters={filters} actorName={actorName} />
       <Results data={data} filters={filters} />
     </>
   );
@@ -76,14 +80,12 @@ async function AuditView({
 function Results({ data, filters }: { data: AuditLogPage; filters: Filters }) {
   return (
     <section aria-labelledby="registros-titulo" className="flex flex-col gap-3">
-      <div className="flex flex-col gap-1">
-        <h2 id="registros-titulo" className="text-lg font-semibold">
-          Registros
-        </h2>
-        <p className="text-sm text-muted-foreground">
-          {rangeText(data.page, data.pageSize, data.total, data.items.length)}
-        </p>
-      </div>
+      <h2 id="registros-titulo" className="sr-only">
+        Registros
+      </h2>
+      <p className="text-sm text-muted-foreground">
+        {rangeText(data.page, data.pageSize, data.total, data.items.length)}
+      </p>
       <AuditTable items={data.items} filters={filters} />
       <PageNav
         page={data.page}

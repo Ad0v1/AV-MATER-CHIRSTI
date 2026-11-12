@@ -8,8 +8,24 @@
 // - La máquina de estados vive en `_lib/import-machine.ts` (lógica pura, con tests).
 // - Foco: tras validar va al título del reporte; tras un error, al aviso; tras importar, al título
 //   del resultado (que además se anuncia en la región de estado siempre montada).
-import { useEffect, useReducer, useRef, useState, type RefObject } from 'react';
+import { useEffect, useReducer, useRef, useState, type ReactNode, type RefObject } from 'react';
 import Link from 'next/link';
+import {
+  CheckCircle2,
+  Download,
+  FileCheck2,
+  FileSpreadsheet,
+  FileText,
+  GraduationCap,
+  ListChecks,
+  Lock,
+  Presentation,
+  RefreshCw,
+  TriangleAlert,
+  Upload,
+  UsersRound,
+  type LucideIcon,
+} from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button, buttonVariants } from '@/components/ui/button';
 import {
@@ -23,16 +39,10 @@ import {
 } from '@/components/ui/table';
 import { cn } from '@/lib/utils';
 import { useAnnounce } from '../../../_shared/components/action-feedback';
-import { SelectField, TextField } from '../../../_shared/components/form-bits';
 import { TOUCH } from '../../../_shared/components/styles';
 import { FOCUS_HEADING } from '../../../_shared/lib/focus';
 import { USERS_PATH } from '../../_lib/users';
-import {
-  IMPORT_TYPES,
-  isImportType,
-  type ImportFormat,
-  type ImportType,
-} from '../_lib/import-guards';
+import { IMPORT_TYPES, type ImportFormat, type ImportType } from '../_lib/import-guards';
 import {
   CREDENTIALS_WARNING,
   IMPORTING_MESSAGE,
@@ -64,11 +74,31 @@ import {
 const REPORT_TITLE_ID = 'reporte-importacion-titulo';
 const DONE_TITLE_ID = 'importacion-hecha-titulo';
 
-const TYPE_COLUMNS: Record<ImportType, string> = {
-  students:
-    'dni, nombre_completo, grado, seccion, dni_apoderado, nombre_apoderado, dni_apoderado_2, nombre_apoderado_2',
-  teachers: 'dni, nombre_completo',
-  guardians: 'dni_apoderado, nombre_apoderado, dni_estudiante',
+type Col = { name: string; optional?: boolean };
+
+const TYPE_COLUMNS: Record<ImportType, Col[]> = {
+  students: [
+    { name: 'dni' },
+    { name: 'nombre_completo' },
+    { name: 'grado' },
+    { name: 'seccion' },
+    { name: 'dni_apoderado' },
+    { name: 'nombre_apoderado', optional: true },
+    { name: 'dni_apoderado_2', optional: true },
+    { name: 'nombre_apoderado_2', optional: true },
+  ],
+  teachers: [{ name: 'dni' }, { name: 'nombre_completo' }],
+  guardians: [
+    { name: 'dni_apoderado' },
+    { name: 'nombre_apoderado', optional: true },
+    { name: 'dni_estudiante' },
+  ],
+};
+
+const TYPE_ICONS: Record<ImportType, LucideIcon> = {
+  students: GraduationCap,
+  teachers: Presentation,
+  guardians: UsersRound,
 };
 
 type FocusTarget = 'start' | 'alert' | 'report' | 'done' | null;
@@ -101,6 +131,7 @@ export function ImportScreen() {
   const [state, dispatch] = useReducer(importReducer, undefined, () => initialImportState());
   const file = useRef<File | null>(null);
   const [inputKey, setInputKey] = useState(0);
+  const [fileName, setFileName] = useState<string | null>(null);
   const [templateError, setTemplateError] = useState<string | null>(null);
   const [downloading, setDownloading] = useState<ImportFormat | null>(null);
   const [sheetState, setSheetState] = useState<'pending' | 'downloaded' | 'failed'>('pending');
@@ -240,6 +271,7 @@ export function ImportScreen() {
 
   function reset() {
     file.current = null;
+    setFileName(null);
     setSheetState('pending');
     setInputKey((k) => k + 1);
     // El botón desaparece: el foco va al inicio del paso 1, no a <body> (MEDIO de UX, INFORME 19).
@@ -257,102 +289,204 @@ export function ImportScreen() {
           id="importar-archivo-titulo"
           ref={startRef}
           tabIndex={-1}
-          className={cn('text-lg font-semibold', FOCUS_HEADING)}
+          className={cn('flex items-center gap-2.5 text-lg font-semibold', FOCUS_HEADING)}
         >
-          1. Elige el tipo y el archivo
+          <StepBadge n={1} tone="brand" />
+          Elige el tipo y el archivo
         </h2>
 
-        <SelectField
-          name="type"
-          label="Tipo de usuarios"
-          value={state.type}
-          disabled={busy}
-          onChange={(e) => {
-            const next = e.target.value;
-            if (isImportType(next)) {
-              const message = typeChangeMessage(state, next);
-              dispatch({ type: 'TYPE_CHANGED', importType: next });
-              if (message) announce(message);
-            }
-            setTemplateError(null);
-          }}
-          options={IMPORT_TYPES.map((t) => ({ value: t, label: TYPE_LABELS[t] }))}
-          hint={`Columnas de la plantilla: ${TYPE_COLUMNS[state.type]}.`}
-          className="sm:max-w-xs"
-        />
+        <Block label="Tipo de usuarios">
+          <div role="group" aria-label="Tipo de usuarios" className="flex flex-wrap gap-2">
+            {IMPORT_TYPES.map((t) => {
+              const current = t === state.type;
+              const Icon = TYPE_ICONS[t];
+              return (
+                <button
+                  key={t}
+                  type="button"
+                  aria-pressed={current}
+                  disabled={busy}
+                  onClick={() => {
+                    if (current) return;
+                    const message = typeChangeMessage(state, t);
+                    dispatch({ type: 'TYPE_CHANGED', importType: t });
+                    if (message) announce(message);
+                    setTemplateError(null);
+                  }}
+                  className={cn(
+                    'inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-xl border px-4 text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-line-active disabled:cursor-not-allowed disabled:opacity-60',
+                    current
+                      ? 'border-brand bg-brand text-white shadow-sm'
+                      : 'border-line bg-background text-ink-2 hover:bg-brand-soft hover:text-brand',
+                  )}
+                >
+                  <Icon className="size-4" aria-hidden="true" />
+                  {TYPE_LABELS[t]}
+                </button>
+              );
+            })}
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <p className="text-sm text-muted-foreground">Columnas de la plantilla:</p>
+            <ul className="flex flex-wrap gap-1.5" aria-label="Columnas de la plantilla">
+              {TYPE_COLUMNS[state.type].map((c) => (
+                <li
+                  key={c.name}
+                  className={cn(
+                    'rounded-md px-2 py-0.5 font-mono text-xs',
+                    c.optional
+                      ? 'bg-amber-100 text-amber-900 dark:bg-amber-950/40 dark:text-amber-100'
+                      : 'bg-brand-soft text-brand',
+                  )}
+                >
+                  {c.name}
+                  {c.optional ? <span className="sr-only"> (opcional)</span> : null}
+                </li>
+              ))}
+            </ul>
+            <p className="text-xs text-muted-foreground">
+              <span className="mr-1 inline-block size-2 rounded-sm bg-brand-soft ring-1 ring-brand/30" />
+              Obligatoria
+              <span className="mr-1 ml-3 inline-block size-2 rounded-sm bg-amber-100 ring-1 ring-amber-400" />
+              Opcional
+            </p>
+          </div>
+        </Block>
 
-        <div className="flex flex-col gap-2">
+        <Block label="Descarga la plantilla">
           <p className="text-sm">
             Descarga la plantilla de {TYPE_LABELS[state.type].toLowerCase()}, llénala y guárdala sin
-            cambiar los encabezados.
+            cambiar los encabezados. La de Excel trae colores y una hoja de instrucciones.
           </p>
-          <div className="flex flex-col gap-2 sm:flex-row">
-            {(['xlsx', 'csv'] as const).map((format) => (
-              <Button
-                key={format}
-                type="button"
-                variant="outline"
-                className={TOUCH}
-                disabled={downloading !== null}
-                aria-busy={downloading === format || undefined}
-                onClick={() => void downloadTemplate(format)}
-              >
-                {downloading === format
-                  ? 'Descargando…'
-                  : format === 'xlsx'
-                    ? 'Descargar plantilla Excel (.xlsx)'
-                    : 'Descargar plantilla CSV'}
-              </Button>
-            ))}
+          <div className="grid gap-3 sm:grid-cols-2 sm:max-w-2xl">
+            {(['xlsx', 'csv'] as const).map((format) => {
+              const excel = format === 'xlsx';
+              const Icon = excel ? FileSpreadsheet : FileText;
+              return (
+                <button
+                  key={format}
+                  type="button"
+                  disabled={downloading !== null}
+                  aria-busy={downloading === format || undefined}
+                  onClick={() => void downloadTemplate(format)}
+                  className={cn(
+                    'group flex min-h-16 cursor-pointer items-center gap-3 rounded-xl border p-3 text-left transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-line-active disabled:cursor-not-allowed disabled:opacity-60',
+                    excel
+                      ? 'border-emerald-600/40 bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/30 dark:hover:bg-emerald-950/50'
+                      : 'border-line bg-brand-soft/50 hover:bg-brand-soft',
+                  )}
+                >
+                  <span
+                    className={cn(
+                      'grid size-10 shrink-0 place-items-center rounded-lg text-white',
+                      excel ? 'bg-emerald-700' : 'bg-brand',
+                    )}
+                  >
+                    <Icon className="size-5" aria-hidden="true" />
+                  </span>
+                  <span className="flex min-w-0 flex-1 flex-col">
+                    <span className="text-sm font-semibold">
+                      {downloading === format
+                        ? 'Descargando…'
+                        : excel
+                          ? 'Plantilla Excel (.xlsx)'
+                          : 'Plantilla CSV'}
+                    </span>
+                    <span className="text-xs text-muted-foreground">
+                      {excel ? 'Recomendada: con colores e instrucciones' : 'Solo los encabezados'}
+                    </span>
+                  </span>
+                  <Download
+                    className="size-4 shrink-0 text-muted-foreground group-hover:text-foreground"
+                    aria-hidden="true"
+                  />
+                </button>
+              );
+            })}
           </div>
           {templateError ? (
             <p className="text-sm text-destructive" role="alert">
               {templateError}
             </p>
           ) : null}
-        </div>
+        </Block>
 
-        <Alert role="note">
-          <AlertTitle>Privacidad</AlertTitle>
-          <AlertDescription>{PRIVACY_NOTICE}.</AlertDescription>
-        </Alert>
-
-        <TextField
-          key={inputKey}
-          name="file"
-          type="file"
-          label="Archivo (.xlsx o .csv)"
-          accept=".xlsx,.csv"
-          disabled={busy}
-          hint="Hasta 1 MiB y 1000 filas de datos."
-          error={state.fileError ?? undefined}
-          className="sm:max-w-md"
-          onChange={(e) => {
-            const chosen = e.currentTarget.files?.[0] ?? null;
-            const info = chosen ? { size: chosen.size, name: chosen.name } : null;
-            const fileError = info ? checkFile(info) : null;
-            dispatch({ type: 'FILE_CHANGED', file: info });
-            // Solo se guarda si pasa las comprobaciones de tamaño y extensión (sin leerlo).
-            file.current = chosen && fileError === null ? chosen : null;
-            // El error del campo se ve, pero no se oía (MEDIO de UX, INFORME 19).
-            if (fileError) announce(`Archivo rechazado: ${fileError}.`);
-          }}
-        />
-
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-          <Button
-            type="button"
-            className={TOUCH}
-            disabled={!canValidate(state)}
-            aria-busy={state.phase === 'validando' || undefined}
-            onClick={() => void validate()}
+        <Block label="Sube el archivo lleno">
+          <div
+            className={cn(
+              'relative flex min-h-32 flex-col items-center justify-center gap-1 rounded-xl border-2 border-dashed p-5 text-center transition-colors focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-line-active',
+              state.fileError
+                ? 'border-red-600 bg-red-50 dark:bg-red-950/30'
+                : fileName
+                  ? 'border-emerald-600 bg-emerald-50 dark:bg-emerald-950/30'
+                  : 'border-line bg-brand-soft/40 hover:bg-brand-soft',
+              busy && 'opacity-60',
+            )}
           >
-            {state.phase === 'validando' ? 'Validando…' : 'Validar'}
-          </Button>
-          {!state.hasFile && state.phase === 'idle' ? (
-            <p className="text-sm text-muted-foreground">Elige un archivo para validarlo.</p>
+            {fileName && !state.fileError ? (
+              <FileCheck2 className="size-7 text-emerald-700" aria-hidden="true" />
+            ) : state.fileError ? (
+              <TriangleAlert className="size-7 text-red-700" aria-hidden="true" />
+            ) : (
+              <Upload className="size-7 text-brand" aria-hidden="true" />
+            )}
+            <p className="text-sm font-semibold">
+              {fileName ?? 'Arrastra tu archivo aquí o haz clic para elegirlo'}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              {fileName
+                ? 'Haz clic para cambiar de archivo'
+                : '.xlsx o .csv · hasta 1 MiB y 1000 filas'}
+            </p>
+            <input
+              key={inputKey}
+              name="file"
+              type="file"
+              accept=".xlsx,.csv"
+              disabled={busy}
+              aria-label="Archivo (.xlsx o .csv)"
+              aria-invalid={state.fileError ? true : undefined}
+              aria-describedby={state.fileError ? 'importar-archivo-error' : undefined}
+              className="absolute inset-0 size-full cursor-pointer opacity-0 disabled:cursor-not-allowed"
+              onChange={(e) => {
+                const chosen = e.currentTarget.files?.[0] ?? null;
+                const info = chosen ? { size: chosen.size, name: chosen.name } : null;
+                const fileError = info ? checkFile(info) : null;
+                dispatch({ type: 'FILE_CHANGED', file: info });
+                // Solo se guarda si pasa las comprobaciones de tamaño y extensión (sin leerlo).
+                file.current = chosen && fileError === null ? chosen : null;
+                setFileName(chosen && fileError === null ? chosen.name : null);
+                // El error del campo se ve, pero no se oía (MEDIO de UX, INFORME 19).
+                if (fileError) announce(`Archivo rechazado: ${fileError}.`);
+              }}
+            />
+          </div>
+          {state.fileError ? (
+            <p id="importar-archivo-error" className="text-sm text-red-700 dark:text-red-300">
+              {state.fileError}
+            </p>
           ) : null}
-        </div>
+          <p className="flex items-center gap-2 text-xs text-muted-foreground">
+            <Lock className="size-3.5 shrink-0" aria-hidden="true" />
+            {PRIVACY_NOTICE}.
+          </p>
+
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <Button
+              type="button"
+              className={cn(TOUCH, 'gap-2 px-6')}
+              disabled={!canValidate(state)}
+              aria-busy={state.phase === 'validando' || undefined}
+              onClick={() => void validate()}
+            >
+              <ListChecks className="size-4" aria-hidden="true" />
+              {state.phase === 'validando' ? 'Validando…' : 'Validar archivo'}
+            </Button>
+            {!state.hasFile && state.phase === 'idle' ? (
+              <p className="text-sm text-muted-foreground">Elige un archivo para validarlo.</p>
+            ) : null}
+          </div>
+        </Block>
       </section>
 
       {state.message ? (
@@ -365,27 +499,34 @@ export function ImportScreen() {
             id={REPORT_TITLE_ID}
             ref={reportRef}
             tabIndex={-1}
-            className={cn('text-lg font-semibold', FOCUS_HEADING)}
+            className={cn('flex items-center gap-2.5 text-lg font-semibold', FOCUS_HEADING)}
           >
-            2. Resultado de la validación
+            <StepBadge n={2} tone="info" />
+            Resultado de la validación
           </h2>
           <dl className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-            <Total label="Filas leídas" value={state.report.totalRows} />
-            <Total label="Filas válidas" value={state.report.validRows} />
-            <Total label="Filas con errores" value={state.report.errorRows} />
+            <Total label="Filas leídas" value={state.report.totalRows} tone="info" />
+            <Total label="Filas válidas" value={state.report.validRows} tone="ok" />
+            <Total
+              label="Filas con errores"
+              value={state.report.errorRows}
+              tone={state.report.errorRows > 0 ? 'error' : 'neutral'}
+            />
           </dl>
           {state.report.canConfirm && state.phase !== 'reporte' ? (
-            <p className="text-sm">
+            <Notice tone="ok" icon={CheckCircle2}>
               {willCreateText(state.report.type, state.report.summary)}. Nada se crea hasta que
               confirmes.
-            </p>
+            </Notice>
           ) : state.report.canConfirm ? (
-            <p className="text-sm">Vuelve a validar el archivo antes de confirmar.</p>
+            <Notice tone="warn" icon={RefreshCw}>
+              Vuelve a validar el archivo antes de confirmar.
+            </Notice>
           ) : (
-            <p className="text-sm">
+            <Notice tone="error" icon={TriangleAlert}>
               Corrige las filas marcadas en tu archivo y vuelve a validarlo. No se importa nada
               mientras haya errores.
-            </p>
+            </Notice>
           )}
 
           {state.rowErrors.length > 0 ? (
@@ -396,11 +537,12 @@ export function ImportScreen() {
             <div>
               <Button
                 type="button"
-                className={TOUCH}
+                className={cn(TOUCH, 'gap-2 bg-emerald-700 text-white hover:bg-emerald-800')}
                 disabled={state.phase === 'confirmando'}
                 aria-busy={state.phase === 'confirmando' || undefined}
                 onClick={() => void confirm()}
               >
+                <CheckCircle2 className="size-4" aria-hidden="true" />
                 {state.phase === 'confirmando' ? 'Importando…' : 'Confirmar importación'}
               </Button>
             </div>
@@ -411,14 +553,17 @@ export function ImportScreen() {
       {state.phase === 'hecho' && state.result ? (
         <section
           aria-labelledby={DONE_TITLE_ID}
-          className="flex flex-col gap-3 rounded-xl border border-emerald-700 p-4 dark:border-emerald-400"
+          className="flex flex-col gap-3 rounded-xl border border-emerald-600/50 bg-emerald-50 p-5 dark:border-emerald-400/50 dark:bg-emerald-950/30"
         >
           <h2
             id={DONE_TITLE_ID}
             ref={doneRef}
             tabIndex={-1}
-            className={cn('text-lg font-semibold', FOCUS_HEADING)}
+            className={cn('flex items-center gap-2.5 text-lg font-semibold', FOCUS_HEADING)}
           >
+            <span className="grid size-8 place-items-center rounded-full bg-emerald-700 text-white">
+              <CheckCircle2 className="size-5" aria-hidden="true" />
+            </span>
             Importación completada
           </h2>
           <p className="text-sm">{createdText(state.result.type, state.result.created)}.</p>
@@ -464,12 +609,66 @@ export function ImportScreen() {
   );
 }
 
-function Total({ label, value }: { label: string; value: number }) {
+const TONES = {
+  info: 'bg-blue-50 ring-blue-200 text-blue-900 dark:bg-blue-950/30 dark:ring-blue-900 dark:text-blue-100',
+  ok: 'bg-emerald-50 ring-emerald-200 text-emerald-900 dark:bg-emerald-950/30 dark:ring-emerald-900 dark:text-emerald-100',
+  error:
+    'bg-red-50 ring-red-200 text-red-900 dark:bg-red-950/30 dark:ring-red-900 dark:text-red-100',
+  warn: 'bg-amber-50 ring-amber-300 text-amber-900 dark:bg-amber-950/30 dark:ring-amber-800 dark:text-amber-100',
+  neutral: 'ring-foreground/10',
+} as const;
+
+function Total({ label, value, tone }: { label: string; value: number; tone: keyof typeof TONES }) {
   return (
-    <div className="rounded-xl p-3 ring-1 ring-foreground/10">
-      <dt className="text-sm text-muted-foreground">{label}</dt>
+    <div className={cn('rounded-xl p-3 ring-1', TONES[tone])}>
+      <dt className="text-sm opacity-80">{label}</dt>
       <dd className="text-2xl font-semibold tabular-nums">{value}</dd>
     </div>
+  );
+}
+
+/** Bloque de un paso: etiqueta pequeña y contenido, con el estilo suave de las demás páginas. */
+function Block({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="flex flex-col gap-3 rounded-xl border border-line/70 bg-background/60 p-4">
+      <h3 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+        {label}
+      </h3>
+      {children}
+    </div>
+  );
+}
+
+/** Círculo numerado de cada paso. */
+function StepBadge({ n, tone }: { n: number; tone: 'brand' | 'info' }) {
+  return (
+    <span
+      aria-hidden="true"
+      className={cn(
+        'grid size-8 shrink-0 place-items-center rounded-full text-sm font-bold text-white',
+        tone === 'brand' ? 'bg-brand' : 'bg-blue-700',
+      )}
+    >
+      {n}
+    </span>
+  );
+}
+
+/** Mensaje de resultado en una caja de color con icono. */
+function Notice({
+  tone,
+  icon: Icon,
+  children,
+}: {
+  tone: 'ok' | 'warn' | 'error';
+  icon: LucideIcon;
+  children: ReactNode;
+}) {
+  return (
+    <p className={cn('flex items-start gap-2.5 rounded-xl p-3 text-sm ring-1', TONES[tone])}>
+      <Icon className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+      <span>{children}</span>
+    </p>
   );
 }
 
@@ -506,7 +705,10 @@ function RowErrors({ errors, truncated }: { errors: ImportRowError[]; truncated:
   const caption = `Errores por fila (${errors.length})`;
   return (
     <div className="flex flex-col gap-3">
-      <h3 className="text-base font-semibold">{caption}</h3>
+      <h3 className="flex items-center gap-2 text-base font-semibold text-red-800 dark:text-red-300">
+        <TriangleAlert className="size-4" aria-hidden="true" />
+        {caption}
+      </h3>
       {truncated ? (
         <Alert role="note">
           <AlertTitle>Hay más errores</AlertTitle>
@@ -521,7 +723,7 @@ function RowErrors({ errors, truncated }: { errors: ImportRowError[]; truncated:
         {errors.map((e, i) => (
           <li
             key={`${e.row}-${e.column ?? ''}-${e.code}-${i}`}
-            className="flex flex-col gap-1 rounded-xl p-3 ring-1 ring-foreground/10"
+            className="flex flex-col gap-1 rounded-xl border-l-4 border-l-red-700 bg-red-50 p-3 ring-1 ring-red-200 dark:bg-red-950/30 dark:ring-red-900"
           >
             <p className="text-sm font-semibold">
               Fila {e.row} · {columnLabel(e.column)}
@@ -535,7 +737,7 @@ function RowErrors({ errors, truncated }: { errors: ImportRowError[]; truncated:
         <Table>
           <TableCaption className="sr-only">{caption}</TableCaption>
           <TableHeader>
-            <TableRow>
+            <TableRow className="bg-red-50 hover:bg-red-50 dark:bg-red-950/30">
               <TableHead scope="col">Fila</TableHead>
               <TableHead scope="col">Columna</TableHead>
               <TableHead scope="col">Motivo</TableHead>

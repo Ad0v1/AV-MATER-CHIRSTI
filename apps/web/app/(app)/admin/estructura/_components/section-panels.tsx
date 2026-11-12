@@ -39,12 +39,19 @@ const CODE_HINT = 'De 1 a 8 letras o dígitos, sin tildes ni ñ (por ejemplo, A 
 // Botones de texto: 44 px en móvil (táctil) y 36 px en escritorio, para un resalte más delgado.
 const QUIET = 'px-3 md:min-h-9 text-ink-2 hover:bg-foreground/5 hover:text-foreground';
 
-export function CreateSectionForm({ yearId }: { yearId: string }) {
+export function CreateSectionForm({
+  yearId,
+  defaultLevel = 'SECUNDARIA',
+}: {
+  yearId: string;
+  /** Nivel preseleccionado (el de la pestaña activa). */
+  defaultLevel?: EducationLevel;
+}) {
   const [state, formAction] = useActionState(createSectionAction.bind(null, yearId), IDLE);
   const { formRef, alertRef } = useFormRefs(state);
   const initialLevel = state.values?.level;
   const [level, setLevel] = useState<EducationLevel>(
-    isEducationLevel(initialLevel) ? initialLevel : 'SECUNDARIA',
+    isEducationLevel(initialLevel) ? initialLevel : defaultLevel,
   );
   const grades = gradesForLevel(level);
   const savedGrade = Number(state.values?.gradeLevel);

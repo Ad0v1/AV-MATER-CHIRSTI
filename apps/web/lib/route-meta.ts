@@ -31,7 +31,7 @@ export const ROUTE_META = {
     description:
       'Estudiantes, docentes, administradores y apoderados. El rol de una cuenta no se puede cambiar.',
     container: ADMIN,
-    actions: 4,
+    actions: 2,
   },
   '/admin/anuncios': {
     title: 'Anuncios',

@@ -78,6 +78,11 @@ export function PendingNavProvider({ children }: { children: ReactNode }) {
   return <PendingNavContext.Provider value={value}>{children}</PendingNavContext.Provider>;
 }
 
+/** Destino de la navegación en curso (o null): el menú lo usa para resaltar al instante. */
+export function usePendingHref(): string | null {
+  return useContext(PendingNavContext).pendingHref;
+}
+
 /** Va dentro de un <Link>: informa al contexto mientras ese enlace está navegando. */
 export function NavPendingReporter({ href }: { href: string }) {
   const { pending } = useLinkStatus();

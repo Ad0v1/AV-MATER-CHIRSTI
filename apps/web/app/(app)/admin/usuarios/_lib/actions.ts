@@ -145,6 +145,40 @@ export async function searchUsersAction(_prev: SearchState, fd: FormData): Promi
   }
 }
 
+/** Resultado de `loadUsersAction`: la página de usuarios o un mensaje de error. */
+export type LoadUsersResult = { ok: true; result: UserListPage } | { ok: false; message: string };
+
+/**
+ * Una página de la lista de usuarios para la pantalla de /admin/usuarios: pestañas, filtros,
+ * búsqueda y paginación cambian sin recargar la página (el cliente guarda lo ya visto y precarga
+ * lo siguiente). Todo se vuelve a validar aquí: nada de lo que llega se manda tal cual a la API.
+ * El texto buscado viaja solo en el cuerpo del POST (decisión de seguridad 3 de la entrega 5a).
+ */
+export async function loadUsersAction(input: unknown): Promise<LoadUsersResult> {
+  const i = typeof input === 'object' && input !== null ? (input as Record<string, unknown>) : {};
+  const str = (key: string): string | undefined =>
+    typeof i[key] === 'string' ? i[key] : undefined;
+  const filters = parseUserFilters({
+    role: str('role'),
+    status: str('status'),
+    credentials: str('credentials'),
+    emailVerified: str('emailVerified'),
+    level: str('level'),
+    gradeLevel: str('gradeLevel'),
+    sectionId: str('sectionId'),
+    page: str('page'),
+  });
+  const search = normalizeSearch(str('q'));
+  try {
+    const result = await apiServer.get<UserListPage>(
+      `/users?${buildUserListQuery(filters, search.ok ? { q: search.q } : {})}`,
+    );
+    return { ok: true, result };
+  } catch (error) {
+    return { ok: false, message: toUserMessage(error) };
+  }
+}
+
 const STUDENT_SEARCH_SIZE = 20;
 
 /** Buscador de estudiantes para vincular a un apoderado (solo lo que se muestra). */

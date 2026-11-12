@@ -1,87 +1,81 @@
 'use client';
 
-// Filtros de la lista (RF-22): rol, estado y, solo con rol Estudiante, nivel, grado y sección del año
-// activo. Van en la URL (no son datos personales) con un formulario GET y navegación del cliente
-// (`next/form`). La búsqueda por nombre o correo NO va aquí: ver user-search.tsx.
-import Form from 'next/form';
-import Link from 'next/link';
-import { useState } from 'react';
+// Filtros de la lista (RF-22): estado, contraseña, correo y, con la pestaña Estudiantes, nivel,
+// grado y sección del año activo. Son controlados: al elegir una opción cambian el estado de la
+// pantalla (users-explorer.tsx) y la lista se actualiza al instante, sin recargar la página.
+// La búsqueda por nombre o correo NO va aquí: ver users-explorer.tsx.
+//
+// Las secciones del año activo (dos llamadas a la API) llegan en segundo plano como una promesa y
+// solo las necesita el filtro de sección; mientras llegan, ese selector aparece deshabilitado.
+import { Suspense, use } from 'react';
 import {
   EDUCATION_LEVELS,
   LEVEL_LABELS,
   gradeLabel,
   gradesForLevel,
   isEducationLevel,
-  type EducationLevel,
 } from '../../estructura/_lib/levels';
-import { buttonVariants } from '@/components/ui/button';
+import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { SelectField, SubmitButton } from '../../_shared/components/form-bits';
-import { TOUCH } from '../../_shared/components/styles';
+import { SelectField } from '../../_shared/components/form-bits';
+import { SOFT_FIELDS, TOUCH } from '../../_shared/components/styles';
 import { sectionLabel } from '../../estructura/_lib/format';
 import type { SectionOption } from '../_lib/types';
 import {
   CREDENTIAL_LABELS,
   CREDENTIAL_STATUSES,
-  ROLES,
-  ROLE_LABELS,
   STATUSES,
   STATUS_LABELS,
-  USERS_PATH,
   enrollTargets,
-  type UserFilters as Filters,
 } from '../_lib/users';
 
+/** Valores de los filtros como texto ('' = sin filtro). */
+export type FilterValues = {
+  status: string;
+  credentials: string;
+  emailVerified: string;
+  level: string;
+  gradeLevel: string;
+  sectionId: string;
+};
+
+export const NO_FILTERS: FilterValues = {
+  status: '',
+  credentials: '',
+  emailVerified: '',
+  level: '',
+  gradeLevel: '',
+  sectionId: '',
+};
+
 export function UserFilters({
-  filters,
+  values,
+  isStudent,
   sections,
+  onChange,
 }: {
-  filters: Filters;
-  /** Secciones del año activo (vacío si no hay año activo). */
-  sections: SectionOption[];
+  values: FilterValues;
+  /** Nivel, grado y sección solo aplican a la pestaña Estudiantes. */
+  isStudent: boolean;
+  /** Secciones del año activo; nunca rechaza (si falla, llega vacía). */
+  sections: Promise<SectionOption[]>;
+  onChange: (patch: Partial<FilterValues>) => void;
 }) {
-  const [role, setRole] = useState<string>(filters.role ?? '');
-  const [grade, setGrade] = useState<string>(
-    filters.gradeLevel !== undefined ? String(filters.gradeLevel) : '',
-  );
-  const [level, setLevel] = useState<EducationLevel | ''>(filters.level ?? '');
-  const isStudent = role === 'STUDENT';
-  const sectionOptions = enrollTargets(sections).filter(
-    (s) =>
-      (level === '' || (s.level ?? 'SECUNDARIA') === level) &&
-      (grade === '' || String(s.gradeLevel) === grade),
-  );
-  const hasFilters =
-    filters.role !== undefined ||
-    filters.status !== undefined ||
-    filters.credentials !== undefined ||
-    filters.emailVerified !== undefined ||
-    filters.level !== undefined ||
-    filters.gradeLevel !== undefined ||
-    filters.sectionId !== undefined;
+  const level = isEducationLevel(values.level) ? values.level : '';
+  const hasFilters = Object.values(values).some((v) => v !== '');
 
   return (
-    <Form
-      action={USERS_PATH}
+    <div
+      className={`flex flex-col gap-3 ${SOFT_FIELDS}`}
+      role="group"
       aria-label="Filtros de la lista"
-      className="flex flex-col gap-3 rounded-xl p-4 ring-1 ring-foreground/10"
     >
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <SelectField
-          name="role"
-          label="Rol"
-          value={role}
-          onChange={(e) => setRole(e.target.value)}
-          hint="Con Estudiante aparecen los filtros de nivel, grado y sección."
-          options={[
-            { value: '', label: 'Todos los roles' },
-            ...ROLES.map((r) => ({ value: r, label: ROLE_LABELS[r] })),
-          ]}
-        />
-        <SelectField
           name="status"
           label="Estado"
-          defaultValue={filters.status ?? ''}
+          value={values.status}
+          onChange={(e) => onChange({ status: e.target.value })}
           options={[
             { value: '', label: 'Todos los estados' },
             ...STATUSES.map((s) => ({ value: s, label: STATUS_LABELS[s] })),
@@ -90,8 +84,8 @@ export function UserFilters({
         <SelectField
           name="credentials"
           label="Contraseña"
-          defaultValue={filters.credentials ?? ''}
-          hint="Quién aún no cambió la contraseña inicial."
+          value={values.credentials}
+          onChange={(e) => onChange({ credentials: e.target.value })}
           options={[
             { value: '', label: 'Todas' },
             ...CREDENTIAL_STATUSES.map((c) => ({ value: c, label: CREDENTIAL_LABELS[c] })),
@@ -100,7 +94,8 @@ export function UserFilters({
         <SelectField
           name="emailVerified"
           label="Correo"
-          defaultValue={filters.emailVerified ?? ''}
+          value={values.emailVerified}
+          onChange={(e) => onChange({ emailVerified: e.target.value })}
           options={[
             { value: '', label: 'Todos' },
             { value: 'true', label: 'Verificado' },
@@ -113,11 +108,8 @@ export function UserFilters({
               name="level"
               label="Nivel"
               value={level}
-              onChange={(e) => {
-                const next = e.target.value;
-                setLevel(isEducationLevel(next) ? next : '');
-                setGrade('');
-              }}
+              // Cambiar el nivel reinicia grado y sección (dependen de él).
+              onChange={(e) => onChange({ level: e.target.value, gradeLevel: '', sectionId: '' })}
               options={[
                 { value: '', label: 'Todos los niveles' },
                 ...EDUCATION_LEVELS.map((l) => ({ value: l, label: LEVEL_LABELS[l] })),
@@ -127,8 +119,8 @@ export function UserFilters({
               <SelectField
                 name="gradeLevel"
                 label="Grado"
-                value={grade}
-                onChange={(e) => setGrade(e.target.value)}
+                value={values.gradeLevel}
+                onChange={(e) => onChange({ gradeLevel: e.target.value, sectionId: '' })}
                 options={[
                   { value: '', label: 'Todos los grados' },
                   ...gradesForLevel(level).map((g) => ({
@@ -138,39 +130,91 @@ export function UserFilters({
                 ]}
               />
             ) : null}
-            <SelectField
-              key={`${level}-${grade}`}
-              name="sectionId"
-              label="Sección (año activo)"
-              defaultValue={
-                sectionOptions.some((s) => s.id === filters.sectionId) ? filters.sectionId : ''
-              }
-              options={[
-                { value: '', label: 'Todas las secciones' },
-                ...sectionOptions.map((s) => ({
-                  value: s.id,
-                  label: sectionLabel(s.gradeLevel, s.code, s.level),
-                })),
-              ]}
-            />
+            <Suspense
+              fallback={<SectionSelect options={[]} value="" loading onChange={() => {}} />}
+            >
+              <LoadedSectionSelect
+                sections={sections}
+                level={level}
+                grade={values.gradeLevel}
+                value={values.sectionId}
+                onChange={(sectionId) => onChange({ sectionId })}
+              />
+            </Suspense>
           </>
         ) : null}
       </div>
-      <div className="flex flex-wrap gap-2">
-        <SubmitButton pendingText="Aplicando…">Aplicar filtros</SubmitButton>
-        {hasFilters ? (
-          <Link
-            href={USERS_PATH}
+      {hasFilters ? (
+        <div>
+          <Button
+            type="button"
+            variant="ghost"
+            onClick={() => onChange({ ...NO_FILTERS })}
             className={cn(
-              buttonVariants({ variant: 'outline' }),
               TOUCH,
-              'inline-flex items-center',
+              'px-3 text-ink-2 hover:bg-foreground/5 hover:text-foreground md:min-h-9',
             )}
           >
             Quitar filtros
-          </Link>
-        ) : null}
-      </div>
-    </Form>
+          </Button>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function LoadedSectionSelect({
+  sections,
+  level,
+  grade,
+  value,
+  onChange,
+}: {
+  sections: Promise<SectionOption[]>;
+  level: string;
+  grade: string;
+  value: string;
+  onChange: (sectionId: string) => void;
+}) {
+  const all = use(sections);
+  const options = enrollTargets(all)
+    .filter(
+      (s) =>
+        (level === '' || (s.level ?? 'SECUNDARIA') === level) &&
+        (grade === '' || String(s.gradeLevel) === grade),
+    )
+    .map((s) => ({ value: s.id, label: sectionLabel(s.gradeLevel, s.code, s.level) }));
+  return (
+    <SectionSelect
+      options={options}
+      value={options.some((o) => o.value === value) ? value : ''}
+      onChange={onChange}
+    />
+  );
+}
+
+function SectionSelect({
+  options,
+  value,
+  loading = false,
+  onChange,
+}: {
+  options: { value: string; label: string }[];
+  value: string;
+  loading?: boolean;
+  onChange: (sectionId: string) => void;
+}) {
+  return (
+    <SelectField
+      name="sectionId"
+      label="Sección (año activo)"
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      disabled={loading}
+      options={[
+        { value: '', label: loading ? 'Cargando secciones…' : 'Todas las secciones' },
+        ...options,
+      ]}
+    />
   );
 }

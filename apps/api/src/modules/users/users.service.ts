@@ -413,7 +413,7 @@ export class UsersService {
   }
 
   /**
-   * Ids de usuarios cuyo nombre o correo contiene `q` como texto literal. LOCATE no tiene
+   * Ids de usuarios cuyo nombre, correo o código contiene `q` como texto literal, o cuyo DNI es `q`. LOCATE no tiene
    * comodines (Prisma `contains` dejaría pasar % y _) y respeta la intercalación _ci.
    * Tope SEARCH_IDS_LIMIT: acota la lista de ids que luego va en el `IN` de Prisma; si una
    * búsqueda supera el tope, el total y las páginas se calculan sobre los primeros ids (por id).
@@ -424,7 +424,17 @@ export class UsersService {
       WHERE LOCATE(${q}, fullName) > 0 OR LOCATE(${q}, email) > 0
          OR LOCATE(${q}, contactEmail) > 0 OR LOCATE(${q}, code) > 0
       ORDER BY id LIMIT ${SEARCH_IDS_LIMIT}`;
-    return rows.map((r) => r.id);
+    const ids = rows.map((r) => r.id);
+    // DNI exacto (8 dígitos): solo se guarda cifrado y con un hash con clave, así que no admite
+    // coincidencias parciales; se compara el hash (único) y nunca se descifra nada.
+    if (/^\d{8}$/.test(q)) {
+      const byDni = await this.prisma.user.findUnique({
+        where: { dniHash: this.issuer.hashDni(q) },
+        select: { id: true },
+      });
+      if (byDni && !ids.includes(byDni.id)) ids.push(byDni.id);
+    }
+    return ids;
   }
 
   /** Sección vigente de cada estudiante en el año (para la lista). */

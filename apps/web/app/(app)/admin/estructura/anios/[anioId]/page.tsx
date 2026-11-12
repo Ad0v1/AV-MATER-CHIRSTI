@@ -11,7 +11,8 @@ import {
   Section,
   StatusBadge,
 } from '@/app/(app)/admin/_shared/components/page-bits';
-import { CreateSectionForm, SectionItem } from '../../_components/section-panels';
+import { LevelTabs } from '../../_components/level-tabs';
+import { SectionItem } from '../../_components/section-panels';
 import { PeriodPanel, YearActions } from '../../_components/year-panels';
 import { canOfferClone } from '../../_lib/clone';
 import { getYear, listSections } from '../../_lib/data';
@@ -20,7 +21,12 @@ import { FOCUS_HEADING, focusIds } from '../../_lib/focus';
 import { formatInstant, yearStatus } from '../../_lib/format';
 import type { List, SectionView, YearDetail } from '../../_lib/types';
 import { isUuid } from '../../_lib/validation';
-import type { EducationLevel } from '../../_lib/levels';
+import {
+  EDUCATION_LEVELS,
+  LEVEL_LABELS,
+  isEducationLevel,
+  type EducationLevel,
+} from '../../_lib/levels';
 import { ApiError } from '@/lib/api/errors';
 import { cn } from '@/lib/utils';
 
@@ -28,11 +34,14 @@ const LEVEL_ORDER: Record<EducationLevel, number> = { INICIAL: 0, PRIMARIA: 1, S
 
 export const metadata = { title: 'Año académico' };
 
-export default function Page({ params }: PageProps<'/admin/estructura/anios/[anioId]'>) {
+export default function Page({
+  params,
+  searchParams,
+}: PageProps<'/admin/estructura/anios/[anioId]'>) {
   return (
     <PageShell>
       <Suspense fallback={<RouteLoading bare />}>
-        <YearView params={params} />
+        <YearView params={params} searchParams={searchParams} />
       </Suspense>
     </PageShell>
   );
@@ -40,8 +49,15 @@ export default function Page({ params }: PageProps<'/admin/estructura/anios/[ani
 
 const CRUMB_ROOT = { href: '/admin/estructura', label: 'Estructura académica' };
 
-async function YearView({ params }: { params: Promise<{ anioId: string }> }) {
+async function YearView({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ anioId: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const { anioId } = await params;
+  const rawLevel = (await searchParams).nivel;
   if (!isUuid(anioId)) {
     return (
       <>
@@ -75,6 +91,46 @@ async function YearView({ params }: { params: Promise<{ anioId: string }> }) {
       a.gradeLevel - b.gradeLevel ||
       a.code.localeCompare(b.code, 'es'),
   );
+
+  // Pestaña activa: la elegida en la URL o, si no hay, el primer nivel que tenga secciones.
+  const counts = Object.fromEntries(
+    EDUCATION_LEVELS.map((l) => [l, sorted.filter((s) => s.level === l).length]),
+  ) as Record<EducationLevel, number>;
+  const requested = Array.isArray(rawLevel) ? rawLevel[0] : rawLevel;
+  const activeLevel: EducationLevel = isEducationLevel(requested)
+    ? requested
+    : (EDUCATION_LEVELS.find((l) => counts[l] > 0) ?? 'INICIAL');
+  const lists = Object.fromEntries(
+    EDUCATION_LEVELS.map((l) => [
+      l,
+      <ul key={l} className="mt-2 flex flex-col">
+        {sorted
+          .filter((s) => s.level === l)
+          .map((s) => (
+            <li key={s.id} className="border-b border-line/60 py-4 first:pt-1 last:border-b-0">
+              <SectionItem
+                section={s}
+                yearId={year.id}
+                readOnly={year.readOnly}
+                badge={
+                  <StatusBadge tone={s.isActive ? 'active' : 'inactive'}>
+                    {s.isActive ? 'Activa' : 'Inactiva'}
+                  </StatusBadge>
+                }
+              />
+            </li>
+          ))}
+      </ul>,
+    ]),
+  ) as Record<EducationLevel, ReactNode>;
+  const emptyText = Object.fromEntries(
+    EDUCATION_LEVELS.map((l) => [
+      l,
+      sorted.length === 0
+        ? 'Este año aún no tiene secciones.'
+        : `Este año no tiene secciones de ${LEVEL_LABELS[l].toLowerCase()}.`,
+    ]),
+  ) as Record<EducationLevel, string>;
 
   return (
     <>
@@ -167,27 +223,14 @@ async function YearView({ params }: { params: Promise<{ anioId: string }> }) {
             ) : null}
           </div>
         ) : null}
-        {year.readOnly ? null : <CreateSectionForm yearId={year.id} />}
-        {sorted.length === 0 ? (
-          <p className="text-sm text-muted-foreground">Este año aún no tiene secciones.</p>
-        ) : (
-          <ul className="mt-2 flex flex-col">
-            {sorted.map((s) => (
-              <li key={s.id} className="border-b border-line/60 py-4 first:pt-1 last:border-b-0">
-                <SectionItem
-                  section={s}
-                  yearId={year.id}
-                  readOnly={year.readOnly}
-                  badge={
-                    <StatusBadge tone={s.isActive ? 'active' : 'inactive'}>
-                      {s.isActive ? 'Activa' : 'Inactiva'}
-                    </StatusBadge>
-                  }
-                />
-              </li>
-            ))}
-          </ul>
-        )}
+        <LevelTabs
+          yearId={year.id}
+          initial={activeLevel}
+          counts={counts}
+          canCreate={!year.readOnly}
+          emptyText={emptyText}
+          lists={lists}
+        />
       </Section>
     </>
   );

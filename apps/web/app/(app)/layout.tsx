@@ -2,9 +2,11 @@ import { Suspense } from 'react';
 import { redirect } from 'next/navigation';
 import { AppSidebar } from '@/components/layout/app-sidebar';
 import { AppShellLoadingSkeleton } from '@/components/layout/page-loading-skeleton';
+import { DevRouteWarmup } from '@/components/layout/dev-route-warmup';
 import { PendingContent, PendingNavProvider } from '@/components/layout/pending-nav';
 import { RouteTransition } from '@/components/layout/route-transition';
 import { SidebarInset, SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar';
+import { NAV_BY_ROLE } from '@/lib/nav';
 import { ONBOARDING_ROUTES } from '@/lib/onboarding';
 import { requireUser } from '@/lib/session';
 import { NotificationBell } from './_notifications/notification-bell';
@@ -30,6 +32,7 @@ async function AuthenticatedShell({ children }: { children: React.ReactNode }) {
   return (
     <SidebarProvider data-app-shell="">
       <PendingNavProvider>
+        <DevRouteWarmup hrefs={NAV_BY_ROLE[user.role].flatMap((g) => g.items.map((i) => i.href))} />
         <AppSidebar role={user.role} />
         {/* Transparente: deja ver el fondo global de globals.css (body::before). */}
         <SidebarInset className="bg-transparent">

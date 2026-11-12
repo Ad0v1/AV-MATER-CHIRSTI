@@ -14,11 +14,14 @@ import {
   SidebarMenuItem,
 } from '@/components/ui/sidebar';
 import { NAV_BY_ROLE } from '@/lib/nav';
-import { NavPendingReporter } from './pending-nav';
+import { NavPendingReporter, usePendingHref } from './pending-nav';
 import type { Role } from '@/lib/roles';
 
 export function SidebarNav({ role }: { role: Role }) {
   const pathname = usePathname();
+  // Con una navegación en curso se resalta ya el destino, sin esperar a que cargue la página.
+  const pendingHref = usePendingHref();
+  const current = pendingHref ?? pathname;
 
   return NAV_BY_ROLE[role].map((group) => (
     <SidebarGroup key={group.label} className="px-1.5 py-1.5">
@@ -30,7 +33,7 @@ export function SidebarNav({ role }: { role: Role }) {
           {group.items.map((item) => (
             <SidebarMenuItem key={item.href}>
               <SidebarMenuButton
-                isActive={pathname === item.href || pathname.startsWith(`${item.href}/`)}
+                isActive={current === item.href || current.startsWith(`${item.href}/`)}
                 tooltip={item.label}
                 render={<Link href={item.href} aria-label={item.label} />}
                 className="h-10 rounded-xl border-l-[3px] border-transparent pr-3 pl-[9px] text-[0.9rem] font-medium text-white/80 transition-colors data-active:border-gold data-active:bg-white/10 data-active:font-semibold data-active:text-white [&>svg]:text-white/65 data-active:[&>svg]:text-white"
