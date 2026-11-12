@@ -5,7 +5,7 @@ import type { ReactNode } from 'react';
 
 const PUBLIC_PATHS = new Set([
   '/login',
-  '/recuperar',
+  '/recuperar-contrasena',
   '/verificar-correo',
   '/politica-de-privacidad',
   '/cambiar-clave',

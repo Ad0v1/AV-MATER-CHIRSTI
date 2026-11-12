@@ -254,7 +254,7 @@ export function VerifyEmailForm({ role, homePath }: { role: Role; homePath: stri
 
 // Cuenta regresiva de la vigencia del código: barra que se vacía y tiempo en mm:ss. Cambia de color
 // al acercarse el final y, al vencer, avisa y explica qué hacer.
-function CodeTimer({ remaining, total }: { remaining: number; total: number }) {
+export function CodeTimer({ remaining, total }: { remaining: number; total: number }) {
   const expired = remaining === 0;
   const low = remaining <= 60;
   const urgent = remaining <= 30;
@@ -360,7 +360,7 @@ function Stepper({ step }: { step: 'email' | 'code' }) {
 }
 
 // Seis casillas visuales sobre un único input real: acepta pegar, autocompletar y teclado numérico.
-function CodeInput({
+export function CodeInput({
   id,
   value,
   onChange,
@@ -413,11 +413,11 @@ function CodeInput({
   );
 }
 
-function Spinner() {
+export function Spinner() {
   return <Loader2 className="animate-spin motion-reduce:animate-none" aria-hidden="true" />;
 }
 
-function ErrorBox({ message }: { message: string | null }) {
+export function ErrorBox({ message }: { message: string | null }) {
   if (!message) return null;
   return (
     <p

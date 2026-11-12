@@ -221,7 +221,7 @@ export function LoginForm() {
       )}
 
       <Link
-        href="/recuperar"
+        href="/recuperar-contrasena"
         className="min-h-11 justify-self-end py-2 text-sm font-medium text-brand underline-offset-4 transition-colors hover:underline focus-visible:rounded-sm focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring"
       >
         ¿Olvidaste tu contraseña?

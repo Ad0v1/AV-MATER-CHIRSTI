@@ -1,6 +1,6 @@
 'use client';
 
-import Link from 'next/link';
+import Link, { useLinkStatus } from 'next/link';
 import Image from 'next/image';
 import { usePathname } from 'next/navigation';
 import {
@@ -80,10 +80,7 @@ export function AppSidebar({ role }: { role: Role }) {
                         <item.icon className="size-[1.125rem]" aria-hidden="true" />
                       </span>
                       <span className="min-w-0 flex-1 truncate">{item.label}</span>
-                      <span
-                        aria-hidden="true"
-                        className="mr-1 size-1.5 shrink-0 rounded-full bg-gold opacity-0 group-data-active/nav:opacity-100 group-data-[collapsible=icon]:hidden"
-                      />
+                      <NavDot />
                     </SidebarMenuButton>
                   </SidebarMenuItem>
                 ))}
@@ -96,5 +93,20 @@ export function AppSidebar({ role }: { role: Role }) {
         <LogoutButton />
       </SidebarFooter>
     </Sidebar>
+  );
+}
+
+// Punto del enlace: marca la ruta activa y, apenas se hace clic, late mientras la página carga.
+function NavDot() {
+  const { pending } = useLinkStatus();
+  return (
+    <span
+      aria-hidden="true"
+      className={`mr-1 size-1.5 shrink-0 rounded-full bg-gold group-data-[collapsible=icon]:hidden ${
+        pending
+          ? 'animate-pulse opacity-100 motion-reduce:animate-none'
+          : 'opacity-0 group-data-active/nav:opacity-100'
+      }`}
+    />
   );
 }

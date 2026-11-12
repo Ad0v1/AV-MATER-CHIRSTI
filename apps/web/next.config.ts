@@ -10,6 +10,10 @@ const nextConfig: NextConfig = {
   partialPrefetching: true,
   // Oculta el circulo "N" de Next en desarrollo; los errores de compilacion se siguen mostrando.
   devIndicators: false,
+  async redirects() {
+    // URL anterior de la recuperación de contraseña.
+    return [{ source: '/recuperar', destination: '/recuperar-contrasena', permanent: true }];
+  },
   async rewrites() {
     return [{ source: '/api/v1/:path*', destination: `${API_URL}/api/v1/:path*` }];
   },
