@@ -2,6 +2,7 @@ import { Suspense } from 'react';
 import { redirect } from 'next/navigation';
 import { AppSidebar } from '@/components/layout/app-sidebar';
 import { AppShellLoadingSkeleton } from '@/components/layout/page-loading-skeleton';
+import { PendingContent, PendingNavProvider } from '@/components/layout/pending-nav';
 import { RouteTransition } from '@/components/layout/route-transition';
 import { SidebarInset, SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar';
 import { ONBOARDING_ROUTES } from '@/lib/onboarding';
@@ -28,19 +29,23 @@ async function AuthenticatedShell({ children }: { children: React.ReactNode }) {
 
   return (
     <SidebarProvider data-app-shell="">
-      <AppSidebar role={user.role} />
-      {/* Transparente: deja ver el fondo global de globals.css (body::before). */}
-      <SidebarInset className="bg-transparent">
-        {/* Topbar fijo y sólido: el fondo de imagen solo se ve debajo de él. */}
-        <header className="sticky top-0 z-20 flex h-12 shrink-0 items-center gap-2 border-b bg-surface px-4">
-          <SidebarTrigger />
-          {/* RF-53 (Dev 5): campana de avisos, cambio mínimo autorizado el 06/11/2026. */}
-          <div className="ml-auto">
-            <NotificationBell role={user.role} />
-          </div>
-        </header>
-        <RouteTransition>{children}</RouteTransition>
-      </SidebarInset>
+      <PendingNavProvider>
+        <AppSidebar role={user.role} />
+        {/* Transparente: deja ver el fondo global de globals.css (body::before). */}
+        <SidebarInset className="bg-transparent">
+          {/* Topbar fijo y sólido: el fondo de imagen solo se ve debajo de él. */}
+          <header className="sticky top-0 z-20 flex h-12 shrink-0 items-center gap-2 border-b bg-surface px-4">
+            <SidebarTrigger />
+            {/* RF-53 (Dev 5): campana de avisos, cambio mínimo autorizado el 06/11/2026. */}
+            <div className="ml-auto">
+              <NotificationBell role={user.role} />
+            </div>
+          </header>
+          <RouteTransition>
+            <PendingContent>{children}</PendingContent>
+          </RouteTransition>
+        </SidebarInset>
+      </PendingNavProvider>
     </SidebarProvider>
   );
 }

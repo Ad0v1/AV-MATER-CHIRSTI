@@ -1,9 +1,10 @@
 // /admin/estructura/anios/[anioId] — año, períodos y secciones (RF-10..13, RF-15, RF-16; RN-10, RN-11).
 import Link from 'next/link';
-import { Suspense } from 'react';
+import { RouteLoading } from '@/components/layout/route-loading';
+import { Suspense, type ReactNode } from 'react';
+import { ArrowRight } from 'lucide-react';
 import {
   LoadError,
-  LoadingBlock,
   PageHeader,
   PageShell,
   ReadOnlyNotice,
@@ -16,7 +17,7 @@ import { canOfferClone } from '../../_lib/clone';
 import { getYear, listSections } from '../../_lib/data';
 import { canOfferPromotion } from '../../_lib/promotion-machine';
 import { FOCUS_HEADING, focusIds } from '../../_lib/focus';
-import { formatInstant, sectionLabel, yearStatus } from '../../_lib/format';
+import { formatInstant, yearStatus } from '../../_lib/format';
 import type { List, SectionView, YearDetail } from '../../_lib/types';
 import { isUuid } from '../../_lib/validation';
 import type { EducationLevel } from '../../_lib/levels';
@@ -30,7 +31,7 @@ export const metadata = { title: 'Año académico' };
 export default function Page({ params }: PageProps<'/admin/estructura/anios/[anioId]'>) {
   return (
     <PageShell>
-      <Suspense fallback={<LoadingBlock rows={6} label="Cargando el año académico…" />}>
+      <Suspense fallback={<RouteLoading bare />}>
         <YearView params={params} />
       </Suspense>
     </PageShell>
@@ -110,24 +111,24 @@ async function YearView({ params }: { params: Promise<{ anioId: string }> }) {
         title="Períodos"
         description="Con un período cerrado no se crean, editan ni califican actividades. Solo se reabren períodos del año activo."
       >
-        <ol className="grid gap-4 md:grid-cols-2">
+        <ol className="flex flex-col">
           {[...year.periods]
             .sort((a, b) => a.sequence - b.sequence)
             .map((p) => (
               <li
                 key={p.id}
-                className="flex flex-col gap-3 rounded-xl p-4 ring-1 ring-foreground/10"
+                className="flex flex-col gap-2 border-b border-line/60 py-5 first:pt-1 last:border-b-0"
               >
-                <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-3">
                   <h3
                     id={focusIds.period(p.id)}
                     tabIndex={-1}
-                    className={cn('font-semibold', FOCUS_HEADING)}
+                    className={cn('text-base font-semibold', FOCUS_HEADING)}
                   >
                     {p.label}
                   </h3>
                   <StatusBadge tone={p.closedAt ? 'closed' : p.isOpen ? 'active' : 'inactive'}>
-                    {p.closedAt ? 'Cerrado' : p.isOpen ? 'Abierto' : 'Sin cerrar (año no activo)'}
+                    {p.closedAt ? 'Cerrado' : p.isOpen ? 'Abierto' : 'Sin cerrar'}
                   </StatusBadge>
                 </div>
                 <PeriodPanel
@@ -146,56 +147,67 @@ async function YearView({ params }: { params: Promise<{ anioId: string }> }) {
         title="Secciones"
         description={`${sections.total} ${sections.total === 1 ? 'sección' : 'secciones'} en ${year.year}.`}
       >
-        {canOfferClone(year, sections.total) ? (
-          <p className="text-sm">
-            <Link
-              href={`/admin/estructura/anios/${encodeURIComponent(year.id)}/clonar`}
-              className="inline-flex min-h-11 items-center underline underline-offset-4"
-            >
-              Copiar la estructura de un año anterior
-            </Link>{' '}
-            <span className="text-muted-foreground">(secciones y cursos, sin matrículas).</span>
-          </p>
-        ) : null}
-        {canOfferPromotion(year, sections.items) ? (
-          <p className="text-sm">
-            <Link
-              href={`/admin/estructura/anios/${encodeURIComponent(year.id)}/promocion`}
-              className="inline-flex min-h-11 items-center underline underline-offset-4"
-            >
-              Promover estudiantes de {year.year - 1} a {year.year}
-            </Link>{' '}
-            <span className="text-muted-foreground">(propuesta que revisas y confirmas).</span>
-          </p>
+        {canOfferClone(year, sections.total) || canOfferPromotion(year, sections.items) ? (
+          <div className="flex flex-col">
+            {canOfferClone(year, sections.total) ? (
+              <Shortcut
+                href={`/admin/estructura/anios/${encodeURIComponent(year.id)}/clonar`}
+                hint="Secciones y cursos, sin matrículas."
+              >
+                Copiar la estructura de un año anterior
+              </Shortcut>
+            ) : null}
+            {canOfferPromotion(year, sections.items) ? (
+              <Shortcut
+                href={`/admin/estructura/anios/${encodeURIComponent(year.id)}/promocion`}
+                hint="Propuesta que revisas y confirmas."
+              >
+                Promover estudiantes de {year.year - 1} a {year.year}
+              </Shortcut>
+            ) : null}
+          </div>
         ) : null}
         {year.readOnly ? null : <CreateSectionForm yearId={year.id} />}
         {sorted.length === 0 ? (
           <p className="text-sm text-muted-foreground">Este año aún no tiene secciones.</p>
         ) : (
-          <ul className="flex flex-col gap-3">
+          <ul className="mt-2 flex flex-col">
             {sorted.map((s) => (
-              <li
-                key={s.id}
-                className="flex flex-col gap-3 rounded-xl p-4 ring-1 ring-foreground/10"
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <h3
-                    id={focusIds.section(s.id)}
-                    tabIndex={-1}
-                    className={cn('font-semibold', FOCUS_HEADING)}
-                  >
-                    Sección {sectionLabel(s.gradeLevel, s.code, s.level)}
-                  </h3>
-                  <StatusBadge tone={s.isActive ? 'active' : 'inactive'}>
-                    {s.isActive ? 'Activa' : 'Inactiva'}
-                  </StatusBadge>
-                </div>
-                <SectionItem section={s} yearId={year.id} readOnly={year.readOnly} />
+              <li key={s.id} className="border-b border-line/60 py-4 first:pt-1 last:border-b-0">
+                <SectionItem
+                  section={s}
+                  yearId={year.id}
+                  readOnly={year.readOnly}
+                  badge={
+                    <StatusBadge tone={s.isActive ? 'active' : 'inactive'}>
+                      {s.isActive ? 'Activa' : 'Inactiva'}
+                    </StatusBadge>
+                  }
+                />
               </li>
             ))}
           </ul>
         )}
       </Section>
     </>
+  );
+}
+
+/** Atajo hacia un asistente: enlace de texto con flecha y una frase que explica qué hace. */
+function Shortcut({ href, hint, children }: { href: string; hint: string; children: ReactNode }) {
+  return (
+    <div className="flex flex-wrap items-center gap-x-3">
+      <Link
+        href={href}
+        className="group/atajo inline-flex min-h-11 items-center md:min-h-9 gap-1.5 rounded-md text-sm font-medium text-brand hover:underline hover:underline-offset-4 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-line-active"
+      >
+        {children}
+        <ArrowRight
+          className="size-4 transition-transform group-hover/atajo:translate-x-0.5 motion-reduce:transition-none"
+          aria-hidden="true"
+        />
+      </Link>
+      <span className="text-sm text-muted-foreground">{hint}</span>
+    </div>
   );
 }

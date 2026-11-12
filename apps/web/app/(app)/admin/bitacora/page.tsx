@@ -2,6 +2,7 @@
 // layout de /admin y la API). Filtros en la URL; 50 filas por página.
 import Link from 'next/link';
 import { Suspense } from 'react';
+import { ROUTE_META } from '@/lib/route-meta';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { LoadError, LoadingBlock, PageHeader, PageShell } from '../_shared/components/page-bits';
 import { PageNav, pageControlClass } from '../usuarios/_components/user-list';
@@ -23,8 +24,8 @@ export default function Page({ searchParams }: PageProps<'/admin/bitacora'>) {
   return (
     <PageShell>
       <PageHeader
-        title="Bitácora"
-        description="Quién hizo qué y cuándo. No se puede editar ni borrar. «Modo soporte» marca a un administrador que actuó en contenidos, entregas o notas."
+        title={ROUTE_META['/admin/bitacora'].title}
+        description={ROUTE_META['/admin/bitacora'].description}
       />
       <Suspense fallback={<LoadingBlock rows={6} label="Cargando bitácora…" />}>
         <AuditView searchParams={searchParams} />

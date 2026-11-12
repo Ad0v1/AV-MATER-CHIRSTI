@@ -1,6 +1,7 @@
 // /admin/usuarios/nuevo/estudiante — alta de estudiante con matrícula en una sección activa del
 // año activo (RF-18). Solo ADMIN (lo exige la API).
 import { Suspense } from 'react';
+import { ROUTE_META } from '@/lib/route-meta';
 import {
   LoadError,
   LoadingBlock,
@@ -19,9 +20,9 @@ export default function Page() {
   return (
     <PageShell>
       <PageHeader
-        title="Nuevo estudiante"
-        description="Crea la cuenta y la matrícula en el año activo a la vez."
-        crumbs={[{ href: USERS_PATH, label: 'Usuarios' }, { label: 'Nuevo estudiante' }]}
+        title={ROUTE_META['/admin/usuarios/nuevo/estudiante'].title}
+        description={ROUTE_META['/admin/usuarios/nuevo/estudiante'].description}
+        crumbs={ROUTE_META['/admin/usuarios/nuevo/estudiante'].crumbs}
       />
       <Suspense fallback={<LoadingBlock rows={4} label="Cargando las secciones…" />}>
         <FormWithSections />

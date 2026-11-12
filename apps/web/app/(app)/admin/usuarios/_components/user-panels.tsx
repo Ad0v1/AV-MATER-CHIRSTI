@@ -5,6 +5,7 @@
 // Tras el éxito, el resultado se anuncia en la región de estado y el foco va al encabezado de la
 // sección afectada (ux-accesibilidad, Decisiones 1–3 de 5a).
 import { useActionState, useEffect, useState } from 'react';
+import { restrictDigits } from '@/lib/digits';
 import { useAnnounce } from '../../_shared/components/action-feedback';
 import { ConfirmAction } from '../../_shared/components/confirm-action';
 import {
@@ -365,6 +366,7 @@ export function CorrectDniForm({ userId }: { userId: string }) {
           name="dni"
           label="DNI correcto"
           inputMode="numeric"
+          onInput={restrictDigits}
           autoComplete="off"
           required
           maxLength={DNI_LENGTH}
@@ -375,6 +377,7 @@ export function CorrectDniForm({ userId }: { userId: string }) {
           name="dniConfirm"
           label="Escribe el DNI otra vez"
           inputMode="numeric"
+          onInput={restrictDigits}
           autoComplete="off"
           required
           maxLength={DNI_LENGTH}

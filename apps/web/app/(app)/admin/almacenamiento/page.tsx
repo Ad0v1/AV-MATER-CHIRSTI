@@ -3,6 +3,7 @@
 // ADMIN (layout de /admin y la API). La purga no tiene botón: es automática e irreversible.
 import Form from 'next/form';
 import { Suspense } from 'react';
+import { ROUTE_META } from '@/lib/route-meta';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { cn } from '@/lib/utils';
 import {
@@ -34,8 +35,8 @@ export default function Page({ searchParams }: PageProps<'/admin/almacenamiento'
   return (
     <PageShell>
       <PageHeader
-        title="Almacenamiento"
-        description="Espacio usado por los PDF, respaldos de cada año y exportación de datos personales."
+        title={ROUTE_META['/admin/almacenamiento'].title}
+        description={ROUTE_META['/admin/almacenamiento'].description}
       />
       <Suspense fallback={<LoadingBlock rows={5} label="Cargando almacenamiento…" />}>
         <StorageView searchParams={searchParams} />

@@ -1,10 +1,10 @@
 // /admin/estructura/anios/[anioId]/secciones/[seccionId] — cursos de la sección y su docente
 // (RF-17, D-029; RN-11 solo lectura).
+import { RouteLoading } from '@/components/layout/route-loading';
 import { Suspense } from 'react';
 import { CourseSectionItem, AddCourseForm } from '../../../../_components/course-section-panels';
 import {
   LoadError,
-  LoadingBlock,
   PageHeader,
   PageShell,
   ReadOnlyNotice,
@@ -39,7 +39,7 @@ export default function Page({
 }: PageProps<'/admin/estructura/anios/[anioId]/secciones/[seccionId]'>) {
   return (
     <PageShell>
-      <Suspense fallback={<LoadingBlock rows={5} label="Cargando la sección…" />}>
+      <Suspense fallback={<RouteLoading bare />}>
         <SectionDetail params={params} />
       </Suspense>
     </PageShell>

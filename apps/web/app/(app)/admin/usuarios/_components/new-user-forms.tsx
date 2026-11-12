@@ -4,6 +4,7 @@
 // (RF-69). Al crear, la pantalla muestra una sola vez el código y la contraseña inicial
 // (RF-70): no se redirige con ellas en la URL. Los campos conservan lo escrito si la API falla.
 import { useActionState, useState } from 'react';
+import { restrictDigits } from '@/lib/digits';
 import {
   FormMessage,
   SelectField,
@@ -67,6 +68,7 @@ function DniFields({
         name={dni}
         label={`DNI de ${who}`}
         inputMode="numeric"
+        onInput={restrictDigits}
         autoComplete="off"
         required
         maxLength={DNI_LENGTH}
@@ -78,6 +80,7 @@ function DniFields({
         name={confirm}
         label="Escribe el DNI otra vez"
         inputMode="numeric"
+        onInput={restrictDigits}
         autoComplete="off"
         required
         maxLength={DNI_LENGTH}

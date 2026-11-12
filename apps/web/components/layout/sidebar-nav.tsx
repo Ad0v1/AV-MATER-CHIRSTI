@@ -14,6 +14,7 @@ import {
   SidebarMenuItem,
 } from '@/components/ui/sidebar';
 import { NAV_BY_ROLE } from '@/lib/nav';
+import { NavPendingReporter } from './pending-nav';
 import type { Role } from '@/lib/roles';
 
 export function SidebarNav({ role }: { role: Role }) {
@@ -36,6 +37,7 @@ export function SidebarNav({ role }: { role: Role }) {
               >
                 <item.icon className="size-[1.125rem]" />
                 <span className="min-w-0 flex-1 truncate">{item.label}</span>
+                <NavPendingReporter href={item.href} />
               </SidebarMenuButton>
             </SidebarMenuItem>
           ))}

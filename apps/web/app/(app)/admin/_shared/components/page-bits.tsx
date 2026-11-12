@@ -1,8 +1,8 @@
 // Piezas de presentación sin estado (Server Components) de las pantallas de administración.
 import Link from 'next/link';
+import { Breadcrumbs } from '@/components/layout/breadcrumbs';
 import type { ReactNode } from 'react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ApiError, toUserMessage } from '@/lib/api/errors';
 import { cn } from '@/lib/utils';
@@ -30,32 +30,12 @@ export function PageHeader({
 }: {
   title: string;
   description?: ReactNode;
-  crumbs?: Crumb[];
+  crumbs?: readonly Crumb[];
   actions?: ReactNode;
 }) {
   return (
     <header className="flex flex-col gap-3">
-      {crumbs.length > 0 ? (
-        <nav aria-label="Ruta de navegación">
-          <ol className="flex flex-wrap items-center gap-1 text-sm text-muted-foreground">
-            {crumbs.map((c, i) => (
-              <li key={`${c.label}-${i}`} className="flex items-center gap-1">
-                {c.href ? (
-                  <Link
-                    href={c.href}
-                    className="underline underline-offset-4 hover:text-foreground"
-                  >
-                    {c.label}
-                  </Link>
-                ) : (
-                  <span aria-current="page">{c.label}</span>
-                )}
-                {i < crumbs.length - 1 ? <span aria-hidden="true">/</span> : null}
-              </li>
-            ))}
-          </ol>
-        </nav>
-      ) : null}
+      <Breadcrumbs crumbs={crumbs} />
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="flex flex-col gap-1">
           <h1
@@ -108,19 +88,40 @@ export function Section({
   );
 }
 
-const TONE_CLASS: Record<StatusTone, string> = {
-  active: 'border-transparent bg-emerald-700 text-white',
-  closed: 'border-transparent bg-zinc-700 text-white dark:bg-zinc-300 dark:text-zinc-950',
-  inactive: 'border-zinc-400 text-zinc-800 dark:text-zinc-200',
-  future: 'border-sky-700 text-sky-900 dark:border-sky-400 dark:text-sky-100',
+// Estado en una pastilla suave (fondo tenue y punto de color), sin rellenos sólidos ni contornos.
+// El estado va siempre como texto; el punto solo refuerza.
+const TONE_CLASS: Record<StatusTone, { pill: string; dot: string }> = {
+  active: {
+    pill: 'bg-emerald-50 text-emerald-900 dark:bg-emerald-950 dark:text-emerald-100',
+    dot: 'bg-emerald-600',
+  },
+  closed: {
+    pill: 'bg-zinc-100 text-zinc-800 dark:bg-zinc-800 dark:text-zinc-100',
+    dot: 'bg-zinc-500',
+  },
+  inactive: {
+    pill: 'bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-200',
+    dot: 'bg-zinc-400',
+  },
+  future: {
+    pill: 'bg-sky-50 text-sky-900 dark:bg-sky-950 dark:text-sky-100',
+    dot: 'bg-sky-600',
+  },
 };
 
 /** Estado como texto (no solo color). */
 export function StatusBadge({ tone, children }: { tone: StatusTone; children: ReactNode }) {
+  const t = TONE_CLASS[tone];
   return (
-    <Badge variant="outline" className={cn('h-6 px-2.5 text-xs', TONE_CLASS[tone])}>
+    <span
+      className={cn(
+        'inline-flex h-6 items-center gap-1.5 rounded-full px-2.5 text-xs font-medium whitespace-nowrap',
+        t.pill,
+      )}
+    >
+      <span aria-hidden="true" className={cn('size-1.5 rounded-full', t.dot)} />
       {children}
-    </Badge>
+    </span>
   );
 }
 

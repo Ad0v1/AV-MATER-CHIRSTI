@@ -110,10 +110,15 @@ export function RecoveryCodesView({
         })}
       </ul>
       <div className="flex flex-col gap-2 sm:flex-row">
-        <Button type="button" variant="outline" className="min-h-11" onClick={() => void copy()}>
+        <Button
+          type="button"
+          variant="outline"
+          className="min-h-11 md:min-h-9"
+          onClick={() => void copy()}
+        >
           Copiar
         </Button>
-        <Button type="button" variant="outline" className="min-h-11" onClick={download}>
+        <Button type="button" variant="outline" className="min-h-11 md:min-h-9" onClick={download}>
           Descargar (.txt)
         </Button>
       </div>

@@ -2,7 +2,7 @@ import type { NextConfig } from 'next';
 
 // Origen interno de la API (NestJS). El navegador nunca lo ve: llama a /api/v1 en el mismo origen
 // de la web y Next reenvia la peticion. Asi la cookie de sesion queda en un solo origen.
-const API_URL = process.env.API_URL ?? 'http://localhost:4000';
+const API_URL = process.env.API_URL ?? 'http://127.0.0.1:4000';
 
 // Origen del bucket (MinIO en local, R2 en produccion) para la CSP: las URL firmadas de logo,
 // visor de PDF y subidas directas (PUT) apuntan ahi. Sale de la configuracion de S3, nunca fijo.

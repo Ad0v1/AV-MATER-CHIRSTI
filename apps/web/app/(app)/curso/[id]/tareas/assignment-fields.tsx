@@ -3,6 +3,7 @@
 // Campos comunes de crear y editar tarea (Dev 3, RF-28/29). Mismas validaciones
 // (assignment-format.ts) y accesibilidad (INFORME 15): aria-invalid + aria-describedby por campo.
 // `prefix` hace únicos los id cuando hay varios formularios en la página.
+import { onlyDecimal, onlyDigits } from '@/lib/digits';
 import { describedBy, FieldError, INVALID_FIELD } from '../_materials/form-feedback';
 import {
   DEFAULT_MAX_MIB,
@@ -131,9 +132,10 @@ export function AssignmentFields(props: {
             <input
               id={`${p}-grade`}
               inputMode="decimal"
+              autoComplete="off"
               className={field}
               value={v.noSubmissionGrade}
-              onChange={(e) => onChange({ noSubmissionGrade: e.target.value })}
+              onChange={(e) => onChange({ noSubmissionGrade: onlyDecimal(e.target.value) })}
               {...a11y('noSubmissionGrade', `${p}-grade-hint`)}
             />
             <FieldError id={errorId('noSubmissionGrade')} message={errors.noSubmissionGrade} />
@@ -149,13 +151,15 @@ export function AssignmentFields(props: {
             </label>
             <input
               id={`${p}-size`}
-              type="number"
-              min={1}
-              max={MAX_MIB_CAP}
-              step={1}
+              inputMode="numeric"
+              pattern="[0-9]*"
+              maxLength={String(MAX_MIB_CAP).length}
+              autoComplete="off"
               className={field}
               value={v.maxSizeMiB}
-              onChange={(e) => onChange({ maxSizeMiB: e.target.value })}
+              onChange={(e) =>
+                onChange({ maxSizeMiB: onlyDigits(e.target.value, String(MAX_MIB_CAP).length) })
+              }
               {...a11y('maxSizeMiB', `${p}-size-hint`)}
             />
             <FieldError id={errorId('maxSizeMiB')} message={errors.maxSizeMiB} />

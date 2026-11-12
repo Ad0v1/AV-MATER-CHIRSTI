@@ -3,6 +3,7 @@
 // para que el texto no quede en la URL ni en el historial (decisión de seguridad 3 de 5a).
 import Link from 'next/link';
 import { Suspense } from 'react';
+import { ROUTE_META } from '@/lib/route-meta';
 import { buttonVariants } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { LoadError, LoadingBlock, PageHeader, PageShell } from '../_shared/components/page-bits';
@@ -31,8 +32,8 @@ export default function Page({ searchParams }: PageProps<'/admin/usuarios'>) {
   return (
     <PageShell>
       <PageHeader
-        title="Usuarios"
-        description="Estudiantes, docentes, administradores y apoderados. El rol de una cuenta no se puede cambiar."
+        title={ROUTE_META['/admin/usuarios'].title}
+        description={ROUTE_META['/admin/usuarios'].description}
         actions={
           <>
             <Link href={`${USERS_PATH}/nuevo/estudiante`} className={linkButton('default')}>

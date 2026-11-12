@@ -39,7 +39,7 @@ export function SubmitButton({
 }: {
   children: ReactNode;
   pendingText?: string;
-  variant?: 'default' | 'outline' | 'destructive' | 'secondary';
+  variant?: 'default' | 'outline' | 'destructive' | 'secondary' | 'ghost';
   className?: string;
 }) {
   const { pending } = useFormStatus();

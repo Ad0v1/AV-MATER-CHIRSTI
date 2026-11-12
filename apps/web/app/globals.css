@@ -256,6 +256,11 @@
   animation: loading-appear 200ms var(--ease-enter) 150ms both;
 }
 
+/* Cambio de módulo: el skeleton se ve al instante (sin espera) para confirmar el clic. */
+.loading-instant {
+  animation: loading-appear 120ms var(--ease-enter) both;
+}
+
 /* Cierre de sesión: el contenido se va (ease-in) antes de volver al login. */
 @keyframes leave-app {
   to {

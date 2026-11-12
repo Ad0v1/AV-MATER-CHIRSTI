@@ -3,6 +3,7 @@
 // Formulario de nota, NE o exoneración (RF-41, RF-42, RF-45, RF-46). Errores por campo con
 // aria-invalid y foco al primero; error general en role="alert"; éxito en role="status".
 import { useId, useRef, useState, useTransition } from 'react';
+import { onlyDecimal } from '@/lib/digits';
 import {
   describedBy,
   FieldError,
@@ -189,7 +190,7 @@ export function GradeForm(props: GradeFormProps) {
             inputMode="decimal"
             autoComplete="off"
             value={value}
-            onChange={(e) => setValue(e.target.value)}
+            onChange={(e) => setValue(onlyDecimal(e.target.value))}
             aria-invalid={errors.value ? true : undefined}
             aria-describedby={describedBy(ids.valueHint, errors.value && ids.valueErr)}
             className={`${FIELD} max-w-32`}

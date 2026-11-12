@@ -1,5 +1,6 @@
 // /admin/estructura/anios/nuevo — crear año académico con sus 4 períodos (RF-09, RF-10).
 import { Suspense } from 'react';
+import { ROUTE_META } from '@/lib/route-meta';
 import { NewYearForm } from '../../_components/new-year-form';
 import {
   LoadError,
@@ -15,12 +16,9 @@ export default function Page() {
   return (
     <PageShell>
       <PageHeader
-        title="Nuevo año académico"
-        description="El año se crea en preparación. Después podrás agregar secciones y activarlo."
-        crumbs={[
-          { href: '/admin/estructura', label: 'Estructura académica' },
-          { label: 'Nuevo año' },
-        ]}
+        title={ROUTE_META['/admin/estructura/anios/nuevo'].title}
+        description={ROUTE_META['/admin/estructura/anios/nuevo'].description}
+        crumbs={ROUTE_META['/admin/estructura/anios/nuevo'].crumbs}
       />
       <Suspense fallback={<LoadingBlock rows={4} label="Preparando el formulario…" />}>
         <FormWithSuggestion />

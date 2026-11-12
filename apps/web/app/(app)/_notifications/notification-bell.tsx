@@ -6,7 +6,7 @@
 // atrapado (Escape cierra), objetivos de 44 px y región de estado para los resultados.
 import { useCallback, useEffect, useRef, useState, useTransition } from 'react';
 import Link from 'next/link';
-import { Bell } from 'lucide-react';
+import { Bell, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Sheet,
@@ -125,15 +125,21 @@ export function NotificationBell({ role }: { role: Role }) {
           if (next) void load(1);
         }}
       >
+        {/* Botón compacto: 36 px y circular, para que el resalte al pasar el cursor sea discreto. */}
         <SheetTrigger
-          render={<Button variant="ghost" className="relative min-h-11 min-w-11" />}
+          render={
+            <Button
+              variant="ghost"
+              className="relative size-9 min-h-9 min-w-9 rounded-full p-0 text-ink-2 hover:bg-foreground/5 hover:text-foreground"
+            />
+          }
           aria-label={label.aria}
         >
-          <Bell aria-hidden="true" />
+          <Bell className="size-5" aria-hidden="true" />
           {label.badge ? (
             <span
               aria-hidden="true"
-              className="absolute top-1 right-1 min-w-5 rounded-full bg-danger px-1 text-center text-[0.7rem] leading-5 font-semibold text-white ring-2 ring-background"
+              className="absolute top-0.5 right-0.5 grid h-4 min-w-4 place-items-center rounded-full bg-danger px-1 text-[0.6875rem] leading-none font-semibold text-white tabular-nums ring-2 ring-surface"
             >
               {label.badge}
             </span>
@@ -142,75 +148,97 @@ export function NotificationBell({ role }: { role: Role }) {
         <SheetContent
           side="right"
           showCloseButton={false}
-          className="w-full max-w-full overflow-y-auto sm:max-w-sm"
+          className="w-full max-w-full gap-0 overflow-y-auto sm:max-w-sm"
         >
-          <SheetHeader className="flex-row items-start justify-between gap-2">
+          <SheetHeader className="flex-row items-start justify-between gap-3 border-b border-line px-5 py-4">
             <div>
-              <SheetTitle className="text-base font-semibold">Avisos</SheetTitle>
+              <SheetTitle className="text-lg font-semibold">Avisos</SheetTitle>
               <SheetDescription className="text-sm text-muted-foreground">
-                {unread > 0 ? `${unread} sin leer` : 'No tienes avisos sin leer'}
+                {unread > 0 ? `${unread} sin leer` : 'Estás al día'}
               </SheetDescription>
             </div>
-            <SheetClose render={<Button variant="outline" className="min-h-11 px-4" />}>
-              Cerrar
+            <SheetClose
+              render={
+                <Button
+                  variant="ghost"
+                  aria-label="Cerrar avisos"
+                  className="-mr-2 size-9 min-h-9 min-w-9 rounded-full p-0 text-ink-2 hover:bg-foreground/5"
+                />
+              }
+            >
+              <X className="size-5" aria-hidden="true" />
             </SheetClose>
           </SheetHeader>
 
-          <div className="flex flex-col gap-3 px-4 pb-4">
+          <div className="flex flex-col px-2 pb-4">
             {unread > 0 ? (
-              <Button
-                type="button"
-                variant="outline"
-                className="min-h-11 self-start px-4"
-                onClick={markAll}
-                aria-disabled={pending || undefined}
-              >
-                Marcar todos como leídos
-              </Button>
+              <div className="flex justify-end px-3 pt-2">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="h-9 px-2 text-sm font-medium text-brand hover:bg-brand-soft"
+                  onClick={markAll}
+                  aria-disabled={pending || undefined}
+                >
+                  Marcar todos como leídos
+                </Button>
+              </div>
             ) : null}
-            <div role="status" aria-live="polite" className="text-sm">
+            <div role="status" aria-live="polite" className="px-3 text-sm text-muted-foreground">
               {status}
             </div>
-            <div role="alert" className={error ? 'text-sm text-destructive' : undefined}>
+            <div role="alert" className={error ? 'px-3 text-sm text-destructive' : undefined}>
               {error ? <p>{error}</p> : null}
             </div>
 
             {!page ? (
-              <p className="text-sm text-muted-foreground">Cargando avisos…</p>
+              <p className="px-3 py-6 text-sm text-muted-foreground">Cargando avisos…</p>
             ) : page.items.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No tienes avisos.</p>
+              <div className="flex flex-col items-center px-6 py-16 text-center">
+                <span className="grid size-12 place-items-center rounded-full bg-brand-soft text-brand">
+                  <Bell className="size-6" aria-hidden="true" />
+                </span>
+                <p className="mt-4 text-base font-semibold">No tienes avisos</p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Aquí aparecerán los avisos del colegio.
+                </p>
+              </div>
             ) : (
-              <ul className="flex flex-col divide-y rounded-md border">
+              <ul className="flex flex-col py-1">
                 {page.items.map((n) => {
                   const href = notificationHref(n, role);
                   const body = (
                     <>
-                      <span className="flex items-start gap-2">
-                        {n.readAt ? null : (
-                          <span
-                            aria-hidden="true"
-                            className="mt-1.5 size-2 shrink-0 rounded-full bg-primary"
-                          />
-                        )}
-                        <span className={`break-words ${n.readAt ? '' : 'font-medium'}`}>
+                      <span className="flex items-start gap-2.5">
+                        <span
+                          aria-hidden="true"
+                          className={`mt-2 size-2 shrink-0 rounded-full ${
+                            n.readAt ? 'bg-transparent' : 'bg-brand'
+                          }`}
+                        />
+                        <span
+                          className={`break-words ${
+                            n.readAt ? 'text-muted-foreground' : 'font-medium text-foreground'
+                          }`}
+                        >
                           {n.readAt ? '' : <span className="sr-only">Sin leer: </span>}
                           {n.message}
                         </span>
                       </span>
                       <time
                         dateTime={n.createdAt}
-                        className="mt-1 block text-xs text-muted-foreground"
+                        className="mt-1 block pl-[1.125rem] text-xs text-muted-foreground"
                       >
                         {formatWhen(n.createdAt)}
                       </time>
                     </>
                   );
                   return (
-                    <li key={n.id}>
+                    <li key={n.id} className="border-b border-line/60 last:border-b-0">
                       {href ? (
                         <Link
                           href={href}
-                          className="block min-h-11 p-3 text-sm hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                          className="block rounded-lg px-3 py-3 text-sm transition-colors hover:bg-foreground/5 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-line-active motion-reduce:transition-none"
                           onClick={() => {
                             markOne(n);
                             setOpen(false);
@@ -219,13 +247,13 @@ export function NotificationBell({ role }: { role: Role }) {
                           {body}
                         </Link>
                       ) : (
-                        <div className="p-3 text-sm">
+                        <div className="px-3 py-3 text-sm">
                           {body}
                           {n.readAt ? null : (
                             <Button
                               type="button"
                               variant="link"
-                              className="mt-1 min-h-11 px-0"
+                              className="mt-1 h-9 pr-0 pl-[1.125rem] text-brand"
                               onClick={() => markOne(n)}
                               aria-label={`Marcar como leído: ${n.message.slice(0, 60)}`}
                             >
@@ -241,23 +269,26 @@ export function NotificationBell({ role }: { role: Role }) {
             )}
 
             {page && pages > 1 ? (
-              <nav aria-label="Páginas de avisos" className="flex items-center gap-2 text-sm">
+              <nav
+                aria-label="Páginas de avisos"
+                className="mt-2 flex items-center justify-between gap-2 px-3 text-sm"
+              >
                 <Button
                   type="button"
-                  variant="outline"
-                  className="min-h-11 px-4"
+                  variant="ghost"
+                  className="h-9 px-3"
                   disabled={page.page <= 1}
                   onClick={() => void load(page.page - 1)}
                 >
                   Anterior
                 </Button>
-                <span>
+                <span className="text-muted-foreground tabular-nums">
                   {page.page} de {pages}
                 </span>
                 <Button
                   type="button"
-                  variant="outline"
-                  className="min-h-11 px-4"
+                  variant="ghost"
+                  className="h-9 px-3"
                   disabled={page.page >= pages}
                   onClick={() => void load(page.page + 1)}
                 >

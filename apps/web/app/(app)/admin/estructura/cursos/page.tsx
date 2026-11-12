@@ -1,5 +1,6 @@
 // /admin/estructura/cursos — catálogo de cursos (RF-14).
 import { Suspense } from 'react';
+import { ROUTE_META } from '@/lib/route-meta';
 import { CourseItem, CreateCourseForm } from '../_components/course-panels';
 import {
   LoadError,
@@ -20,9 +21,9 @@ export default function Page() {
   return (
     <PageShell>
       <PageHeader
-        title="Catálogo de cursos"
-        description="Cursos que se pueden asignar a las secciones de cualquier año."
-        crumbs={[{ href: '/admin/estructura', label: 'Estructura académica' }, { label: 'Cursos' }]}
+        title={ROUTE_META['/admin/estructura/cursos'].title}
+        description={ROUTE_META['/admin/estructura/cursos'].description}
+        crumbs={ROUTE_META['/admin/estructura/cursos'].crumbs}
       />
       <CreateCourseForm />
       <Suspense fallback={<LoadingBlock rows={5} label="Cargando cursos…" />}>

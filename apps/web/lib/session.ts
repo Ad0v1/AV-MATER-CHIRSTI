@@ -16,7 +16,7 @@ export type SessionUser = {
   mustCompleteContact: boolean;
 };
 
-const API_URL = process.env.API_URL ?? 'http://localhost:4000';
+const API_URL = process.env.API_URL ?? 'http://127.0.0.1:4000';
 
 // Pregunta a la API quien es el usuario de la cookie. La sesion vive solo en la API (Redis):
 // aqui no se decodifica nada, y siempre se consulta en cada peticion, sin cache (RNF-02).
