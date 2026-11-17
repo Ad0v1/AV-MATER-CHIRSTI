@@ -9,7 +9,6 @@ const PUBLIC_PATHS = new Set([
   '/verificar-correo',
   '/politica-de-privacidad',
   '/cambiar-clave',
-  '/mi-perfil',
   '/verificacion-dos-pasos',
 ]);
 

@@ -2,7 +2,7 @@
 
 // B1 (Dev 1, RF-08): barra de secciones del curso. Es navegacion (enlaces), no un tablist ARIA.
 // La activa lleva aria-current="page" y se marca con borde inferior y peso, no solo con color.
-import { useEffect, useRef } from 'react';
+import { useLayoutEffect, useRef } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
@@ -13,7 +13,8 @@ export function CourseTabs({ role, courseSectionId }: { role: Role; courseSectio
   const pathname = usePathname();
   const ref = useRef<HTMLElement>(null);
   // En pantallas estrechas, deja visible la pestaña activa sin mover la pagina en vertical.
-  useEffect(() => {
+  // Antes de pintar: la barra aparece ya desplazada hasta la pestaña activa, sin salto visible.
+  useLayoutEffect(() => {
     ref.current
       ?.querySelector('[aria-current="page"]')
       ?.scrollIntoView({ inline: 'nearest', block: 'nearest' });
