@@ -246,14 +246,15 @@
   background-color: var(--gold);
 }
 
-/* Carga: el skeleton aparece tras 150 ms para no parpadear en cargas rápidas. */
+/* Carga: el skeleton aparece tras 350 ms para no parpadear en cargas rápidas. */
 @keyframes loading-appear {
   from {
     opacity: 0;
   }
 }
 .loading-appear {
-  animation: loading-appear 200ms var(--ease-enter) 150ms both;
+  /* Solo aparece si la carga pasa de 350 ms: las navegaciones rápidas no muestran un destello. */
+  animation: loading-appear 160ms var(--ease-enter) 350ms both;
 }
 
 /* Cambio de módulo: el skeleton se ve al instante (sin espera) para confirmar el clic. */
