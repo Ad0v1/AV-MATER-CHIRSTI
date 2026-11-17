@@ -50,7 +50,7 @@
   /* Textos */
   --ink: #20242c;
   --ink-2: #5f6877;
-  --ink-3: #697386;
+  --ink-3: #667085; /* AA: 4,68:1 sobre canvas (antes #697386, 4,49:1) */
   --ink-disabled: #98a2b3;
   --ink-inverse: #ffffff;
 

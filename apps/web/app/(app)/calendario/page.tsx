@@ -8,6 +8,8 @@ import { requireRole } from '@/lib/session';
 import { DeadlineCalendar } from './_components/deadline-calendar';
 import type { GuardianStudent } from './_lib/calendar';
 
+export const metadata = { title: ROUTE_META['/calendario'].title };
+
 export default function Page() {
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-4 p-4 md:p-8">

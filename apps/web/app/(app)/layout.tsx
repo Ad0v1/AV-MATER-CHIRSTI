@@ -42,7 +42,7 @@ async function AuthenticatedShell({ children }: { children: React.ReactNode }) {
         <SidebarInset className="bg-transparent">
           {/* Topbar fijo y sólido: el fondo de imagen solo se ve debajo de él. */}
           <header className="sticky top-0 z-20 flex h-12 shrink-0 items-center gap-2 border-b bg-surface px-4">
-            <SidebarTrigger />
+            <SidebarTrigger className="size-11 md:size-8" />
             {/* RF-53 (Dev 5): campana de avisos, cambio mínimo autorizado el 06/11/2026. */}
             <div className="ml-auto">
               <NotificationBell role={user.role} />
