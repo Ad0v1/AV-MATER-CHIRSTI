@@ -12,24 +12,24 @@ Documentos de referencia: `docs/00_INICIO_Y_MAPA.md` (quién hace qué), `docs/0
 
 ## Agentes
 
-| Agente                   | Cuándo llamarlo                                                               |
-| ------------------------ | ----------------------------------------------------------------------------- |
-| `arquitecto-integrador`  | Siempre primero en el flujo completo: plan y chequeo de contratos             |
-| `modelador-bd`           | Si el plan pide cambios en `prisma/schema/`                                   |
-| `dev1-plataforma`        | Auth, guards, bitácora, layout, Docker, CI (RF-01..08)                        |
-| `dev2-estructura`        | Años, períodos, secciones, cursos, usuarios, seed (RF-09..25)                 |
-| `dev3-contenidos`        | Materiales, tareas, entregas, almacenamiento (RF-26..31, 33..40)              |
-| `dev4-calificaciones`    | Notas, NE, exoneración, registro, mis notas, apoderado (RF-41..52, RN-01..07) |
-| `dev5-administracion`    | Anuncios, reportes, notificaciones, ciclo de vida, worker (RF-32, 53..67)     |
-| `qa-tester`              | Después de implementar                                                        |
-| `seguridad-cumplimiento` | Después de QA, si hay endpoints, permisos, archivos o datos personales        |
-| `ux-accesibilidad`       | Después de QA, si hay pantallas                                               |
-| `revisor-pr`             | Antes de dar la tarea por terminada                                           |
-| `documentador`           | Al final, si cambió algo visible para usuarios o la API                       |
-| `director-diseno`        | Una vez, para fijar `docs/diseno/guia.md` (Sonnet, esfuerzo alto)             |
-| `disenador-ui`           | Antes del dev si hay pantallas: especificación o maqueta (Sonnet, medio)      |
-| `revisor-visual`         | Después de QA si hay pantallas: web real con Playwright MCP (Sonnet, bajo)    |
-| `revisor-movimiento`     | Después de QA solo si hay animaciones (Sonnet, bajo)                          |
+| Agente                   | Cuándo llamarlo                                                                                                |
+| ------------------------ | -------------------------------------------------------------------------------------------------------------- |
+| `arquitecto-integrador`  | Siempre primero en el flujo completo: plan y chequeo de contratos                                              |
+| `modelador-bd`           | Si el plan pide cambios en `prisma/schema/`                                                                    |
+| `dev1-plataforma`        | Auth, guards, bitácora, layout, Docker, CI (RF-01..08)                                                         |
+| `dev2-estructura`        | Años, períodos, secciones, cursos, usuarios, seed (RF-09..25)                                                  |
+| `dev3-contenidos`        | Materiales, tareas, entregas, almacenamiento (RF-26..31, 33..40)                                               |
+| `dev4-calificaciones`    | Notas, NE, exoneración, registro, mis notas, apoderado (RF-41..52, RN-01..07)                                  |
+| `dev5-administracion`    | Anuncios, reportes, notificaciones, ciclo de vida, worker (RF-32, 53..67)                                      |
+| `qa-tester`              | Después de implementar                                                                                         |
+| `seguridad-cumplimiento` | Después de QA, si hay endpoints, permisos, archivos o datos personales                                         |
+| `ux-accesibilidad`       | Después de QA, si hay pantallas                                                                                |
+| `revisor-pr`             | Antes de dar la tarea por terminada                                                                            |
+| `documentador`           | Al final, si cambió algo visible para usuarios o la API                                                        |
+| `director-diseno`        | Una vez, para fijar `docs/diseno/guia.md` (Sonnet, esfuerzo alto)                                              |
+| `disenador-ui`           | Antes del dev si hay pantallas: especificación o maqueta (Sonnet, medio)                                       |
+| `revisor-visual`         | Después de QA si hay pantallas: web real con Playwright MCP normal y con prefers-reduced-motion (Sonnet, bajo) |
+| `revisor-movimiento`     | Después de QA solo si hay animaciones (Sonnet, bajo)                                                           |
 
 **Flujo con pantallas:** arquitecto → `disenador-ui` → dev → qa → seguridad ∥ ux-accesibilidad ∥ revisor-visual (∥ revisor-movimiento) → revisor-pr. Después de cada avance de pantallas, levanta la web (`preview_start` api y web) y muéstrale al usuario lo nuevo.
 

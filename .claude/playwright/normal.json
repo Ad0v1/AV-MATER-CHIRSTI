@@ -1,0 +1,11 @@
+{
+  "browser": {
+    "browserName": "chromium",
+    "launchOptions": { "headless": true },
+    "contextOptions": {
+      "viewport": { "width": 1280, "height": 800 },
+      "locale": "es-PE",
+      "reducedMotion": "no-preference"
+    }
+  }
+}
