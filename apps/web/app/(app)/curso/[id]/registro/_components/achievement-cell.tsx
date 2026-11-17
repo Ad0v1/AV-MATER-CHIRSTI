@@ -4,6 +4,8 @@
 // El docente lo elige viendo los literales de las tareas como apoyo. Errores en role="alert" y
 // éxito en role="status"; objetivos táctiles de 44 px (usable desde 360 px).
 import { useId, useState, useTransition } from 'react';
+import { Button } from '@/components/ui/button';
+import { Disclosure } from '@/components/ui/disclosure';
 import { saveAchievement } from '../_lib/actions';
 import { COMMENT_MAX, GRADE_LITERALS, literalLabel } from '../_lib/grading-format';
 import type { GradeLiteral, PeriodAchievement } from '../_lib/types';
@@ -49,10 +51,7 @@ export function AchievementCell(props: AchievementCellProps) {
   };
 
   return (
-    <details>
-      <summary className="min-h-11 cursor-pointer rounded-md py-2 font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-        {current}
-      </summary>
+    <Disclosure summary={current} summaryClassName="py-2">
       <form onSubmit={submit} noValidate aria-label={`Logro del bimestre de ${props.studentName}`}>
         <fieldset
           aria-invalid={message !== null && literal === '' ? true : undefined}
@@ -87,13 +86,13 @@ export function AchievementCell(props: AchievementCellProps) {
           onChange={(e) => setComment(e.target.value)}
           className="mt-1 block w-full min-w-40 rounded-md border bg-background px-2 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         />
-        <button
+        <Button
           type="submit"
           aria-disabled={pending}
-          className="mt-2 inline-flex min-h-11 md:min-h-9 items-center rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground"
+          className="mt-2 h-auto min-h-11 px-3 md:min-h-9"
         >
           {pending ? 'Guardando…' : 'Guardar logro'}
-        </button>
+        </Button>
         {message && (
           <p id={`${id}-err`} role="alert" className="mt-1 text-xs text-destructive">
             {message}
@@ -103,6 +102,6 @@ export function AchievementCell(props: AchievementCellProps) {
           {saved && !pending ? 'Logro guardado.' : ''}
         </p>
       </form>
-    </details>
+    </Disclosure>
   );
 }

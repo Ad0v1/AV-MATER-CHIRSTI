@@ -5,6 +5,7 @@
 // Tras el éxito, el resultado se anuncia en la región de estado y el foco va al encabezado de la
 // sección afectada (ux-accesibilidad, Decisiones 1–3 de 5a).
 import { useActionState, useEffect, useState } from 'react';
+import { Disclosure } from '@/components/ui/disclosure';
 import { restrictDigits } from '@/lib/digits';
 import { useAnnounce } from '../../_shared/components/action-feedback';
 import { ConfirmAction } from '../../_shared/components/confirm-action';
@@ -56,10 +57,7 @@ export function EditUserForm({ userId, fullName }: { userId: string; fullName: s
   const [state, formAction] = useActionState(updateUserAction.bind(null, userId), IDLE);
   const { formRef, alertRef } = useFormRefs(state);
   return (
-    <details className="rounded-xl p-3 ring-1 ring-foreground/10">
-      <summary className="min-h-11 cursor-pointer content-center text-sm font-medium">
-        Editar el nombre
-      </summary>
+    <Disclosure className="rounded-xl border border-line bg-surface p-3" summary="Editar el nombre">
       <form ref={formRef} action={formAction} noValidate className="mt-3 flex flex-col gap-3">
         <TextField
           name="fullName"
@@ -78,7 +76,7 @@ export function EditUserForm({ userId, fullName }: { userId: string; fullName: s
           <SubmitButton>Guardar datos</SubmitButton>
         </div>
       </form>
-    </details>
+    </Disclosure>
   );
 }
 
@@ -121,7 +119,7 @@ export function StatusAction({
             ]}
           />
           {role === 'STUDENT' ? (
-            <p className="rounded-md border border-amber-300 bg-amber-50 px-2.5 py-2 text-sm text-amber-950 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-100">
+            <p className="rounded-md border border-warning/30 bg-warning-soft px-2.5 py-2 text-sm text-warning">
               Atención: pasar a <strong>Retirado</strong> cierra sus matrículas vigentes.
             </p>
           ) : null}
@@ -156,7 +154,7 @@ export function EnrollForm({
       ref={formRef}
       action={formAction}
       noValidate
-      className="flex flex-col gap-3 rounded-xl p-4 ring-1 ring-foreground/10"
+      className="flex flex-col gap-3 rounded-xl border border-line bg-surface p-4"
     >
       <SelectField
         name="sectionId"
@@ -298,10 +296,10 @@ export function ResetPasswordForm({ userId }: { userId: string }) {
     return <CredentialsCard message={state.message} issued={state.issued} />;
   }
   return (
-    <details className="rounded-xl p-3 ring-1 ring-foreground/10">
-      <summary className="min-h-11 cursor-pointer content-center text-sm font-medium">
-        Restablecer la contraseña
-      </summary>
+    <Disclosure
+      className="rounded-xl border border-line bg-surface p-3"
+      summary="Restablecer la contraseña"
+    >
       <form ref={formRef} action={formAction} noValidate className="mt-3 flex flex-col gap-3">
         <p className="text-sm text-muted-foreground">
           Se genera una contraseña temporal nueva, se cierran todas sus sesiones, se levanta el
@@ -315,7 +313,7 @@ export function ResetPasswordForm({ userId }: { userId: string }) {
           </SubmitButton>
         </div>
       </form>
-    </details>
+    </Disclosure>
   );
 }
 
@@ -324,10 +322,10 @@ export function ResetTwoFactorForm({ userId }: { userId: string }) {
   const [state, formAction] = useActionState(resetTwoFactorAction.bind(null, userId), IDLE);
   const { formRef, alertRef } = useFormRefs(state);
   return (
-    <details className="rounded-xl p-3 ring-1 ring-foreground/10">
-      <summary className="min-h-11 cursor-pointer content-center text-sm font-medium">
-        Reiniciar la verificación en dos pasos
-      </summary>
+    <Disclosure
+      className="rounded-xl border border-line bg-surface p-3"
+      summary="Reiniciar la verificación en dos pasos"
+    >
       <form ref={formRef} action={formAction} noValidate className="mt-3 flex flex-col gap-3">
         <p className="text-sm text-muted-foreground">
           Úsalo si este administrador perdió su teléfono y sus códigos de recuperación. Se borran su
@@ -341,7 +339,7 @@ export function ResetTwoFactorForm({ userId }: { userId: string }) {
           </SubmitButton>
         </div>
       </form>
-    </details>
+    </Disclosure>
   );
 }
 
@@ -353,12 +351,9 @@ export function CorrectDniForm({ userId }: { userId: string }) {
     return <CredentialsCard message={state.message} issued={state.issued} />;
   }
   return (
-    <details className="rounded-xl p-3 ring-1 ring-foreground/10">
-      <summary className="min-h-11 cursor-pointer content-center text-sm font-medium">
-        Corregir el DNI
-      </summary>
+    <Disclosure className="rounded-xl border border-line bg-surface p-3" summary="Corregir el DNI">
       <form ref={formRef} action={formAction} noValidate className="mt-3 flex flex-col gap-3">
-        <p className="rounded-md border border-amber-300 bg-amber-50 px-2.5 py-2 text-sm text-amber-950 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-100">
+        <p className="rounded-md border border-warning/30 bg-warning-soft px-2.5 py-2 text-sm text-warning">
           Atención: se genera un <strong>código de usuario nuevo</strong> y una contraseña temporal.
           El código anterior deja de servir y se cierran sus sesiones.
         </p>
@@ -397,7 +392,7 @@ export function CorrectDniForm({ userId }: { userId: string }) {
           </SubmitButton>
         </div>
       </form>
-    </details>
+    </Disclosure>
   );
 }
 

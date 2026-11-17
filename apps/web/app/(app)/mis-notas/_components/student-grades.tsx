@@ -40,7 +40,7 @@ export function StudentGrades({
         <section
           key={`${c.enrollmentId}-${c.courseSectionId}`}
           aria-label={`${c.course.name}, ${sectionText(c.section)}`}
-          className="rounded-lg border p-4"
+          className="rounded-xl border border-line bg-surface p-4"
         >
           <H className="text-base font-semibold break-words">
             {c.course.name}{' '}

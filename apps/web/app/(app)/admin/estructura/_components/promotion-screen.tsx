@@ -52,7 +52,7 @@ import type { ActionState } from '../_lib/types';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
-import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select';
+import { Select } from '@/components/ui/select';
 import { useAnnounce } from '@/app/(app)/admin/_shared/components/action-feedback';
 import { ConfirmAction } from '@/app/(app)/admin/_shared/components/confirm-action';
 import { TOUCH } from '@/app/(app)/admin/_shared/components/styles';
@@ -307,21 +307,15 @@ function RowSelect({
         {label}
         <span className="sr-only"> {hiddenSuffix}</span>
       </Label>
-      <NativeSelect
+      <Select
         id={id}
         value={value}
         disabled={disabled}
         aria-invalid={invalid || undefined}
         aria-describedby={describedBy}
-        onChange={(e) => onChange(e.target.value)}
-        className="w-full [&_select]:h-11 md:[&_select]:h-9"
-      >
-        {options.map((o) => (
-          <NativeSelectOption key={o.value} value={o.value}>
-            {o.label}
-          </NativeSelectOption>
-        ))}
-      </NativeSelect>
+        onValueChange={onChange}
+        options={options}
+      />
     </div>
   );
 }
@@ -355,7 +349,7 @@ function GroupPanel({
         Sección {label} ({sourceYear}): {group.items.length}{' '}
         {group.items.length === 1 ? 'estudiante' : 'estudiantes'}
       </h2>
-      <fieldset className="flex flex-col gap-3 rounded-xl p-4 ring-1 ring-foreground/10">
+      <fieldset className="flex flex-col gap-3 rounded-xl border border-line bg-surface p-4">
         <legend className="px-1 text-sm font-semibold">Aplicar a toda la sección {label}</legend>
         <div className="grid gap-3 sm:grid-cols-2">
           <RowSelect
@@ -458,7 +452,7 @@ function RowPanel({
   return (
     <fieldset
       className={cn(
-        'flex flex-col gap-3 rounded-xl p-4 ring-1 ring-foreground/10',
+        'flex flex-col gap-3 rounded-xl border border-line bg-surface p-4',
         error && 'ring-destructive',
       )}
     >

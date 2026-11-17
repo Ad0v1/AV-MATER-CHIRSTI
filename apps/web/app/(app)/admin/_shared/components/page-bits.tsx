@@ -2,6 +2,7 @@
 import Link from 'next/link';
 import { Info } from 'lucide-react';
 import { Breadcrumbs } from '@/components/layout/breadcrumbs';
+import { PageShell as BasePageShell } from '@/components/layout/page-shell';
 import type { ReactNode } from 'react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -16,7 +17,7 @@ import { ActionFeedbackProvider } from './action-feedback';
 export function PageShell({ children }: { children: ReactNode }) {
   return (
     <ActionFeedbackProvider>
-      <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 p-4 sm:p-8">{children}</div>
+      <BasePageShell>{children}</BasePageShell>
     </ActionFeedbackProvider>
   );
 }
@@ -93,8 +94,8 @@ export function Section({
 // El estado va siempre como texto; el punto solo refuerza.
 const TONE_CLASS: Record<StatusTone, { pill: string; dot: string }> = {
   active: {
-    pill: 'bg-emerald-50 text-emerald-900 dark:bg-emerald-950 dark:text-emerald-100',
-    dot: 'bg-emerald-600',
+    pill: 'bg-success-soft text-success',
+    dot: 'bg-success',
   },
   closed: {
     pill: 'bg-zinc-100 text-zinc-800 dark:bg-zinc-800 dark:text-zinc-100',
@@ -105,8 +106,8 @@ const TONE_CLASS: Record<StatusTone, { pill: string; dot: string }> = {
     dot: 'bg-zinc-400',
   },
   future: {
-    pill: 'bg-sky-50 text-sky-900 dark:bg-sky-950 dark:text-sky-100',
-    dot: 'bg-sky-600',
+    pill: 'bg-info-soft text-info',
+    dot: 'bg-info',
   },
 };
 

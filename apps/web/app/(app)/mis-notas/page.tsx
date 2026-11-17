@@ -1,4 +1,5 @@
 import { Suspense } from 'react';
+import { PageShell } from '@/components/layout/page-shell';
 import { ROUTE_META } from '@/lib/route-meta';
 import { toUserMessage } from '@/lib/api/errors';
 import { apiServer } from '@/lib/api/server';
@@ -26,11 +27,11 @@ export const metadata = { title: 'Mis notas' };
 
 export default function Page() {
   return (
-    <div className="mx-auto w-full max-w-4xl p-4 md:p-8">
+    <PageShell className="gap-0">
       <h1 className="mb-4 text-2xl font-semibold">{ROUTE_META['/mis-notas'].title}</h1>
       <Suspense fallback={<p className="text-sm text-muted-foreground">Cargando tus notas…</p>}>
         <Content />
       </Suspense>
-    </div>
+    </PageShell>
   );
 }

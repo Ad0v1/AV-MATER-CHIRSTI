@@ -57,7 +57,7 @@ export function CredentialsCard({
       ref={ref}
       tabIndex={-1}
       aria-labelledby="credenciales-titulo"
-      className="flex flex-col gap-4 rounded-xl border-2 border-emerald-700 p-4 outline-none focus:ring-3 focus:ring-ring/60 dark:border-emerald-400"
+      className="flex flex-col gap-4 rounded-xl border-2 border-success p-4 outline-none focus:ring-3 focus:ring-ring/60"
     >
       <div className="flex flex-col gap-1">
         <h2 id="credenciales-titulo" className="text-lg font-semibold">

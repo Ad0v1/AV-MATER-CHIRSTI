@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { Suspense } from 'react';
+import { PageShell } from '@/components/layout/page-shell';
 import { toUserMessage } from '@/lib/api/errors';
 import { apiServer } from '@/lib/api/server';
 import { DISPLAY_STATUS_LABEL, formatDateTime } from '../tareas/assignment-format';
@@ -47,7 +48,7 @@ function Dashboard({ book }: { book: GradebookView }) {
   const atRisk = book.students.filter((s) => s.atRisk);
   const literal = isLiteral(book.courseSection.gradingScale);
   return (
-    <section aria-labelledby="r-dash" className="mt-4 rounded-lg border p-4">
+    <section aria-labelledby="r-dash" className="mt-4 rounded-xl border border-line bg-surface p-4">
       <h2 id="r-dash" className="text-base font-semibold">
         Resumen del período
       </h2>
@@ -135,7 +136,7 @@ function Matrix({ book, courseId }: { book: GradebookView; courseId: string }) {
   }
   return (
     <div
-      className="mt-4 overflow-x-auto rounded-md border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      className="mt-4 overflow-x-auto rounded-xl border border-line focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       tabIndex={0}
       role="region"
       aria-label="Registro auxiliar (desplazable)"
@@ -249,7 +250,7 @@ async function Content({ params, searchParams }: { params: Params; searchParams:
       </p>
       <PeriodNav book={book} courseId={courseId} />
       {!book.period.isOpen && (
-        <p role="status" className="mt-3 rounded-md border p-3 text-sm">
+        <p role="status" className="mt-3 rounded-lg border border-line p-3 text-sm">
           Este período está cerrado: el registro es de solo lectura.
         </p>
       )}
@@ -267,11 +268,11 @@ async function Content({ params, searchParams }: { params: Params; searchParams:
 
 export default function Page({ params, searchParams }: { params: Params; searchParams: Search }) {
   return (
-    <div className="mx-auto w-full max-w-6xl p-4 md:p-8">
+    <PageShell width="wide" className="gap-0">
       <h1 className="text-2xl font-semibold">Registro auxiliar</h1>
       <Suspense fallback={<p className="text-sm text-muted-foreground">Cargando el registro…</p>}>
         <Content params={params} searchParams={searchParams} />
       </Suspense>
-    </div>
+    </PageShell>
   );
 }

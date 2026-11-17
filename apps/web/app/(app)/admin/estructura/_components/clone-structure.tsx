@@ -85,7 +85,7 @@ export function CloneStructure({
           label="Año de origen"
           options={options}
           value={sourceId}
-          onChange={(e) => setSourceId(e.target.value)}
+          onValueChange={setSourceId}
           hint={
             emptyYears.length > 0
               ? `No aparecen los años sin secciones activas: ${emptyYears.join(', ')}.`

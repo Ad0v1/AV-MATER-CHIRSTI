@@ -80,7 +80,7 @@ export function DeleteAssignmentButton({ id, title }: { id: string; title: strin
           if (pending) e.preventDefault();
         }}
         onClose={onClose}
-        className="m-auto w-[calc(100%-2rem)] max-w-sm rounded-lg border bg-background p-4 text-foreground shadow-lg backdrop:bg-black/50"
+        className="m-auto w-[calc(100%-2rem)] max-w-sm rounded-2xl border border-line bg-background p-4 text-foreground shadow-lg backdrop:bg-black/50"
       >
         <h2 id={`${uid}-t`} className="text-base font-semibold">
           ¿Eliminar la tarea?

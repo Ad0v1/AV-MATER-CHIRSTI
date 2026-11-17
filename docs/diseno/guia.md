@@ -218,6 +218,18 @@ Más redondeado que el actual. Se propone subir la base `--radius` de `0.625rem`
 | Tarjetas, avisos, widgets, tablas contenedoras | `rounded-xl` | ≈ 20 px |
 | **Tarjeta de curso**, banners (inicio y curso), tarjeta de login, diálogos | `rounded-2xl` | ≈ 25 px |
 
+#### Escala de radios y superficies
+
+Una sola escala para toda la web; no se mezclan `rounded-md` ni `ring-1 ring-foreground/10` en tarjetas.
+
+| Nivel | Clases | Se usa en |
+|---|---|---|
+| Campo | `rounded-lg` | Input, Select, Textarea, FileField, Button, paneles internos de un formulario |
+| Tarjeta o lista | `rounded-xl border border-line bg-surface` | Secciones, tarjetas, tablas contenedoras (`overflow-x-auto`), listas con `divide-y`, `Card`, `Disclosure` con borde |
+| Hoja o modal | `rounded-2xl border border-line` | Diálogos, `AlertDialog`, hojas; también portadas y banners (ver tabla anterior) |
+
+Reglas: el borde de tarjeta es `border-line` (decorativo) y el de campo es `border-input`/`line-field`; la sombra solo en hojas y menús flotantes (2.5). Página: `PageShell` (`components/layout/page-shell.tsx`) con ancho `narrow` (3xl, lectura), `default` (5xl) o `wide` (6xl, tablas), relleno `p-4 md:p-8` y separación `gap-6`.
+
 ### 2.5 Sombras
 
 Sombras suaves teñidas de marrón (no gris azulado), pocas. El `Card` de shadcn usa `ring-1 ring-foreground/10`; se conserva y se añade sombra solo donde se indica.

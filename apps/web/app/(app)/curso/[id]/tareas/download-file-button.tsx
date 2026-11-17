@@ -5,6 +5,7 @@
 // La ventana se abre en blanco de forma síncrona en el clic (si se abre después del await, el
 // navegador del móvil la bloquea) y recién después se le asigna la URL.
 import { useState, useTransition } from 'react';
+import { Button } from '@/components/ui/button';
 import { getSubmissionDownloadUrl } from './actions';
 
 export const DOWNLOAD_BLOCKED =
@@ -51,16 +52,17 @@ export function DownloadFileButton({
 
   return (
     <span className="inline-flex flex-col">
-      <button
+      <Button
         type="button"
+        variant="outline"
         onClick={onClick}
         aria-label={ariaLabel}
         aria-disabled={pending || undefined}
         aria-busy={pending || undefined}
-        className="min-h-11 md:min-h-9 min-w-11 rounded-md border px-3 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring aria-disabled:opacity-60"
+        className="h-auto min-h-11 min-w-11 px-3 md:min-h-9 aria-disabled:opacity-60"
       >
         {label}
-      </button>
+      </Button>
       <span aria-live="polite" className="text-xs text-muted-foreground">
         {pending ? 'Preparando…' : ''}
       </span>

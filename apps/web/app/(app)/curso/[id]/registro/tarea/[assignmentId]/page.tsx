@@ -1,5 +1,7 @@
 import Link from 'next/link';
 import { Suspense } from 'react';
+import { Disclosure } from '@/components/ui/disclosure';
+import { PageShell } from '@/components/layout/page-shell';
 import { toUserMessage } from '@/lib/api/errors';
 import { apiServer } from '@/lib/api/server';
 import { DISPLAY_STATUS_LABEL, formatDateTime } from '../../../tareas/assignment-format';
@@ -30,7 +32,7 @@ function StudentItem({ item, view }: { item: GradeSummaryItem; view: GradeSummar
   const a = view.assignment;
   const v = item.submission?.latestVersion;
   return (
-    <li className="rounded-lg border p-4">
+    <li className="rounded-xl border border-line bg-surface p-4">
       <h3 className="text-base font-semibold break-words">
         {item.fullName}
         {!item.isCurrent && (
@@ -63,10 +65,11 @@ function StudentItem({ item, view }: { item: GradeSummaryItem; view: GradeSummar
       )}
       {v && <PdfViewer fileId={v.fileId} studentName={item.fullName} />}
       {a.periodIsOpen ? (
-        <details className="mt-3">
-          <summary className="min-h-11 cursor-pointer py-2 text-sm font-medium">
-            {item.grade.state && !item.grade.virtual ? 'Editar calificación' : 'Calificar'}
-          </summary>
+        <Disclosure
+          className="mt-3"
+          summary={item.grade.state && !item.grade.virtual ? 'Editar calificación' : 'Calificar'}
+          summaryClassName="py-2"
+        >
           <GradeForm
             assignmentId={a.id}
             enrollmentId={item.enrollmentId}
@@ -84,7 +87,7 @@ function StudentItem({ item, view }: { item: GradeSummaryItem; view: GradeSummar
               exemptionReason: item.grade.exemptionReason,
             }}
           />
-        </details>
+        </Disclosure>
       ) : null}
     </li>
   );
@@ -116,7 +119,7 @@ async function Content({ params }: { params: Params }) {
         · {a.allowLate ? 'Admite tardías' : 'No admite tardías'}
       </p>
       {!a.periodIsOpen && (
-        <p role="status" className="mt-3 rounded-md border p-3 text-sm">
+        <p role="status" className="mt-3 rounded-lg border border-line p-3 text-sm">
           El período está cerrado: las calificaciones están en solo lectura.
         </p>
       )}
@@ -162,10 +165,10 @@ async function Content({ params }: { params: Params }) {
 
 export default function Page({ params }: { params: Params }) {
   return (
-    <div className="mx-auto w-full max-w-4xl p-4 md:p-8">
+    <PageShell className="gap-0">
       <Suspense fallback={<p className="text-sm text-muted-foreground">Cargando la tarea…</p>}>
         <Content params={params} />
       </Suspense>
-    </div>
+    </PageShell>
   );
 }

@@ -1,4 +1,6 @@
 import { Suspense } from 'react';
+import { Disclosure } from '@/components/ui/disclosure';
+import { PageShell } from '@/components/layout/page-shell';
 import { apiServer } from '@/lib/api/server';
 import { toUserMessage } from '@/lib/api/errors';
 import { requireUser } from '@/lib/session';
@@ -41,17 +43,6 @@ async function load<T>(path: string): Promise<Loaded<T>> {
   } catch (error) {
     return { ok: false, message: toUserMessage(error) };
   }
-}
-
-const SUMMARY =
-  'flex min-h-11 cursor-pointer list-none items-center gap-2 rounded-md text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden';
-
-function Chevron() {
-  return (
-    <span aria-hidden="true" className="inline-block transition-transform group-open:rotate-90">
-      ▸
-    </span>
-  );
 }
 
 function ErrorText({ children }: { children: React.ReactNode }) {
@@ -114,7 +105,7 @@ async function TeacherAssignment({ a, level }: { a: AssignmentItem; level: Level
       );
   const delivered = list?.ok ? list.data.items.filter((i) => i.latestVersion).length : 0;
   return (
-    <li className="rounded-lg border p-4">
+    <li className="rounded-xl border border-line bg-surface p-4">
       <AssignmentHeader a={a} level={level} />
       <p className="mt-1 text-xs text-muted-foreground">
         Nota si no entrega (NE = no entregó): {neText(a, level)}
@@ -122,27 +113,25 @@ async function TeacherAssignment({ a, level }: { a: AssignmentItem; level: Level
       {/* RF-29/30: solo con período abierto; RN-10 y permisos los decide el API. */}
       {a.periodIsOpen && (
         <div className="mt-3 flex flex-wrap items-start gap-2">
-          <details className="group w-full">
-            <summary
-              aria-label={`Editar tarea ${a.title}`}
-              className={`${SUMMARY} w-fit border px-4`}
-            >
-              <Chevron />
-              Editar tarea
-            </summary>
-            <div className="mt-2 rounded-md border p-3">
+          <Disclosure
+            className="w-full"
+            summary="Editar tarea"
+            summaryAriaLabel={`Editar tarea ${a.title}`}
+            summaryClassName="w-fit border px-4"
+          >
+            <div className="mt-2 rounded-lg border border-line p-3">
               <EditAssignmentForm assignment={a} level={level} />
             </div>
-          </details>
+          </Disclosure>
           <DeleteAssignmentButton id={a.id} title={a.title} />
         </div>
       )}
       {list && (
-        <details className="group mt-3">
-          <summary className={`${SUMMARY} py-2`}>
-            <Chevron />
-            Entregas{list.ok ? ` (${delivered} de ${list.data.items.length})` : ''}
-          </summary>
+        <Disclosure
+          className="mt-3"
+          summary={`Entregas${list.ok ? ` (${delivered} de ${list.data.items.length})` : ''}`}
+          summaryClassName="py-2"
+        >
           {!list.ok ? (
             <ErrorText>{list.message}</ErrorText>
           ) : list.data.items.length === 0 ? (
@@ -201,7 +190,7 @@ async function TeacherAssignment({ a, level }: { a: AssignmentItem; level: Level
               </table>
             </div>
           )}
-        </details>
+        </Disclosure>
       )}
     </li>
   );
@@ -272,7 +261,7 @@ async function StudentAssignment({
   const mine = await load<MySubmission>(`/assignments/${encodeURIComponent(a.id)}/submissions/me`);
   if (!mine.ok) {
     return (
-      <li className="rounded-lg border p-4">
+      <li className="rounded-xl border border-line bg-surface p-4">
         <AssignmentHeader a={a} level={level} />
         <ErrorText>{mine.message}</ErrorText>
       </li>
@@ -281,7 +270,7 @@ async function StudentAssignment({
   const m = mine.data;
   const canSubmit = acceptsSubmissions(a);
   return (
-    <li className="rounded-lg border p-4">
+    <li className="rounded-xl border border-line bg-surface p-4">
       <AssignmentHeader a={a} level={level} />
       <p className="mt-2 text-sm">
         Estado: <strong>{statusLabel(m.displayStatus)}</strong>
@@ -303,7 +292,7 @@ async function StudentAssignment({
       )}
       {m.latestVersion && (
         <section
-          className="mt-3 rounded-md border p-3"
+          className="mt-3 rounded-lg border border-line p-3"
           aria-label={`Constancia de tu entrega oficial de ${a.title}`}
         >
           <ReceiptView
@@ -314,17 +303,17 @@ async function StudentAssignment({
         </section>
       )}
       {m.versions.length > 0 && (
-        <details className="group mt-3">
-          <summary className={`${SUMMARY} py-2`}>
-            <Chevron />
-            Historial y constancias ({m.versions.length})
-          </summary>
+        <Disclosure
+          className="mt-3"
+          summary={`Historial y constancias (${m.versions.length})`}
+          summaryClassName="py-2"
+        >
           <ul className="divide-y">
             {m.versions.map((v) => (
               <Receipt key={v.versionId} v={v} />
             ))}
           </ul>
-        </details>
+        </Disclosure>
       )}
     </li>
   );
@@ -380,7 +369,7 @@ async function Content({ params }: { params: Promise<{ id: string }> }) {
 
 export default function Page({ params }: { params: Promise<{ id: string }> }) {
   return (
-    <div className="mx-auto w-full max-w-5xl p-4 md:p-8">
+    <PageShell className="gap-0">
       <h1 className="text-2xl font-semibold">Tareas</h1>
       <Suspense
         fallback={
@@ -391,6 +380,6 @@ export default function Page({ params }: { params: Promise<{ id: string }> }) {
       >
         <Content params={params} />
       </Suspense>
-    </div>
+    </PageShell>
   );
 }

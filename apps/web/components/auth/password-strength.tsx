@@ -9,8 +9,8 @@ import {
 const COLORS: Record<StrengthLevel, { bar: string; text: string }> = {
   0: { bar: 'bg-line', text: 'text-ink-3' },
   1: { bar: 'bg-danger', text: 'text-danger' },
-  2: { bar: 'bg-orange-500', text: 'text-warning' },
-  3: { bar: 'bg-lime-500', text: 'text-success' },
+  2: { bar: 'bg-warning', text: 'text-warning' },
+  3: { bar: 'bg-success/60', text: 'text-success' },
   4: { bar: 'bg-success', text: 'text-success' },
 };
 

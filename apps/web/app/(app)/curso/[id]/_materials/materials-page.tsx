@@ -1,4 +1,5 @@
 import { Suspense } from 'react';
+import { PageShell } from '@/components/layout/page-shell';
 import { apiServer } from '@/lib/api/server';
 import { toUserMessage } from '@/lib/api/errors';
 import { MaterialsPanel, type MaterialItem } from './materials-panel';
@@ -42,7 +43,7 @@ export function MaterialsPage(props: {
 }) {
   const title = props.kind === 'CLASS' ? 'Clases' : 'Lecturas';
   return (
-    <div className="mx-auto w-full max-w-5xl p-4 md:p-8">
+    <PageShell className="gap-0">
       <h1 className="text-2xl font-semibold">{title}</h1>
       <p className="mb-6 mt-1 text-sm text-muted-foreground">
         {props.kind === 'CLASS'
@@ -52,6 +53,6 @@ export function MaterialsPage(props: {
       <Suspense fallback={<p className="text-sm text-muted-foreground">Cargando materiales…</p>}>
         <Content params={props.params} kind={props.kind} />
       </Suspense>
-    </div>
+    </PageShell>
   );
 }

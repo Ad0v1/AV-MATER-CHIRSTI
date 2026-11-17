@@ -298,7 +298,7 @@ export function CodeTimer({ remaining, total }: { remaining: number; total: numb
       >
         <div
           className={`h-full rounded-full transition-[width,background-color] duration-1000 ease-linear motion-reduce:transition-none ${
-            urgent ? 'bg-danger' : low ? 'bg-orange-500' : 'bg-brand'
+            urgent ? 'bg-danger' : low ? 'bg-warning' : 'bg-brand'
           }`}
           style={{ width: `${(remaining / total) * 100}%` }}
         />

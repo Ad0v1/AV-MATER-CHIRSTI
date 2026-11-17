@@ -318,7 +318,7 @@ function EnrollmentHistory({ items }: { items: EnrollmentView[] }) {
         {sorted.map((e) => (
           <li
             key={e.id}
-            className="flex flex-col gap-1 rounded-xl p-3 text-sm ring-1 ring-foreground/10"
+            className="flex flex-col gap-1 rounded-xl border border-line bg-surface p-3 text-sm"
           >
             <div className="flex items-center justify-between gap-2">
               <span className="font-medium">
@@ -424,7 +424,10 @@ function LinkList({ links, side }: { links: GuardianLinkView[]; side: 'guardian'
       {sorted.map((l) => {
         const other = side === 'guardian' ? l.guardian : l.student;
         return (
-          <li key={l.id} className="flex flex-col gap-2 rounded-xl p-4 ring-1 ring-foreground/10">
+          <li
+            key={l.id}
+            className="flex flex-col gap-2 rounded-xl border border-line bg-surface p-4"
+          >
             <div className="flex flex-wrap items-center justify-between gap-2">
               <h3
                 id={userFocusIds.link(l.id)}

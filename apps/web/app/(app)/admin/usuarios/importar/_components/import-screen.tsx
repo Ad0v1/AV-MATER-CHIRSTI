@@ -363,9 +363,7 @@ export function ImportScreen() {
                   key={c.name}
                   className={cn(
                     'rounded-md px-2 py-0.5 font-mono text-xs',
-                    c.optional
-                      ? 'bg-amber-100 text-amber-900 dark:bg-amber-950/40 dark:text-amber-100'
-                      : 'bg-brand-soft text-brand',
+                    c.optional ? 'bg-warning-soft text-warning' : 'bg-brand-soft text-brand',
                   )}
                 >
                   {c.name}
@@ -376,7 +374,7 @@ export function ImportScreen() {
             <p className="text-xs text-muted-foreground">
               <span className="mr-1 inline-block size-2 rounded-sm bg-brand-soft ring-1 ring-brand/30" />
               Obligatoria
-              <span className="mr-1 ml-3 inline-block size-2 rounded-sm bg-amber-100 ring-1 ring-amber-400" />
+              <span className="mr-1 ml-3 inline-block size-2 rounded-sm bg-warning-soft ring-1 ring-warning/40" />
               Opcional
             </p>
           </div>
@@ -420,17 +418,17 @@ export function ImportScreen() {
             className={cn(
               'relative flex min-h-32 flex-col items-center justify-center gap-1 rounded-xl border-2 border-dashed p-5 text-center transition-colors focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-line-active',
               state.fileError
-                ? 'border-red-600 bg-red-50 dark:bg-red-950/30'
+                ? 'border-danger bg-danger-soft'
                 : fileName
-                  ? 'border-emerald-600 bg-emerald-50 dark:bg-emerald-950/30'
+                  ? 'border-success bg-success-soft'
                   : 'border-line bg-brand-soft/40 hover:bg-brand-soft',
               busy && 'opacity-60',
             )}
           >
             {fileName && !state.fileError ? (
-              <FileCheck2 className="size-7 text-emerald-700" aria-hidden="true" />
+              <FileCheck2 className="size-7 text-success" aria-hidden="true" />
             ) : state.fileError ? (
-              <TriangleAlert className="size-7 text-red-700" aria-hidden="true" />
+              <TriangleAlert className="size-7 text-danger" aria-hidden="true" />
             ) : (
               <Upload className="size-7 text-brand" aria-hidden="true" />
             )}
@@ -466,7 +464,7 @@ export function ImportScreen() {
             />
           </div>
           {state.fileError ? (
-            <p id="importar-archivo-error" className="text-sm text-red-700 dark:text-red-300">
+            <p id="importar-archivo-error" className="text-sm text-danger">
               {state.fileError}
             </p>
           ) : null}
@@ -541,7 +539,7 @@ export function ImportScreen() {
             <div>
               <Button
                 type="button"
-                className={cn(TOUCH, 'gap-2 bg-emerald-700 text-white hover:bg-emerald-800')}
+                className={cn(TOUCH, 'gap-2 bg-success text-white hover:bg-success/90')}
                 disabled={state.phase === 'confirmando'}
                 aria-busy={state.phase === 'confirmando' || undefined}
                 onClick={() => void confirm()}
@@ -557,7 +555,7 @@ export function ImportScreen() {
       {state.phase === 'hecho' && state.result ? (
         <section
           aria-labelledby={DONE_TITLE_ID}
-          className="flex flex-col gap-3 rounded-xl border border-emerald-600/50 bg-emerald-50 p-5 dark:border-emerald-400/50 dark:bg-emerald-950/30"
+          className="flex flex-col gap-3 rounded-xl border border-success/50 bg-success-soft p-5"
         >
           <h2
             id={DONE_TITLE_ID}
@@ -565,7 +563,7 @@ export function ImportScreen() {
             tabIndex={-1}
             className={cn('flex items-center gap-2.5 text-lg font-semibold', FOCUS_HEADING)}
           >
-            <span className="grid size-8 place-items-center rounded-full bg-emerald-700 text-white">
+            <span className="grid size-8 place-items-center rounded-full bg-success text-white">
               <CheckCircle2 className="size-5" aria-hidden="true" />
             </span>
             Importación completada
@@ -614,12 +612,11 @@ export function ImportScreen() {
 }
 
 const TONES = {
-  info: 'bg-blue-50 ring-blue-200 text-blue-900 dark:bg-blue-950/30 dark:ring-blue-900 dark:text-blue-100',
-  ok: 'bg-emerald-50 ring-emerald-200 text-emerald-900 dark:bg-emerald-950/30 dark:ring-emerald-900 dark:text-emerald-100',
-  error:
-    'bg-red-50 ring-red-200 text-red-900 dark:bg-red-950/30 dark:ring-red-900 dark:text-red-100',
-  warn: 'bg-amber-50 ring-amber-300 text-amber-900 dark:bg-amber-950/30 dark:ring-amber-800 dark:text-amber-100',
-  neutral: 'ring-foreground/10',
+  info: 'bg-info-soft ring-info/25 text-info',
+  ok: 'bg-success-soft ring-success/25 text-success',
+  error: 'bg-danger-soft ring-danger/25 text-danger',
+  warn: 'bg-warning-soft ring-warning/30 text-warning',
+  neutral: 'bg-surface ring-line',
 } as const;
 
 function Total({ label, value, tone }: { label: string; value: number; tone: keyof typeof TONES }) {
@@ -648,7 +645,7 @@ function StepBadge({ n, tone }: { n: number; tone: 'brand' | 'info' }) {
       aria-hidden="true"
       className={cn(
         'grid size-8 shrink-0 place-items-center rounded-full text-sm font-bold text-white',
-        tone === 'brand' ? 'bg-brand' : 'bg-blue-700',
+        tone === 'brand' ? 'bg-brand' : 'bg-info',
       )}
     >
       {n}
@@ -707,7 +704,7 @@ function RowErrors({ errors, truncated }: { errors: ImportRowError[]; truncated:
   const caption = `Errores por fila (${errors.length})`;
   return (
     <div className="flex flex-col gap-3">
-      <h3 className="flex items-center gap-2 text-base font-semibold text-red-800 dark:text-red-300">
+      <h3 className="flex items-center gap-2 text-base font-semibold text-danger">
         <TriangleAlert className="size-4" aria-hidden="true" />
         {caption}
       </h3>
@@ -725,7 +722,7 @@ function RowErrors({ errors, truncated }: { errors: ImportRowError[]; truncated:
         {errors.map((e, i) => (
           <li
             key={`${e.row}-${e.column ?? ''}-${e.code}-${i}`}
-            className="flex flex-col gap-1 rounded-xl border-l-4 border-l-red-700 bg-red-50 p-3 ring-1 ring-red-200 dark:bg-red-950/30 dark:ring-red-900"
+            className="flex flex-col gap-1 rounded-xl border-l-4 border-l-danger bg-danger-soft p-3 ring-1 ring-danger/25"
           >
             <p className="text-sm font-semibold">
               Fila {e.row} · {columnLabel(e.column)}
@@ -739,7 +736,7 @@ function RowErrors({ errors, truncated }: { errors: ImportRowError[]; truncated:
         <Table>
           <TableCaption className="sr-only">{caption}</TableCaption>
           <TableHeader>
-            <TableRow className="bg-red-50 hover:bg-red-50 dark:bg-red-950/30">
+            <TableRow className="bg-danger-soft hover:bg-danger-soft">
               <TableHead scope="col">Fila</TableHead>
               <TableHead scope="col">Columna</TableHead>
               <TableHead scope="col">Motivo</TableHead>

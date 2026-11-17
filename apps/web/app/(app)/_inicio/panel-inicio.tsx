@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { PageShell } from '@/components/layout/page-shell';
 import { ArrowRight, BookOpen } from 'lucide-react';
 import { COURSE_ROUTES, ROUTES } from '@/lib/routes';
 import { type Role } from '@/lib/roles';
@@ -51,7 +52,7 @@ export function PanelInicio({
       ];
 
   return (
-    <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 p-4 sm:p-6 lg:p-8">
+    <PageShell width="wide">
       {/* Bienvenida */}
       <header className="rounded-3xl bg-brand px-6 py-8 text-ink-inverse shadow-sm sm:px-10 sm:py-10">
         <p className="text-xs font-semibold tracking-[0.14em] text-white/70 uppercase">
@@ -171,7 +172,7 @@ export function PanelInicio({
           </Seccion>
         </aside>
       </div>
-    </div>
+    </PageShell>
   );
 }
 

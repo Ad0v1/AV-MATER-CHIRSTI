@@ -3,6 +3,7 @@
 // Visor del PDF de una entrega (RF-43, U4): iframe con la URL firmada inline (60 s) y un enlace
 // de respaldo por si el navegador no muestra PDF embebido. La URL se pide al pulsar, no al cargar.
 import { useState, useTransition } from 'react';
+import { Button } from '@/components/ui/button';
 import { FormAlert } from '../../../_materials/form-feedback';
 import { getSubmissionPdfUrl } from '../../_lib/actions';
 
@@ -23,14 +24,15 @@ export function PdfViewer({ fileId, studentName }: { fileId: string; studentName
 
   return (
     <div className="mt-3">
-      <button
+      <Button
         type="button"
+        variant="outline"
         onClick={open}
         aria-disabled={pending}
-        className="min-h-11 md:min-h-9 rounded-md border px-4 text-sm font-medium aria-disabled:opacity-60"
+        className="h-auto min-h-11 px-4 md:min-h-9 aria-disabled:opacity-60"
       >
         {pending ? 'Abriendo PDF…' : url ? 'Volver a cargar el PDF' : 'Ver PDF de la entrega'}
-      </button>
+      </Button>
       <FormAlert message={error} />
       <p role="status" className="sr-only">
         {url && !pending ? 'PDF cargado' : ''}

@@ -12,6 +12,7 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useId, useRef, useState, useTransition, type FormEvent } from 'react';
 import { CircleAlert, Loader2, Search, X } from 'lucide-react';
 import { Button, buttonVariants } from '@/components/ui/button';
+import { FilterBar } from '@/components/ui/filter-bar';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -178,7 +179,51 @@ export function AuditFilters({
         </span>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      <FilterBar
+        help={
+          <>
+            <p className="text-sm text-muted-foreground">
+              Fechas en hora de Perú (Lima). Rango máximo de {AUDIT_MAX_RANGE_DAYS} días.
+            </p>
+            {filters.actorId ? (
+              <p className="text-sm">
+                Solo acciones de <strong>{actorName ?? 'un usuario'}</strong>.{' '}
+                <Link
+                  href={AUDIT_PATH}
+                  className="text-brand underline underline-offset-4"
+                  aria-label="Quitar el filtro por usuario y los demás filtros"
+                >
+                  Quitar
+                </Link>
+              </p>
+            ) : null}
+          </>
+        }
+        actions={
+          <>
+            <Button
+              type="submit"
+              variant="ghost"
+              disabled={pending}
+              className="bg-brand-soft px-4 text-brand hover:bg-brand-soft/70 md:min-h-9"
+            >
+              {pending ? 'Aplicando…' : 'Aplicar filtros'}
+            </Button>
+            {hasAuditFilters(filters) ? (
+              <Link
+                href={AUDIT_PATH}
+                className={cn(
+                  buttonVariants({ variant: 'ghost' }),
+                  TOUCH,
+                  'px-3 text-ink-2 hover:bg-foreground/5 hover:text-foreground md:min-h-9',
+                )}
+              >
+                Quitar filtros
+              </Link>
+            ) : null}
+          </>
+        }
+      >
         <SelectField
           key={`m-${filters.module ?? ''}`}
           name="module"
@@ -205,46 +250,7 @@ export function AuditFilters({
           defaultValue={filters.to ?? ''}
           error={dateError ?? undefined}
         />
-      </div>
-      <p className="-mt-2 text-sm text-muted-foreground">
-        Fechas en hora de Perú (Lima). Rango máximo de {AUDIT_MAX_RANGE_DAYS} días.
-      </p>
-
-      {filters.actorId ? (
-        <p className="text-sm">
-          Solo acciones de <strong>{actorName ?? 'un usuario'}</strong>.{' '}
-          <Link
-            href={AUDIT_PATH}
-            className="text-brand underline underline-offset-4"
-            aria-label="Quitar el filtro por usuario y los demás filtros"
-          >
-            Quitar
-          </Link>
-        </p>
-      ) : null}
-
-      <div className="flex flex-wrap items-center gap-1">
-        <Button
-          type="submit"
-          variant="ghost"
-          disabled={pending}
-          className="bg-brand-soft px-4 text-brand hover:bg-brand-soft/70 md:min-h-9"
-        >
-          {pending ? 'Aplicando…' : 'Aplicar filtros'}
-        </Button>
-        {hasAuditFilters(filters) ? (
-          <Link
-            href={AUDIT_PATH}
-            className={cn(
-              buttonVariants({ variant: 'ghost' }),
-              TOUCH,
-              'px-3 text-ink-2 hover:bg-foreground/5 hover:text-foreground md:min-h-9',
-            )}
-          >
-            Quitar filtros
-          </Link>
-        ) : null}
-      </div>
+      </FilterBar>
     </form>
   );
 }

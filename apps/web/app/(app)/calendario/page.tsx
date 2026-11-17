@@ -1,6 +1,7 @@
 // /calendario — plazos de tareas (RF-54, Dev 5). La API (GET /me/calendar) decide qué cursos ve
 // cada rol; el apoderado elige entre sus estudiantes con vínculo vigente (GET /guardian/students).
 import { Suspense } from 'react';
+import { PageShell } from '@/components/layout/page-shell';
 import { ROUTE_META } from '@/lib/route-meta';
 import { toUserMessage } from '@/lib/api/errors';
 import { apiServer } from '@/lib/api/server';
@@ -12,13 +13,17 @@ export const metadata = { title: ROUTE_META['/calendario'].title };
 
 export default function Page() {
   return (
-    <div className="mx-auto flex w-full max-w-5xl flex-col gap-4 p-4 md:p-8">
-      <h1 className="text-2xl font-semibold">{ROUTE_META['/calendario'].title}</h1>
-      <p className="text-sm text-muted-foreground">{ROUTE_META['/calendario'].description}</p>
+    <PageShell>
+      <div>
+        <h1 className="text-2xl font-semibold">{ROUTE_META['/calendario'].title}</h1>
+        <p className="mt-1 text-sm text-muted-foreground">
+          {ROUTE_META['/calendario'].description}
+        </p>
+      </div>
       <Suspense fallback={<p className="text-sm text-muted-foreground">Cargando calendario…</p>}>
         <Content />
       </Suspense>
-    </div>
+    </PageShell>
   );
 }
 
