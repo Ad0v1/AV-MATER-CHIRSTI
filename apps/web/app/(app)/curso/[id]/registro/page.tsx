@@ -112,7 +112,7 @@ function PeriodNav({ book, courseId }: { book: GradebookView; courseId: string }
               <Link
                 href={`/curso/${courseId}/registro?periodo=${encodeURIComponent(p.id)}`}
                 aria-current={current ? 'page' : undefined}
-                className={`inline-flex min-h-11 items-center rounded-md border px-3 text-sm ${
+                className={`inline-flex min-h-11 md:min-h-9 items-center rounded-md border px-3 text-sm ${
                   current ? 'bg-primary font-medium text-primary-foreground' : ''
                 }`}
               >

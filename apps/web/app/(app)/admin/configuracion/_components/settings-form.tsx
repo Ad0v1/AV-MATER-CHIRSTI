@@ -6,6 +6,7 @@
 // foco va al literal correspondiente y una región de estado lo anuncia; la cobertura se ve como
 // lista y solo se anuncia cuando la tabla pasa de válida a inválida o al revés.
 import { useActionState, useEffect, useId, useMemo, useRef, useState } from 'react';
+import { restrictDigits } from '@/lib/digits';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -218,11 +219,11 @@ export function SettingsForm({ settings }: { settings: SettingsView }) {
       <TextField
         name="purgeAfterDays"
         label="Plazo de purga (días)"
-        type="number"
         inputMode="numeric"
-        min={PURGE_MIN}
-        max={PURGE_MAX}
-        step={1}
+        pattern="[0-9]*"
+        maxLength={String(PURGE_MAX).length}
+        autoComplete="off"
+        onInput={restrictDigits}
         required
         defaultValue={state.values?.purgeAfterDays ?? String(settings.purgeAfterDays)}
         error={err.purgeAfterDays}

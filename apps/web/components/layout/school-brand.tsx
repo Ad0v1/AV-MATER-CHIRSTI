@@ -8,6 +8,7 @@ import { apiServer } from '@/lib/api/server';
 type Branding = { name: string; logo: { url: string; expiresAt: string } | null };
 
 const FALLBACK_NAME = 'Aula Virtual';
+const DEFAULT_LOGO = '/brand/escudo.webp';
 
 export const getBranding = cache(async (): Promise<Branding | null> => {
   try {
@@ -54,18 +55,21 @@ export function BrandView({
 }) {
   return (
     <span className="flex min-w-0 items-center gap-2">
-      {logo ? (
-        // Decorativa: el nombre ya va como texto al lado (alt vacio y oculta a lectores de pantalla).
-        // eslint-disable-next-line @next/next/no-img-element -- URL firmada externa (bucket), sin optimizador
-        <img
-          src={logo}
-          alt=""
-          aria-hidden="true"
-          width={32}
-          height={32}
-          className="size-8 shrink-0 rounded bg-white object-contain p-0.5"
-        />
-      ) : null}
+      {/* Sin logo configurado en Configuración, se usa el escudo del colegio incluido en la app. */}
+      {/* Decorativa: el nombre ya va como texto al lado (alt vacio y oculta a lectores de pantalla). */}
+      {/* eslint-disable-next-line @next/next/no-img-element -- URL firmada externa (bucket) o archivo estatico, sin optimizador */}
+      <img
+        src={logo ?? DEFAULT_LOGO}
+        alt=""
+        aria-hidden="true"
+        width={32}
+        height={32}
+        className={
+          logo
+            ? 'size-8 shrink-0 rounded bg-white object-contain p-0.5'
+            : 'h-9 w-8 shrink-0 object-contain'
+        }
+      />
       <span className="min-w-0">
         <span className="block truncate text-base font-semibold" title={name}>
           {name}

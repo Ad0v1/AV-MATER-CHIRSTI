@@ -64,7 +64,7 @@ export interface AuditFilters {
   page: number;
 }
 
-const ACTION_RE = /^[a-z][a-z0-9_.-]*$/;
+export const ACTION_RE = /^[a-z][a-z0-9_.-]*$/;
 const MODULE_RE = /^[a-z][a-z0-9_-]*$/;
 const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
 

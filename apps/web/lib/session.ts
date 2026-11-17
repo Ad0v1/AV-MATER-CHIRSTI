@@ -1,4 +1,5 @@
 import 'server-only';
+import { cache } from 'react';
 import { cookies, headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { HOME_BY_ROLE, isRole, type Role } from '@/lib/roles';
@@ -15,12 +16,14 @@ export type SessionUser = {
   mustCompleteContact: boolean;
 };
 
-const API_URL = process.env.API_URL ?? 'http://localhost:4000';
+const API_URL = process.env.API_URL ?? 'http://127.0.0.1:4000';
 
 // Pregunta a la API quien es el usuario de la cookie. La sesion vive solo en la API (Redis):
 // aqui no se decodifica nada, y siempre se consulta en cada peticion, sin cache (RNF-02).
 // Debe llamarse dentro de <Suspense>: leer cookies es un dato de la peticion.
-export async function getSession(): Promise<SessionUser | null> {
+// `cache` de React solo deduplica dentro de UNA misma peticion (layout, RoleGate y pagina comparten
+// una sola consulta a /auth/me); no guarda nada entre peticiones, asi que sigue sin cache (RNF-02).
+export const getSession = cache(async function getSession(): Promise<SessionUser | null> {
   const token = (await cookies()).get(SESSION_COOKIE)?.value;
   if (!token) return null;
 
@@ -51,7 +54,7 @@ export async function getSession(): Promise<SessionUser | null> {
     // API caida: se trata como sin sesion en vez de romper la pagina.
     return null;
   }
-}
+});
 
 // Exige sesion valida; si no hay, manda al login.
 export async function requireUser(): Promise<SessionUser> {

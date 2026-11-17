@@ -14,10 +14,13 @@ import {
   AlertDialogDescription,
   AlertDialogFooter,
   AlertDialogHeader,
+  AlertDialogMedia,
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
+import { CircleHelp, TriangleAlert } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 import { focusAfterSuccess, pickFocusTarget } from '../lib/focus';
 import { IDLE, type ActionState } from '../lib/action-state';
 import { useAnnounce } from './action-feedback';
@@ -25,6 +28,26 @@ import { FormMessage, SubmitButton, useFormRefs } from './form-bits';
 import { TOUCH } from './styles';
 
 type Action = (state: ActionState, formData: FormData) => Promise<ActionState>;
+
+type Appearance = 'outline' | 'destructive' | 'primary' | 'quiet' | 'quiet-destructive';
+
+const TRIGGER_VARIANT = {
+  outline: 'outline',
+  destructive: 'destructive',
+  primary: 'default',
+  quiet: 'ghost',
+  'quiet-destructive': 'ghost',
+} as const;
+
+const TRIGGER_CLASS: Record<Appearance | 'default', string> = {
+  default: '',
+  outline: '',
+  destructive: '',
+  primary: '',
+  quiet: 'px-3 md:min-h-9 text-ink-2 hover:bg-foreground/5 hover:text-foreground',
+  'quiet-destructive':
+    'px-3 md:min-h-9 text-destructive hover:bg-destructive/10 hover:text-destructive',
+};
 
 /** Tras refrescar, si el foco quedó en <body> (el botón desapareció), lo lleva al destino. */
 function refocusIfLost(focusId?: string) {
@@ -44,10 +67,16 @@ export function ConfirmAction({
   triggerDescribedBy,
   destructive = false,
   disabled = false,
+  appearance,
   children,
 }: {
   action: Action;
-  triggerLabel: string;
+  triggerLabel: ReactNode;
+  /**
+   * Aspecto del botón que abre el diálogo. Por defecto: contorno (o rojo sólido si es destructiva).
+   * 'primary' = sólido de marca; 'quiet' = solo texto; 'quiet-destructive' = solo texto en rojo.
+   */
+  appearance?: Appearance;
   title: string;
   description: ReactNode;
   confirmLabel: string;
@@ -86,7 +115,12 @@ export function ConfirmAction({
       <AlertDialogTrigger
         disabled={disabled}
         aria-describedby={triggerDescribedBy}
-        render={<Button variant={destructive ? 'destructive' : 'outline'} className={TOUCH} />}
+        render={
+          <Button
+            variant={TRIGGER_VARIANT[appearance ?? (destructive ? 'destructive' : 'outline')]}
+            className={cn(TOUCH, TRIGGER_CLASS[appearance ?? 'default'])}
+          />
+        }
       >
         {triggerLabel}
       </AlertDialogTrigger>
@@ -144,13 +178,24 @@ function ConfirmForm({
   return (
     <form ref={formRef} action={formAction} className="flex flex-col gap-4" noValidate>
       <AlertDialogHeader>
+        <AlertDialogMedia
+          aria-hidden="true"
+          className={destructive ? 'bg-destructive/10 text-destructive' : undefined}
+        >
+          {destructive ? <TriangleAlert /> : <CircleHelp />}
+        </AlertDialogMedia>
         <AlertDialogTitle>{title}</AlertDialogTitle>
         <AlertDialogDescription>{description}</AlertDialogDescription>
       </AlertDialogHeader>
       {children?.(state)}
       <FormMessage state={state} alertRef={alertRef} />
       <AlertDialogFooter>
-        <AlertDialogCancel className={TOUCH}>Cancelar</AlertDialogCancel>
+        <AlertDialogCancel
+          variant="ghost"
+          className={cn(TOUCH, 'px-4 text-ink-2 hover:bg-foreground/5 hover:text-foreground')}
+        >
+          Cancelar
+        </AlertDialogCancel>
         <SubmitButton variant={destructive ? 'destructive' : 'default'}>
           {confirmLabel}
         </SubmitButton>
@@ -169,12 +214,15 @@ export function InlineAction({
   pendingText,
   focusId,
   disabled = false,
+  appearance = 'outline',
 }: {
   action: Action;
-  label: string;
+  label: ReactNode;
   pendingText?: string;
   focusId?: string;
   disabled?: boolean;
+  /** 'quiet' = solo texto, para filas con varias acciones. */
+  appearance?: 'outline' | 'quiet';
 }) {
   const [state, formAction] = useActionState(action, IDLE);
   const { formRef, alertRef } = useFormRefs(state, { announceOk: false });
@@ -192,7 +240,11 @@ export function InlineAction({
           {label}
         </Button>
       ) : (
-        <SubmitButton variant="outline" pendingText={pendingText}>
+        <SubmitButton
+          variant={appearance === 'quiet' ? 'ghost' : 'outline'}
+          className={appearance === 'quiet' ? TRIGGER_CLASS.quiet : undefined}
+          pendingText={pendingText}
+        >
           {label}
         </SubmitButton>
       )}

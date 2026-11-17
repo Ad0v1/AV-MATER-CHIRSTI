@@ -28,7 +28,7 @@ import {
   type ImportAction,
 } from '../../_lib/import-guards';
 
-const API_BASE = `${(process.env.API_INTERNAL_URL ?? 'http://localhost:4000').replace(/\/+$/, '')}/api/v1`;
+const API_BASE = `${(process.env.API_INTERNAL_URL ?? 'http://127.0.0.1:4000').replace(/\/+$/, '')}/api/v1`;
 
 /** El commit puede tardar (transacción de hasta 20 s más la espera de 5 s). */
 const UPLOAD_TIMEOUT_MS = 60_000;

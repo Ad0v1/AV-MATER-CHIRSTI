@@ -168,7 +168,7 @@ No subas al repositorio archivos reales con datos de alumnos.
 
 | Variable | Obligatoria | Uso |
 | --- | --- | --- |
-| `API_INTERNAL_URL` | No; por defecto `http://localhost:4000` | URL con la que el servidor de Next llama a la API, con el puerto. Solo del lado del servidor: no usar el prefijo `NEXT_PUBLIC_`. Pendiente: añadirla a `.env.example` con el visto bueno del usuario. |
+| `API_INTERNAL_URL` | No; por defecto `http://127.0.0.1:4000` | URL con la que el servidor de Next llama a la API, con el puerto. Solo del lado del servidor: no usar el prefijo `NEXT_PUBLIC_`. Pendiente: añadirla a `.env.example` con el visto bueno del usuario. |
 
 ### Levantar en local
 

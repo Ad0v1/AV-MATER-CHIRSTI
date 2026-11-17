@@ -37,3 +37,17 @@ export function yearStatus(
   }
   return { label: 'En preparación', tone: 'future', detail: 'Se puede preparar y activar.' };
 }
+
+const MONTHS = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+
+/**
+ * Fecha solo-día legible: "2026-03-01" -> "1 mar 2026". Se arma partiendo el texto, sin pasar
+ * por Date, para no correr un día por la zona horaria. Si no tiene el formato, la devuelve igual.
+ */
+export function formatDateOnly(value: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!m) return value;
+  const month = MONTHS[Number(m[2]) - 1];
+  if (!month) return value;
+  return `${Number(m[3])} ${month} ${m[1]}`;
+}

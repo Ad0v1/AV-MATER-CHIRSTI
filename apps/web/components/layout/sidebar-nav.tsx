@@ -14,10 +14,14 @@ import {
   SidebarMenuItem,
 } from '@/components/ui/sidebar';
 import { NAV_BY_ROLE } from '@/lib/nav';
+import { NavPendingReporter, usePendingHref } from './pending-nav';
 import type { Role } from '@/lib/roles';
 
 export function SidebarNav({ role }: { role: Role }) {
   const pathname = usePathname();
+  // Con una navegación en curso se resalta ya el destino, sin esperar a que cargue la página.
+  const pendingHref = usePendingHref();
+  const current = pendingHref ?? pathname;
 
   return NAV_BY_ROLE[role].map((group) => (
     <SidebarGroup key={group.label} className="px-1.5 py-1.5">
@@ -29,13 +33,14 @@ export function SidebarNav({ role }: { role: Role }) {
           {group.items.map((item) => (
             <SidebarMenuItem key={item.href}>
               <SidebarMenuButton
-                isActive={pathname === item.href || pathname.startsWith(`${item.href}/`)}
+                isActive={current === item.href || current.startsWith(`${item.href}/`)}
                 tooltip={item.label}
                 render={<Link href={item.href} aria-label={item.label} />}
-                className="relative h-10 rounded-xl px-3 text-[0.9rem] font-medium text-white/80 transition-colors before:absolute before:inset-y-2.5 before:left-0 before:w-[3px] before:rounded-full before:bg-gold before:opacity-0 before:content-[''] data-active:bg-white/12 data-active:font-semibold data-active:text-white data-active:before:opacity-100 [&>svg]:text-white/65 data-active:[&>svg]:text-gold"
+                className="h-10 rounded-xl border-l-[3px] border-transparent pr-3 pl-[9px] text-[0.9rem] font-medium text-white/80 transition-colors data-active:border-gold data-active:bg-white/10 data-active:font-semibold data-active:text-white [&>svg]:text-white/65 data-active:[&>svg]:text-white"
               >
                 <item.icon className="size-[1.125rem]" />
-                <span>{item.label}</span>
+                <span className="min-w-0 flex-1 truncate">{item.label}</span>
+                <NavPendingReporter href={item.href} />
               </SidebarMenuButton>
             </SidebarMenuItem>
           ))}

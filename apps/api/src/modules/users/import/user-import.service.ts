@@ -110,8 +110,38 @@ export class UserImportService {
     private readonly codes: UserCodeService,
   ) {}
 
-  template(type: ImportType, format: ImportFormat): Promise<ImportTemplate> {
-    return buildTemplate(type, format);
+  /** Plantillas ya armadas (el cuerpo es de solo lectura: se entrega tal cual). */
+  private readonly templateCache = new Map<string, ImportTemplate>();
+
+  /**
+   * Plantilla descargable. La de estudiantes en Excel trae listas desplegables con las secciones
+   * ya creadas del año activo (como el importador, solo SECUNDARIA y activas). Si no hay año
+   * activo o falla la lectura, se entrega la plantilla sin listas (nunca falla por esto).
+   */
+  async template(type: ImportType, format: ImportFormat): Promise<ImportTemplate> {
+    let sections: { gradeLevel: number; code: string }[] = [];
+    if (type === 'students' && format === 'xlsx') {
+      try {
+        const year = await this.access.getActiveYear();
+        if (year) {
+          sections = await this.prisma.section.findMany({
+            where: { academicYearId: year.id, level: 'SECUNDARIA', isActive: true },
+            select: { gradeLevel: true, code: true },
+          });
+        }
+      } catch {
+        sections = [];
+      }
+    }
+    // Armar el Excel (miles de validaciones) es lo más lento: se reutiliza mientras las secciones
+    // no cambien (la clave las incluye, así que nunca queda desactualizada).
+    const key = `${type}|${format}|${JSON.stringify(sections.map((x) => [x.gradeLevel, x.code]).sort())}`;
+    const cached = this.templateCache.get(key);
+    if (cached) return cached;
+    const built = await buildTemplate(type, format, { sections });
+    if (this.templateCache.size >= 16) this.templateCache.clear();
+    this.templateCache.set(key, built);
+    return built;
   }
 
   /** Vista previa: valida el archivo y contra la BD con lecturas simples. No escribe. */

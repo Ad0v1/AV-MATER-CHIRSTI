@@ -2,13 +2,14 @@
 
 import { useState, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
-import { CircleAlert, Loader2 } from 'lucide-react';
+import { CheckCircle2, CircleAlert, Loader2 } from 'lucide-react';
 import { PasswordField } from '@/components/auth/password-field';
+import { PasswordStrength } from '@/components/auth/password-strength';
 import { Button } from '@/components/ui/button';
+import { fetchNextPath } from '@/lib/onboarding';
+import { allRulesMet } from '@/lib/password-rules';
 
 type ApiError = { error?: { code?: string; message?: string; details?: unknown[] } };
-
-const MIN_LENGTH = 8;
 
 // Cambio de contraseña (RF-71, RF-72). La política completa (RF-73) la comprueba la API; aquí solo
 // se evitan viajes inútiles y se muestran sus mensajes.
@@ -19,12 +20,15 @@ export function ChangePasswordForm({ homePath }: { homePath: string }) {
   const [confirm, setConfirm] = useState('');
   const [problems, setProblems] = useState<string[]>([]);
   const [pending, setPending] = useState(false);
+  // Aviso inmediato: se compara mientras se escribe, sin esperar al envío.
+  const mismatch = confirm.length > 0 && confirm !== next;
+  const matches = confirm.length > 0 && confirm === next;
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setProblems([]);
-    if (next.length < MIN_LENGTH) {
-      setProblems([`La contraseña nueva debe tener al menos ${MIN_LENGTH} caracteres.`]);
+    if (!allRulesMet(next)) {
+      setProblems(['La contraseña nueva aún no cumple todos los requisitos.']);
       return;
     }
     if (next !== confirm) {
@@ -39,7 +43,8 @@ export function ChangePasswordForm({ homePath }: { homePath: string }) {
         body: JSON.stringify({ currentPassword: current, newPassword: next }),
       });
       if (res.ok) {
-        router.replace(homePath);
+        // Va directo al siguiente paso pendiente (política, correo…) sin pasar por el inicio.
+        router.replace(await fetchNextPath(homePath));
         router.refresh();
         return;
       }
@@ -82,18 +87,37 @@ export function ChangePasswordForm({ homePath }: { homePath: string }) {
         disabled={pending}
         describedBy="password-rules"
       />
-      <PasswordField
-        id="confirm-password"
-        label="Repite la contraseña nueva"
-        value={confirm}
-        onChange={setConfirm}
-        autoComplete="new-password"
-        disabled={pending}
-      />
-      <p id="password-rules" className="text-xs text-ink-3">
-        Mínimo {MIN_LENGTH} caracteres. No uses tu código de usuario, tu DNI ni una clave común como
-        «12345678».
+      <PasswordStrength id="password-rules" password={next} />
+      <p className="-mt-2 text-xs text-ink-3">
+        No uses tu código de usuario, tu DNI ni una clave común como «12345678».
       </p>
+
+      <div className="grid gap-2">
+        <PasswordField
+          id="confirm-password"
+          label="Repite la contraseña nueva"
+          value={confirm}
+          onChange={setConfirm}
+          autoComplete="new-password"
+          disabled={pending}
+          describedBy="confirm-feedback"
+          invalid={mismatch}
+        />
+        <div id="confirm-feedback" role="status" aria-live="polite" className="min-h-5 text-sm">
+          {mismatch && (
+            <p className="flex items-center gap-1.5 font-medium text-danger">
+              <CircleAlert className="size-4 shrink-0" aria-hidden="true" />
+              Las contraseñas no coinciden
+            </p>
+          )}
+          {matches && (
+            <p className="flex items-center gap-1.5 font-medium text-success">
+              <CheckCircle2 className="size-4 shrink-0" aria-hidden="true" />
+              Las contraseñas coinciden
+            </p>
+          )}
+        </div>
+      </div>
 
       {problems.length > 0 && (
         <div

@@ -4,7 +4,6 @@
 // etiqueta visible, aria-invalid + aria-describedby, foco en el primer error y botones de 44 px.
 import { useEffect, useId, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { useFormStatus } from 'react-dom';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -39,7 +38,7 @@ export function SubmitButton({
 }: {
   children: ReactNode;
   pendingText?: string;
-  variant?: 'default' | 'outline' | 'destructive' | 'secondary';
+  variant?: 'default' | 'outline' | 'destructive' | 'secondary' | 'ghost';
   className?: string;
 }) {
   const { pending } = useFormStatus();
@@ -57,50 +56,26 @@ export function SubmitButton({
 }
 
 /**
- * Error del formulario (con detalles). El éxito no se pinta aquí: se anuncia en la región de
- * estado siempre montada (ActionFeedbackProvider, vía useFormRefs).
- *
- * Sin `role="alert"` (BAJO de UX, INFORME 7): `useFocusOnError` ya lleva el foco al primer campo
- * inválido o a este aviso, y el lector lee lo que recibe el foco; con `alert` además, NVDA y JAWS
- * lo leían dos veces. Se elige el foco porque también sirve a quien navega con teclado (2.4.3) y
- * deja el cursor donde hay que corregir. Es un `group` con nombre (el título) y descripción (el
- * mensaje) para que se anuncie completo al recibir el foco.
+ * Error del formulario (con detalles). Se muestra como toast rojo (SweetAlert2, abajo a la
+ * derecha); los errores por campo siguen en línea junto a cada campo, y `useFocusOnError` lleva
+ * el foco al primer campo inválido. El toast lo anuncia el lector de pantalla (role="alert").
+ * El éxito también va por toast (ActionFeedbackProvider, vía useFormRefs).
  */
 export function FormMessage({
   state,
-  alertRef,
   title = 'No se pudo guardar',
 }: {
   state: ActionState;
   alertRef?: RefObject<HTMLDivElement | null>;
   title?: string;
 }) {
-  const id = useId();
-  if (state.status !== 'error' || !state.message) return null;
-  return (
-    <Alert
-      variant="destructive"
-      ref={alertRef}
-      role="group"
-      aria-labelledby={`${id}-titulo`}
-      aria-describedby={`${id}-mensaje`}
-      tabIndex={-1}
-      // Recibe el foco por código: indicador visible siempre (no solo con teclado).
-      className="outline-none focus:ring-3 focus:ring-ring/60"
-    >
-      <AlertTitle id={`${id}-titulo`}>{title}</AlertTitle>
-      <AlertDescription id={`${id}-mensaje`}>
-        <p className="break-words">{state.message}</p>
-        {state.details && state.details.length > 0 ? (
-          <ul className="mt-1 list-disc pl-5">
-            {state.details.map((d) => (
-              <li key={d}>{d}</li>
-            ))}
-          </ul>
-        ) : null}
-      </AlertDescription>
-    </Alert>
-  );
+  const announce = useAnnounce();
+  useEffect(() => {
+    if (state.status !== 'error' || !state.message) return;
+    const details = state.details?.length ? ` ${state.details.join('. ')}.` : '';
+    announce(`${title}. ${state.message}${details}`, 'error');
+  }, [state, title, announce]);
+  return null;
 }
 
 type FieldProps = {

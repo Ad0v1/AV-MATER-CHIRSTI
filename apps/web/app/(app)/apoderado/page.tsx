@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { Suspense } from 'react';
+import { ROUTE_META } from '@/lib/route-meta';
 import { toUserMessage } from '@/lib/api/errors';
 import { apiServer } from '@/lib/api/server';
 import { isUuid, sectionText } from '../curso/[id]/registro/_lib/grading-format';
@@ -61,7 +62,7 @@ async function Content({ searchParams }: { searchParams: Search }) {
                 <Link
                   href={`/apoderado?estudiante=${encodeURIComponent(s.studentId)}`}
                   aria-current={current ? 'page' : undefined}
-                  className={`inline-flex min-h-11 flex-col justify-center rounded-md border px-3 py-1 text-sm ${
+                  className={`inline-flex min-h-11 md:min-h-9 flex-col justify-center rounded-md border px-3 py-1 text-sm ${
                     current ? 'bg-primary font-medium text-primary-foreground' : ''
                   }`}
                 >
@@ -93,7 +94,7 @@ async function Content({ searchParams }: { searchParams: Search }) {
         </h2>
         <Link
           href={`/anuncios?studentId=${encodeURIComponent(selected.studentId)}`}
-          className="mt-2 inline-flex min-h-11 items-center rounded-md border px-3 text-sm font-medium underline-offset-4 hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+          className="mt-2 inline-flex min-h-11 md:min-h-9 items-center rounded-md border px-3 text-sm font-medium underline-offset-4 hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
         >
           Ver anuncios de {selected.fullName}
         </Link>
@@ -105,10 +106,9 @@ async function Content({ searchParams }: { searchParams: Search }) {
 export default function Page({ searchParams }: { searchParams: Search }) {
   return (
     <div className="mx-auto w-full max-w-4xl p-4 md:p-8">
-      <h1 className="text-2xl font-semibold">Panel del apoderado</h1>
+      <h1 className="text-2xl font-semibold">{ROUTE_META['/apoderado'].title}</h1>
       <p className="mb-4 mt-1 text-sm text-muted-foreground">
-        Consulta de solo lectura de las notas de tus estudiantes. En inicial los niños no tienen
-        cuenta propia: aquí ves sus logros.
+        {ROUTE_META['/apoderado'].description}
       </p>
       <Suspense fallback={<p className="text-sm text-muted-foreground">Cargando…</p>}>
         <Content searchParams={searchParams} />

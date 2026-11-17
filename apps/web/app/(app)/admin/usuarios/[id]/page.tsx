@@ -2,6 +2,7 @@
 // matrículas y traslado (RF-18, RF-20, RF-24) o vínculos con apoderados (RF-25; RN-13).
 // Solo ADMIN (lo exige la API).
 import Link from 'next/link';
+import { RouteLoading } from '@/components/layout/route-loading';
 import { Suspense, type ReactNode } from 'react';
 import {
   Table,
@@ -78,7 +79,7 @@ export const metadata = { title: 'Usuario' };
 export default function Page({ params, searchParams }: PageProps<'/admin/usuarios/[id]'>) {
   return (
     <PageShell>
-      <Suspense fallback={<LoadingBlock rows={6} label="Cargando el usuario…" />}>
+      <Suspense fallback={<RouteLoading bare />}>
         <UserPage params={params} searchParams={searchParams} />
       </Suspense>
     </PageShell>

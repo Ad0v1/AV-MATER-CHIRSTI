@@ -1,29 +1,24 @@
 // /admin/usuarios — lista de usuarios con filtros y paginación (RF-22). Solo ADMIN (lo exige la
 // API). Los filtros van en la URL; la búsqueda por nombre o correo va por Server Action (POST)
 // para que el texto no quede en la URL ni en el historial (decisión de seguridad 3 de 5a).
+//
+// Carga: el encabezado (título, descripción y acciones) es estático y sale al instante. Dentro de
+// la página, el buscador y los filtros se pintan en cuanto se leen los parámetros de la URL; las
+// secciones del año activo (que solo usa el filtro de sección) y la lista llegan después, cada una
+// por su lado, sin bloquear al resto.
 import Link from 'next/link';
 import { Suspense } from 'react';
+import { FileSpreadsheet } from 'lucide-react';
+import { ROUTE_META } from '@/lib/route-meta';
 import { buttonVariants } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { LoadError, LoadingBlock, PageHeader, PageShell } from '../_shared/components/page-bits';
+import { LoadingBlock, PageHeader, PageShell } from '../_shared/components/page-bits';
 import { TOUCH } from '../_shared/components/styles';
-import { PageNav, UserResults, pageControlClass } from './_components/user-list';
-import { UserFilters } from './_components/user-filters';
-import { UserSearch } from './_components/user-search';
+import { NewUserMenu } from './_components/new-user-menu';
+import { UsersExplorer } from './_components/users-explorer';
 import { getActiveYearSections, listUsers } from './_lib/data';
 import type { SectionOption, UserListPage } from './_lib/types';
-import {
-  USERS_PATH,
-  buildUserListQuery,
-  listHref,
-  parseUserFilters,
-  rangeText,
-  searchResetKey,
-  type UserFilters as Filters,
-} from './_lib/users';
-
-const linkButton = (variant: 'default' | 'outline') =>
-  cn(buttonVariants({ variant }), TOUCH, 'inline-flex items-center');
+import { USERS_PATH, parseUserFilters } from './_lib/users';
 
 export const metadata = { title: 'Usuarios' };
 
@@ -31,95 +26,47 @@ export default function Page({ searchParams }: PageProps<'/admin/usuarios'>) {
   return (
     <PageShell>
       <PageHeader
-        title="Usuarios"
-        description="Estudiantes, docentes, administradores y apoderados. El rol de una cuenta no se puede cambiar."
+        title={ROUTE_META['/admin/usuarios'].title}
+        description={ROUTE_META['/admin/usuarios'].description}
         actions={
           <>
-            <Link href={`${USERS_PATH}/nuevo/estudiante`} className={linkButton('default')}>
-              Nuevo estudiante
-            </Link>
-            <Link href={`${USERS_PATH}/nuevo/docente`} className={linkButton('outline')}>
-              Nuevo docente
-            </Link>
-            <Link href={`${USERS_PATH}/nuevo/apoderado`} className={linkButton('outline')}>
-              Nuevo apoderado
-            </Link>
-            <Link href={`${USERS_PATH}/importar`} className={linkButton('outline')}>
+            <Link
+              href={`${USERS_PATH}/importar`}
+              className={cn(
+                buttonVariants({ variant: 'ghost' }),
+                TOUCH,
+                'gap-2 px-3 text-ink-2 hover:bg-foreground/5 hover:text-foreground md:min-h-9',
+              )}
+            >
+              <FileSpreadsheet className="size-4" aria-hidden="true" />
               Importar desde Excel
             </Link>
+            <NewUserMenu />
           </>
         }
       />
-      <Suspense fallback={<LoadingBlock rows={2} label="Cargando filtros…" />}>
-        <UsersFiltersView searchParams={searchParams} />
-      </Suspense>
       <Suspense fallback={<LoadingBlock rows={6} label="Cargando usuarios…" />}>
-        <UsersListView searchParams={searchParams} />
+        <UsersBody searchParams={searchParams} />
       </Suspense>
     </PageShell>
   );
 }
 
-async function UsersFiltersView({
+async function UsersBody({
   searchParams,
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const filters = parseUserFilters(await searchParams);
-  // Las secciones solo sirven para el filtro: si fallan, la lista se muestra igual.
-  let sections: SectionOption[] = [];
-  try {
-    sections = (await getActiveYearSections())?.sections ?? [];
-  } catch {
-    sections = [];
-  }
-  const key = buildUserListQuery(filters);
-  return <UserFilters key={key} filters={filters} sections={sections} />;
-}
-
-async function UsersListView({
-  searchParams,
-}: {
-  searchParams: Promise<Record<string, string | string[] | undefined>>;
-}) {
-  const filters = parseUserFilters(await searchParams);
-  // key: al aplicar otros filtros se monta un buscador nuevo y se descartan los resultados
-  // de la búsqueda anterior (MEDIO de UX, INFORME 13).
-  return (
-    <UserSearch key={searchResetKey(filters)} filters={filters}>
-      <ServerList filters={filters} />
-    </UserSearch>
-  );
-}
-
-async function ServerList({ filters }: { filters: Filters }) {
-  let data: UserListPage;
-  try {
-    data = await listUsers(filters);
-  } catch (error) {
-    return <LoadError error={error} />;
-  }
-  return (
-    <section aria-labelledby="lista-usuarios-titulo" className="flex flex-col gap-3">
-      <div className="flex flex-col gap-1">
-        <h2 id="lista-usuarios-titulo" className="text-lg font-semibold">
-          Lista
-        </h2>
-        <p className="text-sm text-muted-foreground">
-          {rangeText(data.page, data.pageSize, data.total, data.items.length)}
-        </p>
-      </div>
-      <UserResults items={data.items} caption="Usuarios, por nombre" />
-      <PageNav
-        page={data.page}
-        pageSize={data.pageSize}
-        total={data.total}
-        renderControl={(target, label, rel) => (
-          <Link href={listHref(filters, target)} rel={rel} className={pageControlClass}>
-            {label}
-          </Link>
-        )}
-      />
-    </section>
-  );
+  const params = await searchParams;
+  // Sin pestaña elegida se ve la de Estudiantes: la lista nunca mezcla los roles.
+  const filters = parseUserFilters({ ...params, role: params.role ?? 'STUDENT' });
+  // Ambas cosas arrancan ya pero no se esperan aquí: el cliente las recibe como promesas.
+  // Las secciones solo sirven para el filtro de sección; si fallan, todo lo demás funciona igual.
+  const sections: Promise<SectionOption[]> = getActiveYearSections()
+    .then((active) => active?.sections ?? [])
+    .catch(() => []);
+  // Primera página para pintar ya con datos. Si falla, el cliente la pide por su cuenta.
+  const initial: Promise<UserListPage | null> = listUsers(filters).catch(() => null);
+  // Pestañas, filtros, búsqueda y paginación viven en el cliente (sin navegar al servidor).
+  return <UsersExplorer initialFilters={filters} initial={initial} sections={sections} />;
 }

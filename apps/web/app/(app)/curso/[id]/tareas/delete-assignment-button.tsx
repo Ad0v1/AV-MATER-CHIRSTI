@@ -8,7 +8,7 @@ import { useId, useRef, useState, useTransition } from 'react';
 import { deleteAssignment } from './actions';
 
 const BTN =
-  'min-h-11 rounded-md px-4 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring aria-disabled:opacity-60';
+  'min-h-11 md:min-h-9 rounded-md px-4 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring aria-disabled:opacity-60';
 
 /** id del h2 de la lista y de la región que anuncia el borrado (en page.tsx). */
 export const LIST_HEADING_ID = 't-list';

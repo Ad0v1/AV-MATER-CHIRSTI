@@ -20,7 +20,7 @@ import {
   type SettingsView,
 } from './settings-form';
 
-const API_BASE = `${(process.env.API_INTERNAL_URL ?? 'http://localhost:4000').replace(/\/+$/, '')}/api/v1`;
+const API_BASE = `${(process.env.API_INTERNAL_URL ?? 'http://127.0.0.1:4000').replace(/\/+$/, '')}/api/v1`;
 /** Antivirus incluido: igual que la confirmación de archivos de Dev 3. */
 const LOGO_TIMEOUT_MS = 45_000;
 

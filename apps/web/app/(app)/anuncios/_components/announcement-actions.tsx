@@ -71,7 +71,7 @@ export function AnnouncementActions({
       <Button
         type="button"
         variant="outline"
-        className="min-h-11 px-4"
+        className="min-h-11 md:min-h-9 px-4"
         onClick={() => setEditing(true)}
         aria-label={`Editar el anuncio «${title}»`}
       >
@@ -87,7 +87,7 @@ export function AnnouncementActions({
         }}
       >
         <AlertDialogTrigger
-          render={<Button variant="destructive" className="min-h-11 px-4" />}
+          render={<Button variant="destructive" className="min-h-11 md:min-h-9 px-4" />}
           aria-label={`Retirar el anuncio «${title}»`}
         >
           Retirar
@@ -106,13 +106,13 @@ export function AnnouncementActions({
             {error ? <p>{error}</p> : null}
           </div>
           <AlertDialogFooter>
-            <AlertDialogCancel className="min-h-11 px-4" disabled={pending}>
+            <AlertDialogCancel className="min-h-11 md:min-h-9 px-4" disabled={pending}>
               Cancelar
             </AlertDialogCancel>
             <Button
               type="button"
               variant="destructive"
-              className="min-h-11 px-4"
+              className="min-h-11 md:min-h-9 px-4"
               onClick={confirmDelete}
               aria-disabled={pending || undefined}
             >

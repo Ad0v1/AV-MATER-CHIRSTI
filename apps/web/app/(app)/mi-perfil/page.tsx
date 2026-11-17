@@ -5,6 +5,7 @@ import { ProfileForm } from '@/components/auth/profile-form';
 import { TwoFactorPanel } from '@/components/auth/two-factor-panel';
 import { apiServer } from '@/lib/api/server';
 import { HOME_BY_ROLE, ROLE_LABELS } from '@/lib/roles';
+import { ONBOARDING_ROUTES } from '@/lib/onboarding';
 import { requireUser } from '@/lib/session';
 
 export const metadata = { title: 'Mi perfil' };
@@ -20,13 +21,13 @@ type Profile = {
 
 export default function ProfilePage() {
   return (
-    <main className="flex min-h-dvh items-center justify-center bg-canvas px-4 py-10 sm:px-8">
+    <div className="flex justify-center px-4 py-8 sm:px-8">
       <div className="w-full max-w-sm rounded-2xl border border-line bg-surface p-6 shadow-sm sm:p-8">
         <Suspense fallback={<p className="text-sm text-ink-3">Cargando…</p>}>
           <ProfileContent />
         </Suspense>
       </div>
-    </main>
+    </div>
   );
 }
 
@@ -35,7 +36,7 @@ async function ProfileContent() {
   const user = await requireUser();
   // Los pasos anteriores del primer ingreso van antes: contraseña, política y correo.
   if (user.mustChangePassword) redirect('/cambiar-clave');
-  if (user.mustAcceptPolicy) redirect('/politica');
+  if (user.mustAcceptPolicy) redirect(ONBOARDING_ROUTES.politica);
   if (user.mustVerifyEmail) redirect('/verificar-correo');
   if (user.mustEnableTwoFactor) redirect('/verificacion-dos-pasos');
 
