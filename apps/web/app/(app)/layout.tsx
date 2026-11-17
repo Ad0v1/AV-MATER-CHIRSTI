@@ -1,4 +1,5 @@
 import { Suspense } from 'react';
+import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { AppSidebar } from '@/components/layout/app-sidebar';
 import { AppShellLoadingSkeleton } from '@/components/layout/page-loading-skeleton';
@@ -23,7 +24,10 @@ async function AuthenticatedShell({ children }: { children: React.ReactNode }) {
   if (user.mustAcceptPolicy) redirect('/politica');
   if (user.mustVerifyEmail) redirect('/verificar-correo');
   if (user.mustEnableTwoFactor) redirect('/verificacion-dos-pasos');
-  if (user.mustCompleteContact) redirect('/mi-perfil');
+  // /mi-perfil vive dentro del aula (sin parpadeo al entrar): no se redirige a si misma.
+  if (user.mustCompleteContact && (await headers()).get('x-aula-pathname') !== '/mi-perfil') {
+    redirect('/mi-perfil');
+  }
 
   return (
     <SidebarProvider data-app-shell="">

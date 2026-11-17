@@ -6,7 +6,10 @@ export function proxy(request: NextRequest) {
   if (!request.cookies.has('aula_sid')) {
     return NextResponse.redirect(new URL('/login', request.url));
   }
-  return NextResponse.next();
+  // El layout del aula necesita saber la ruta para no redirigir en bucle a /mi-perfil.
+  const headers = new Headers(request.headers);
+  headers.set('x-aula-pathname', request.nextUrl.pathname);
+  return NextResponse.next({ request: { headers } });
 }
 
 export const config = {
