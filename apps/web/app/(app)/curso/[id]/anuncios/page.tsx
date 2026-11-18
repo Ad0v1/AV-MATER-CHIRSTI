@@ -2,6 +2,7 @@
 // publican, editan y retiran; la API valida la asignación. El estudiante y el apoderado ven los
 // anuncios de sus cursos en /anuncios.
 import { Suspense } from 'react';
+import { PageShell } from '@/components/layout/page-shell';
 import Link from 'next/link';
 import { toUserMessage } from '@/lib/api/errors';
 import { apiServer } from '@/lib/api/server';
@@ -18,7 +19,7 @@ type Search = Promise<Record<string, string | string[] | undefined>>;
 
 export default function Page({ params, searchParams }: { params: Params; searchParams: Search }) {
   return (
-    <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 p-4 md:p-8">
+    <PageShell width="narrow">
       <div>
         <h1 className="text-2xl font-semibold">Anuncios del curso</h1>
         <p className="mt-1 text-sm text-muted-foreground">
@@ -28,7 +29,7 @@ export default function Page({ params, searchParams }: { params: Params; searchP
       <Suspense fallback={<p className="text-sm text-muted-foreground">Cargando anuncios…</p>}>
         <Content params={params} searchParams={searchParams} />
       </Suspense>
-    </div>
+    </PageShell>
   );
 }
 
@@ -66,7 +67,10 @@ async function Content({ params, searchParams }: { params: Params; searchParams:
   const base = COURSE_ROUTES.anuncios(id);
   return (
     <>
-      <section aria-labelledby="new-course-announcement" className="rounded-lg border p-4">
+      <section
+        aria-labelledby="new-course-announcement"
+        className="rounded-xl border border-line bg-surface p-4"
+      >
         <h2 id="new-course-announcement" className="mb-3 text-base font-semibold">
           Nuevo anuncio
         </h2>

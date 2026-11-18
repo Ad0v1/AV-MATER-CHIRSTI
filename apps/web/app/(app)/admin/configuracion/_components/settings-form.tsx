@@ -108,7 +108,7 @@ export function SettingsForm({ settings }: { settings: SettingsView }) {
       action={formAction}
       noValidate
       aria-label="Datos de la institución"
-      className="flex flex-col gap-5 rounded-xl p-4 ring-1 ring-foreground/10"
+      className="flex flex-col gap-5 rounded-xl border border-line bg-surface p-4"
     >
       <TextField
         name="name"
@@ -181,7 +181,7 @@ export function SettingsForm({ settings }: { settings: SettingsView }) {
         {/* Lista visible sin aria-live (no habla en cada tecla). */}
         <div id={coverageId} className="text-sm">
           {!coverageOk ? (
-            <ul className="list-disc pl-5 text-amber-900 dark:text-amber-200">
+            <ul className="list-disc pl-5 text-warning">
               {problems.map((p) => (
                 <li key={p}>{p}</li>
               ))}

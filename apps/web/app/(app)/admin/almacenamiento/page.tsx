@@ -13,6 +13,9 @@ import {
   PageShell,
   Section,
 } from '../_shared/components/page-bits';
+import { FilterBar } from '@/components/ui/filter-bar';
+import { Label } from '@/components/ui/label';
+import { Select } from '@/components/ui/select';
 import { SubmitButton } from '../_shared/components/form-bits';
 import { formatInstant, sectionLabel } from '../_shared/lib/format';
 import { JobDownloadButton } from './_components/job-download-button';
@@ -92,7 +95,7 @@ function UsageSummary({ usage }: { usage: StorageUsageView }) {
       {usage.years.length === 0 ? (
         <p className="text-sm text-muted-foreground">Todavía no hay años escolares.</p>
       ) : (
-        <div className="overflow-x-auto rounded-xl ring-1 ring-foreground/10">
+        <div className="overflow-x-auto rounded-xl border border-line bg-surface">
           <table className="w-full min-w-[28rem] text-left text-sm">
             <caption className="sr-only">Uso por año escolar</caption>
             <thead className="bg-muted/50">
@@ -136,32 +139,25 @@ function UsageSummary({ usage }: { usage: StorageUsageView }) {
 function YearPicker({ usage, yearId }: { usage: StorageUsageView; yearId: string }) {
   if (usage.years.length < 2) return null;
   return (
-    <Form action={STORAGE_PATH} aria-label="Elegir año" className="flex flex-wrap items-end gap-2">
-      <div className="flex flex-col gap-1.5">
-        <label htmlFor="anio" className="text-sm font-medium">
-          Año escolar
-        </label>
-        <select
-          id="anio"
-          name="anio"
-          defaultValue={yearId}
-          className="h-11 rounded-md border bg-background px-3 text-sm md:h-9"
-        >
-          {usage.years.map((y) => (
-            <option key={y.academicYearId} value={y.academicYearId}>
-              {y.year}
-            </option>
-          ))}
-        </select>
-      </div>
-      <SubmitButton pendingText="Cargando…">Ver año</SubmitButton>
+    <Form action={STORAGE_PATH} aria-label="Elegir año">
+      <FilterBar actions={<SubmitButton pendingText="Cargando…">Ver año</SubmitButton>}>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="anio">Año escolar</Label>
+          <Select
+            id="anio"
+            name="anio"
+            defaultValue={yearId}
+            options={usage.years.map((y) => ({ value: y.academicYearId, label: String(y.year) }))}
+          />
+        </div>
+      </FilterBar>
     </Form>
   );
 }
 
 const NOTICE_CLASS = {
   info: '',
-  warning: 'border-amber-700 dark:border-amber-400',
+  warning: 'border-warning',
   danger: '',
 } as const;
 
@@ -207,7 +203,7 @@ async function Backups({ yearId, usage }: { yearId: string; usage: StorageUsageV
       {view.sections.length === 0 ? (
         <p className="text-sm text-muted-foreground">Este año no tiene secciones.</p>
       ) : (
-        <ul className="flex flex-col divide-y rounded-xl ring-1 ring-foreground/10">
+        <ul className="flex flex-col divide-y rounded-xl border border-line bg-surface">
           {view.sections.map((s) => {
             const label = sectionLabel(s.gradeLevel, s.code);
             const b = s.backup;

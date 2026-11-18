@@ -1,6 +1,7 @@
 // /anuncios — anuncios que alcanzan al usuario (RF-32, Dev 5). La API (GET /me/announcements)
 // decide qué ve cada rol; el apoderado puede filtrar por uno de sus estudiantes vinculados.
 import { Suspense } from 'react';
+import { PageShell } from '@/components/layout/page-shell';
 import { ROUTE_META } from '@/lib/route-meta';
 import Link from 'next/link';
 import { toUserMessage } from '@/lib/api/errors';
@@ -17,13 +18,15 @@ type Ward = { studentId: string; fullName: string };
 
 export default function Page({ searchParams }: { searchParams: Search }) {
   return (
-    <div className="mx-auto flex w-full max-w-3xl flex-col gap-4 p-4 md:p-8">
-      <h1 className="text-2xl font-semibold">{ROUTE_META['/anuncios'].title}</h1>
-      <p className="text-sm text-muted-foreground">{ROUTE_META['/anuncios'].description}</p>
+    <PageShell width="narrow">
+      <div>
+        <h1 className="text-2xl font-semibold">{ROUTE_META['/anuncios'].title}</h1>
+        <p className="mt-1 text-sm text-muted-foreground">{ROUTE_META['/anuncios'].description}</p>
+      </div>
       <Suspense fallback={<p className="text-sm text-muted-foreground">Cargando anuncios…</p>}>
         <Content searchParams={searchParams} />
       </Suspense>
-    </div>
+    </PageShell>
   );
 }
 

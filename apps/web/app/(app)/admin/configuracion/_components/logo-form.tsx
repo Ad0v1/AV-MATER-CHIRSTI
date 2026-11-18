@@ -3,7 +3,7 @@
 // Logo institucional (RF-61, U5): PNG o JPEG de hasta 512 KB, sin SVG. La API revisa los bytes
 // y lo pasa por el antivirus; aquí solo se avisa antes de enviar.
 import { useActionState, useId, useState } from 'react';
-import { Input } from '@/components/ui/input';
+import { FileField } from '@/components/ui/file-field';
 import { Label } from '@/components/ui/label';
 import {
   FormMessage,
@@ -24,7 +24,7 @@ export function LogoForm({ logo, name }: { logo: LogoView | null; name: string }
   const error = localError ?? state.fieldErrors?.logo;
 
   return (
-    <div className="flex flex-col gap-4 rounded-xl p-4 ring-1 ring-foreground/10 sm:flex-row sm:items-start">
+    <div className="flex flex-col gap-4 rounded-xl border border-line bg-surface p-4 sm:flex-row sm:items-start">
       <div className="flex h-24 w-full shrink-0 items-center justify-center rounded-lg bg-muted sm:w-40">
         {logo ? (
           // URL firmada de S3 con vigencia corta: next/image no aplica (no hay dominio fijo).
@@ -59,16 +59,15 @@ export function LogoForm({ logo, name }: { logo: LogoView | null; name: string }
       >
         <div className="flex flex-col gap-1.5">
           <Label htmlFor={id}>Imagen del logo</Label>
-          <Input
+          <FileField
             id={id}
             name="logo"
-            type="file"
+            buttonLabel="Elegir imagen"
             accept={LOGO_TYPES.join(',')}
             required
             onChange={() => setLocalError(null)}
             aria-invalid={error ? true : undefined}
             aria-describedby={error ? `${hintId} ${errorId}` : hintId}
-            className="h-auto min-h-11 py-2"
           />
           <p id={hintId} className="text-sm text-muted-foreground">
             PNG o JPEG de hasta 512 KB y 4096 píxeles de lado. Reemplaza al logo actual.

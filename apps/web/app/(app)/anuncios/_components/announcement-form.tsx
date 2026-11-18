@@ -6,6 +6,9 @@
 // role="status". El cuerpo es texto plano.
 import { useEffect, useId, useRef, useState, useTransition } from 'react';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Select } from '@/components/ui/select';
+import { Textarea } from '@/components/ui/textarea';
 import {
   createAdminAnnouncement,
   createCourseAnnouncement,
@@ -20,9 +23,6 @@ import {
   isEducationLevel,
 } from '../../admin/estructura/_lib/levels';
 import { BODY_MAX, TITLE_MAX, type AnnouncementField } from '../_lib/announcements';
-
-const FIELD =
-  'mt-1 block w-full rounded-md border bg-transparent px-3 text-sm aria-[invalid=true]:border-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring';
 
 type Mode =
   | { kind: 'course'; courseSectionId: string }
@@ -105,15 +105,16 @@ export function AnnouncementForm({
             <label className="text-sm font-medium" htmlFor={id('scope')}>
               Destinatarios
             </label>
-            <select
+            <Select
               id={id('scope')}
-              className={`${FIELD} h-11 md:h-9`}
+              className="mt-1"
               value={scope}
-              onChange={(e) => setScope(e.target.value === 'GRADE' ? 'GRADE' : 'INSTITUTION')}
-            >
-              <option value="INSTITUTION">Toda la institución</option>
-              <option value="GRADE">Un grado</option>
-            </select>
+              onValueChange={(v) => setScope(v === 'GRADE' ? 'GRADE' : 'INSTITUTION')}
+              options={[
+                { value: 'INSTITUTION', label: 'Toda la institución' },
+                { value: 'GRADE', label: 'Un grado' },
+              ]}
+            />
           </div>
           {scope === 'GRADE' ? (
             <>
@@ -121,48 +122,46 @@ export function AnnouncementForm({
                 <label className="text-sm font-medium" htmlFor={id('level')}>
                   Nivel
                 </label>
-                <select
+                <Select
                   id={id('level')}
-                  className={`${FIELD} h-11 md:h-9`}
+                  className="mt-1"
                   value={level}
-                  onChange={(e) => {
-                    setLevel(e.target.value);
+                  onValueChange={(v) => {
+                    setLevel(v);
                     setGradeLevel('');
                   }}
+                  options={[
+                    { value: '', label: 'Elige un nivel' },
+                    ...EDUCATION_LEVELS.map((l) => ({ value: l, label: LEVEL_LABELS[l] })),
+                  ]}
                   {...a11y('level')}
-                >
-                  <option value="">Elige un nivel</option>
-                  {EDUCATION_LEVELS.map((l) => (
-                    <option key={l} value={l}>
-                      {LEVEL_LABELS[l]}
-                    </option>
-                  ))}
-                </select>
+                />
                 <FieldError id={id('level-error')} message={errors.level} />
               </div>
               <div className="flex-1">
                 <label className="text-sm font-medium" htmlFor={id('gradeLevel')}>
                   Grado
                 </label>
-                <select
+                <Select
                   id={id('gradeLevel')}
-                  className={`${FIELD} h-11 md:h-9`}
+                  className="mt-1"
                   value={gradeLevel}
                   disabled={!isEducationLevel(level)}
-                  onChange={(e) => setGradeLevel(e.target.value)}
+                  onValueChange={setGradeLevel}
+                  options={[
+                    {
+                      value: '',
+                      label: isEducationLevel(level) ? 'Elige un grado' : 'Primero elige el nivel',
+                    },
+                    ...(isEducationLevel(level)
+                      ? gradesForLevel(level).map((g) => ({
+                          value: String(g),
+                          label: gradeLabel(level, g),
+                        }))
+                      : []),
+                  ]}
                   {...a11y('gradeLevel')}
-                >
-                  <option value="">
-                    {isEducationLevel(level) ? 'Elige un grado' : 'Primero elige el nivel'}
-                  </option>
-                  {isEducationLevel(level)
-                    ? gradesForLevel(level).map((g) => (
-                        <option key={g} value={g}>
-                          {gradeLabel(level, g)}
-                        </option>
-                      ))
-                    : null}
-                </select>
+                />
                 <FieldError id={id('gradeLevel-error')} message={errors.gradeLevel} />
               </div>
             </>
@@ -174,9 +173,9 @@ export function AnnouncementForm({
         <label className="text-sm font-medium" htmlFor={id('title')}>
           Título
         </label>
-        <input
+        <Input
           id={id('title')}
-          className={`${FIELD} h-11 md:h-9`}
+          className="mt-1"
           value={title}
           maxLength={TITLE_MAX}
           autoComplete="off"
@@ -193,9 +192,9 @@ export function AnnouncementForm({
         <label className="text-sm font-medium" htmlFor={id('body')}>
           Mensaje
         </label>
-        <textarea
+        <Textarea
           id={id('body')}
-          className={`${FIELD} min-h-32 py-2`}
+          className="mt-1 min-h-32"
           value={body}
           maxLength={BODY_MAX}
           onChange={(e) => setBody(e.target.value)}

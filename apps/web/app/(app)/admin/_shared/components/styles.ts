@@ -11,4 +11,4 @@ export const CONTROL = 'h-11 md:h-9';
  * el foco y el error siguen mostrando su borde porque esos estados tienen más especificidad.
  */
 export const SOFT_FIELDS =
-  '[&_input]:border-transparent [&_input]:bg-surface-2 [&_input]:shadow-none [&_select]:border-transparent [&_select]:bg-surface-2 [&_select]:shadow-none dark:[&_select]:bg-surface-2 [&_label]:text-sm [&_label]:text-muted-foreground';
+  '[&_input]:border-transparent [&_input]:bg-surface-2 [&_input]:shadow-none [&_[data-slot=select-trigger]]:border-transparent [&_[data-slot=select-trigger]]:bg-surface-2 [&_[data-slot=select-trigger]]:shadow-none dark:[&_[data-slot=select-trigger]]:bg-surface-2 [&_label]:text-sm [&_label]:text-muted-foreground';

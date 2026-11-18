@@ -1,6 +1,7 @@
 // Lista paginada de anuncios (RF-32), compartida por las pantallas de anuncios. Server Component:
 // el cuerpo se muestra como texto (React lo escapa), nunca como HTML.
 import Link from 'next/link';
+import { Button } from '@/components/ui/button';
 import {
   formatPublished,
   pageCount,
@@ -37,7 +38,10 @@ export function AnnouncementList({
       <ul className="grid gap-3">
         {page.items.map((a) => (
           <li key={a.id}>
-            <article className="rounded-lg border p-4" aria-labelledby={`an-${a.id}`}>
+            <article
+              className="rounded-xl border border-line bg-surface p-4"
+              aria-labelledby={`an-${a.id}`}
+            >
               <h3
                 id={`an-${a.id}`}
                 tabIndex={-1}
@@ -64,23 +68,27 @@ export function AnnouncementList({
       {pages > 1 ? (
         <nav aria-label="Páginas de anuncios" className="mt-4 flex items-center gap-3 text-sm">
           {page.page > 1 ? (
-            <Link
-              className="inline-flex min-h-11 md:min-h-9 items-center rounded-md border px-4"
-              href={hrefForPage(page.page - 1)}
+            <Button
+              variant="outline"
+              nativeButton={false}
+              render={<Link href={hrefForPage(page.page - 1)} />}
+              className="h-auto min-h-11 px-4 md:min-h-9"
             >
               Anterior
-            </Link>
+            </Button>
           ) : null}
           <span>
             Página {page.page} de {pages}
           </span>
           {page.page < pages ? (
-            <Link
-              className="inline-flex min-h-11 md:min-h-9 items-center rounded-md border px-4"
-              href={hrefForPage(page.page + 1)}
+            <Button
+              variant="outline"
+              nativeButton={false}
+              render={<Link href={hrefForPage(page.page + 1)} />}
+              className="h-auto min-h-11 px-4 md:min-h-9"
             >
               Siguiente
-            </Link>
+            </Button>
           ) : null}
         </nav>
       ) : null}

@@ -53,7 +53,7 @@ export function CreateAssignmentForm(props: {
 
   if (props.periods.length === 0) {
     return (
-      <section className="rounded-lg border p-4">
+      <section className="rounded-xl border border-line bg-surface p-4">
         <h2 className="text-base font-semibold">Nueva tarea</h2>
         <p className="mt-2 text-sm text-muted-foreground">
           No hay períodos abiertos: no se pueden crear tareas.
@@ -85,7 +85,12 @@ export function CreateAssignmentForm(props: {
   }
 
   return (
-    <form ref={formRef} onSubmit={onSubmit} className="h-fit rounded-lg border p-4" noValidate>
+    <form
+      ref={formRef}
+      onSubmit={onSubmit}
+      className="h-fit rounded-xl border border-line bg-surface p-4"
+      noValidate
+    >
       <h2 className="text-base font-semibold">Nueva tarea</h2>
       <AssignmentFields
         prefix="a"

@@ -4,7 +4,9 @@ import { useState, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { Check, CircleAlert, Copy, Loader2 } from 'lucide-react';
 import { RecoveryCodesView } from '@/components/auth/recovery-codes-view';
+import { TotpQr } from '@/components/auth/totp-qr';
 import { Button } from '@/components/ui/button';
+import { Disclosure } from '@/components/ui/disclosure';
 import { Input } from '@/components/ui/input';
 import { fetchNextPath } from '@/lib/onboarding';
 
@@ -147,35 +149,58 @@ export function EnableTwoFactorForm({ homePath }: { homePath: string }) {
 
   return (
     <form onSubmit={confirm} className="grid gap-5" noValidate>
-      <div className="grid gap-1.5">
-        <p className="text-sm font-semibold text-brand">Clave para tu aplicación</p>
-        <div className="flex items-center gap-2 rounded-xl border border-line bg-canvas/80 px-3 py-2">
-          <p className="min-w-0 flex-1 py-1 font-mono text-sm leading-relaxed break-all tabular-nums select-all">
-            {groups(setup.secret)}
-          </p>
-          <button
-            type="button"
-            onClick={() => void copySecret()}
-            aria-label={secretCopied ? 'Clave copiada' : 'Copiar clave de configuración'}
-            title={secretCopied ? 'Clave copiada' : 'Copiar clave'}
-            className="grid size-11 shrink-0 place-items-center rounded-lg text-ink-2 transition-colors hover:text-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2"
-          >
-            {secretCopied ? (
-              <Check className="size-4" aria-hidden="true" />
-            ) : (
-              <Copy className="size-4" aria-hidden="true" />
-            )}
-          </button>
+      <div className="grid gap-3">
+        <p className="text-sm font-semibold text-brand">1. Escanea este código con tu celular</p>
+        <div className="flex flex-col items-center gap-3 rounded-xl border border-line bg-white p-4 sm:flex-row sm:items-start">
+          <TotpQr otpauthUrl={setup.otpauthUrl} />
+          <ol className="grid list-decimal gap-1.5 pl-5 text-sm leading-relaxed text-ink-2">
+            <li>
+              <span className="font-medium text-ink">iPhone:</span> abre la cámara y toca el aviso
+              «Añadir código de verificación», o usa la app Contraseñas.
+            </li>
+            <li>
+              <span className="font-medium text-ink">Android:</span> en Google Authenticator o
+              Microsoft Authenticator toca «+» y luego «Escanear un código QR».
+            </li>
+            <li>Escribe abajo el código de 6 dígitos que aparece en tu celular.</li>
+          </ol>
         </div>
-        <p role="status" aria-live="polite" className="min-h-5 text-xs text-ink-2">
-          {copyMessage}
-        </p>
-        <p className="text-sm leading-relaxed text-ink-2">
-          En tu aplicación elige «Ingresar una clave de configuración», escribe un nombre
-          cualquiera, pega esta clave y deja el tipo «Basado en tiempo». Esta clave no se vuelve a
-          mostrar.
-        </p>
       </div>
+
+      <Disclosure
+        className="grid gap-1.5 rounded-xl"
+        summary="¿No puedes escanear? Escribe la clave a mano"
+        summaryClassName="font-semibold text-brand"
+      >
+        <div className="mt-2 grid gap-1.5">
+          <div className="flex items-center gap-2 rounded-xl border border-line bg-canvas/80 px-3 py-2">
+            <p className="min-w-0 flex-1 py-1 font-mono text-sm leading-relaxed break-all tabular-nums select-all">
+              {groups(setup.secret)}
+            </p>
+            <button
+              type="button"
+              onClick={() => void copySecret()}
+              aria-label={secretCopied ? 'Clave copiada' : 'Copiar clave de configuración'}
+              title={secretCopied ? 'Clave copiada' : 'Copiar clave'}
+              className="grid size-11 shrink-0 place-items-center rounded-lg text-ink-2 transition-colors hover:text-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2"
+            >
+              {secretCopied ? (
+                <Check className="size-4" aria-hidden="true" />
+              ) : (
+                <Copy className="size-4" aria-hidden="true" />
+              )}
+            </button>
+          </div>
+          <p role="status" aria-live="polite" className="min-h-5 text-xs text-ink-2">
+            {copyMessage}
+          </p>
+          <p className="text-sm leading-relaxed text-ink-2">
+            En tu aplicación elige «Ingresar una clave de configuración», escribe un nombre
+            cualquiera, pega esta clave y deja el tipo «Basado en tiempo». Esta clave no se vuelve a
+            mostrar.
+          </p>
+        </div>
+      </Disclosure>
 
       <div className="grid gap-1.5">
         <label htmlFor="totp-enable" className="text-sm font-semibold text-brand">

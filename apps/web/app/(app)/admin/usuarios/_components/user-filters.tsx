@@ -16,6 +16,7 @@ import {
   isEducationLevel,
 } from '../../estructura/_lib/levels';
 import { Button } from '@/components/ui/button';
+import { FilterBar } from '@/components/ui/filter-bar';
 import { cn } from '@/lib/utils';
 import { SelectField } from '../../_shared/components/form-bits';
 import { SOFT_FIELDS, TOUCH } from '../../_shared/components/styles';
@@ -70,12 +71,28 @@ export function UserFilters({
       role="group"
       aria-label="Filtros de la lista"
     >
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <FilterBar
+        actions={
+          hasFilters ? (
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => onChange({ ...NO_FILTERS })}
+              className={cn(
+                TOUCH,
+                'px-3 text-ink-2 hover:bg-foreground/5 hover:text-foreground md:min-h-9',
+              )}
+            >
+              Quitar filtros
+            </Button>
+          ) : null
+        }
+      >
         <SelectField
           name="status"
           label="Estado"
           value={values.status}
-          onChange={(e) => onChange({ status: e.target.value })}
+          onValueChange={(v) => onChange({ status: v })}
           options={[
             { value: '', label: 'Todos los estados' },
             ...STATUSES.map((s) => ({ value: s, label: STATUS_LABELS[s] })),
@@ -85,7 +102,7 @@ export function UserFilters({
           name="credentials"
           label="Contraseña"
           value={values.credentials}
-          onChange={(e) => onChange({ credentials: e.target.value })}
+          onValueChange={(v) => onChange({ credentials: v })}
           options={[
             { value: '', label: 'Todas' },
             ...CREDENTIAL_STATUSES.map((c) => ({ value: c, label: CREDENTIAL_LABELS[c] })),
@@ -95,7 +112,7 @@ export function UserFilters({
           name="emailVerified"
           label="Correo"
           value={values.emailVerified}
-          onChange={(e) => onChange({ emailVerified: e.target.value })}
+          onValueChange={(v) => onChange({ emailVerified: v })}
           options={[
             { value: '', label: 'Todos' },
             { value: 'true', label: 'Verificado' },
@@ -109,7 +126,7 @@ export function UserFilters({
               label="Nivel"
               value={level}
               // Cambiar el nivel reinicia grado y sección (dependen de él).
-              onChange={(e) => onChange({ level: e.target.value, gradeLevel: '', sectionId: '' })}
+              onValueChange={(v) => onChange({ level: v, gradeLevel: '', sectionId: '' })}
               options={[
                 { value: '', label: 'Todos los niveles' },
                 ...EDUCATION_LEVELS.map((l) => ({ value: l, label: LEVEL_LABELS[l] })),
@@ -120,7 +137,7 @@ export function UserFilters({
                 name="gradeLevel"
                 label="Grado"
                 value={values.gradeLevel}
-                onChange={(e) => onChange({ gradeLevel: e.target.value, sectionId: '' })}
+                onValueChange={(v) => onChange({ gradeLevel: v, sectionId: '' })}
                 options={[
                   { value: '', label: 'Todos los grados' },
                   ...gradesForLevel(level).map((g) => ({
@@ -143,22 +160,7 @@ export function UserFilters({
             </Suspense>
           </>
         ) : null}
-      </div>
-      {hasFilters ? (
-        <div>
-          <Button
-            type="button"
-            variant="ghost"
-            onClick={() => onChange({ ...NO_FILTERS })}
-            className={cn(
-              TOUCH,
-              'px-3 text-ink-2 hover:bg-foreground/5 hover:text-foreground md:min-h-9',
-            )}
-          >
-            Quitar filtros
-          </Button>
-        </div>
-      ) : null}
+      </FilterBar>
     </div>
   );
 }
@@ -209,7 +211,7 @@ function SectionSelect({
       name="sectionId"
       label="Sección (año activo)"
       value={value}
-      onChange={(e) => onChange(e.target.value)}
+      onValueChange={onChange}
       disabled={loading}
       options={[
         { value: '', label: loading ? 'Cargando secciones…' : 'Todas las secciones' },

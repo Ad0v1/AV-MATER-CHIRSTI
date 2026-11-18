@@ -1,5 +1,7 @@
 import Link from 'next/link';
 import { Suspense } from 'react';
+import { PageShell } from '@/components/layout/page-shell';
+import { Button } from '@/components/ui/button';
 import { ROUTE_META } from '@/lib/route-meta';
 import { toUserMessage } from '@/lib/api/errors';
 import { apiServer } from '@/lib/api/server';
@@ -88,16 +90,21 @@ async function Content({ searchParams }: { searchParams: Search }) {
         ) : null}
       </section>
 
-      <section aria-labelledby="ap-anuncios" className="mt-6 rounded-lg border p-4">
+      <section
+        aria-labelledby="ap-anuncios"
+        className="mt-6 rounded-xl border border-line bg-surface p-4"
+      >
         <h2 id="ap-anuncios" className="text-lg font-semibold">
           Anuncios
         </h2>
-        <Link
-          href={`/anuncios?studentId=${encodeURIComponent(selected.studentId)}`}
-          className="mt-2 inline-flex min-h-11 md:min-h-9 items-center rounded-md border px-3 text-sm font-medium underline-offset-4 hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+        <Button
+          variant="outline"
+          nativeButton={false}
+          render={<Link href={`/anuncios?studentId=${encodeURIComponent(selected.studentId)}`} />}
+          className="mt-2 h-auto min-h-11 px-3 md:min-h-9"
         >
           Ver anuncios de {selected.fullName}
-        </Link>
+        </Button>
       </section>
     </>
   );
@@ -105,7 +112,7 @@ async function Content({ searchParams }: { searchParams: Search }) {
 
 export default function Page({ searchParams }: { searchParams: Search }) {
   return (
-    <div className="mx-auto w-full max-w-4xl p-4 md:p-8">
+    <PageShell className="gap-0">
       <h1 className="text-2xl font-semibold">{ROUTE_META['/apoderado'].title}</h1>
       <p className="mb-4 mt-1 text-sm text-muted-foreground">
         {ROUTE_META['/apoderado'].description}
@@ -113,6 +120,6 @@ export default function Page({ searchParams }: { searchParams: Search }) {
       <Suspense fallback={<p className="text-sm text-muted-foreground">Cargando…</p>}>
         <Content searchParams={searchParams} />
       </Suspense>
-    </div>
+    </PageShell>
   );
 }

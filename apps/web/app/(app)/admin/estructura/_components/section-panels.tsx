@@ -71,8 +71,7 @@ export function CreateSectionForm({
           label="Nivel"
           required
           value={level}
-          onChange={(e) => {
-            const next = e.target.value;
+          onValueChange={(next) => {
             if (isEducationLevel(next)) setLevel(next);
           }}
           error={state.fieldErrors?.level}
@@ -144,11 +143,13 @@ export function SectionItem({
           {badge}
         </div>
         <div className="-mr-3 flex flex-wrap items-center gap-1">
-          <Link
-            href={`/admin/estructura/anios/${yearId}/secciones/${section.id}`}
+          <Button
+            variant="ghost"
+            nativeButton={false}
+            render={<Link href={`/admin/estructura/anios/${yearId}/secciones/${section.id}`} />}
             className={cn(
               TOUCH,
-              'group/cursos inline-flex items-center gap-1.5 rounded-lg px-3 text-sm md:min-h-9 font-medium text-brand hover:bg-brand-soft focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-line-active',
+              'group/cursos h-auto gap-1.5 px-3 text-brand hover:bg-brand-soft hover:text-brand',
             )}
           >
             Cursos y docentes
@@ -157,7 +158,7 @@ export function SectionItem({
               className="size-4 transition-transform group-hover/cursos:translate-x-0.5 motion-reduce:transition-none"
               aria-hidden="true"
             />
-          </Link>
+          </Button>
           {readOnly ? null : (
             <Button
               type="button"

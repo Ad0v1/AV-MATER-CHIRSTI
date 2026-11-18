@@ -102,7 +102,7 @@ export function StudentPicker({
 
   return (
     <fieldset
-      className="flex flex-col gap-3 rounded-xl p-4 ring-1 ring-foreground/10"
+      className="flex flex-col gap-3 rounded-xl border border-line bg-surface p-4"
       aria-describedby={groupError ? `${hintId} ${groupErrorId}` : hintId}
     >
       <legend className="px-1 text-base font-semibold">{legend}</legend>
@@ -123,7 +123,7 @@ export function StudentPicker({
             {selected.map((s) => (
               <li
                 key={s.id}
-                className="flex flex-wrap items-center justify-between gap-2 rounded-lg p-2 ring-1 ring-foreground/10"
+                className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-line p-2"
               >
                 <input type="hidden" name={name} value={s.id} />
                 <span className="min-w-0 break-words">
@@ -215,7 +215,7 @@ export function StudentPicker({
               return (
                 <li
                   key={c.id}
-                  className="flex flex-wrap items-center justify-between gap-2 rounded-lg p-2 ring-1 ring-foreground/10"
+                  className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-line p-2"
                 >
                   <div className="flex min-w-0 flex-col">
                     <span className="break-words">{c.fullName}</span>

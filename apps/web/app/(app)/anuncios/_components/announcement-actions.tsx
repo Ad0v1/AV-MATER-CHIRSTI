@@ -34,7 +34,7 @@ export function AnnouncementActions({
 
   if (editing) {
     return (
-      <div className="mt-3 rounded-md border p-3">
+      <div className="mt-3 rounded-lg border border-line p-3">
         <AnnouncementForm
           mode={{ kind: 'edit', id, title, body }}
           onDone={() => {

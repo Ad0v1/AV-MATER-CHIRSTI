@@ -100,6 +100,27 @@
   body {
     @apply bg-background text-foreground;
   }
+  /* Controles del navegador con el tema del aula (el aula no tiene modo oscuro de sistema). */
+  :root {
+    color-scheme: light;
+  }
+  input[type='checkbox'],
+  input[type='radio'] {
+    accent-color: var(--brand);
+    width: 1.25rem;
+    height: 1.25rem;
+  }
+  /* Selector de fecha y hora: icono más grande y con cursor de mano. */
+  input::-webkit-calendar-picker-indicator {
+    cursor: pointer;
+    padding: 0.25rem;
+    margin-inline-start: 0.25rem;
+  }
+  /* Barras de desplazamiento finas, con el color de los bordes de campo. */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--line-field) transparent;
+  }
   /*
    * REGLA DE DISEÑO: el fondo de todas las páginas (fondo_paginas.webp) es UNA capa fija a la
    * ventana. Lo único que se desplaza es el contenido encima. Vive aquí, una sola vez:

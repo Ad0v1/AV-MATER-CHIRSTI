@@ -18,6 +18,9 @@ import {
   PageShell,
   Section,
 } from '../_shared/components/page-bits';
+import { FilterBar } from '@/components/ui/filter-bar';
+import { Label } from '@/components/ui/label';
+import { Select } from '@/components/ui/select';
 import { SubmitButton } from '../_shared/components/form-bits';
 import { gradeLabel, LEVEL_LABELS, sectionLabel } from '../estructura/_lib/levels';
 import { ExportButton } from './_components/export-button';
@@ -45,7 +48,6 @@ import {
 export const metadata = { title: 'Reportes' };
 
 const FORMATS: ReportFormat[] = ['XLSX', 'PDF'];
-const SELECT_CLASS = 'h-11 w-full rounded-md border bg-background px-3 text-sm md:h-9';
 
 export default function Page({ searchParams }: PageProps<'/admin/reportes'>) {
   return (
@@ -159,95 +161,88 @@ function Filters({
   periodId: string | null;
 }) {
   return (
-    <Form
-      action={REPORTS_PATH}
-      aria-label="Filtrar reportes"
-      className="grid grid-cols-1 items-end gap-3 sm:grid-cols-2 lg:grid-cols-6"
-    >
-      <div className="flex flex-col gap-1.5">
-        <label htmlFor="anio" className="text-sm font-medium">
-          Año escolar
-        </label>
-        <select id="anio" name="anio" defaultValue={view.academicYear?.id} className={SELECT_CLASS}>
-          {view.years.map((y) => (
-            <option key={y.id} value={y.id}>
-              {y.year}
-              {y.isActive ? ' (activo)' : ''}
-            </option>
-          ))}
-        </select>
-      </div>
-      <div className="flex flex-col gap-1.5">
-        <label htmlFor="periodo" className="text-sm font-medium">
-          Período
-        </label>
-        <select id="periodo" name="periodo" defaultValue={periodId ?? ''} className={SELECT_CLASS}>
-          {view.periods.length === 0 ? <option value="">Sin períodos</option> : null}
-          {view.periods.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.label}
-            </option>
-          ))}
-        </select>
-      </div>
-      <div className="flex flex-col gap-1.5">
-        <label htmlFor="nivel" className="text-sm font-medium">
-          Nivel
-        </label>
-        <select id="nivel" name="nivel" defaultValue={filters.level ?? ''} className={SELECT_CLASS}>
-          <option value="">Todos</option>
-          {levelsOf(view.sections).map((l) => (
-            <option key={l} value={l}>
-              {LEVEL_LABELS[l]}
-            </option>
-          ))}
-        </select>
-      </div>
-      <div className="flex flex-col gap-1.5">
-        <label htmlFor="grado" className="text-sm font-medium">
-          Grado
-        </label>
-        <select
-          id="grado"
-          name="grado"
-          defaultValue={filters.gradeLevel === null ? '' : String(filters.gradeLevel)}
-          aria-describedby={filters.level ? undefined : 'grado-ayuda'}
-          className={SELECT_CLASS}
-        >
-          <option value="">Todos</option>
-          {filters.level
-            ? gradeLevels(view.sections, filters.level).map((g) => (
-                <option key={g} value={g}>
-                  {gradeLabel(filters.level as EducationLevel, g)}
-                </option>
-              ))
-            : null}
-        </select>
-        {filters.level ? null : (
-          <span id="grado-ayuda" className="text-xs text-muted-foreground">
-            Elige un nivel y pulsa «Filtrar» para ver sus grados.
-          </span>
-        )}
-      </div>
-      <div className="flex flex-col gap-1.5">
-        <label htmlFor="seccion" className="text-sm font-medium">
-          Sección
-        </label>
-        <select
-          id="seccion"
-          name="seccion"
-          defaultValue={filters.sectionId ?? ''}
-          className={SELECT_CLASS}
-        >
-          <option value="">Todas</option>
-          {view.sections.map((s) => (
-            <option key={s.id} value={s.id}>
-              {sectionLabel(s.level, s.gradeLevel, s.code)}
-            </option>
-          ))}
-        </select>
-      </div>
-      <SubmitButton pendingText="Filtrando…">Filtrar</SubmitButton>
+    <Form action={REPORTS_PATH} aria-label="Filtrar reportes">
+      <FilterBar
+        help={
+          filters.level ? null : (
+            <p id="grado-ayuda" className="text-sm text-muted-foreground">
+              Elige un nivel y pulsa «Filtrar» para ver sus grados.
+            </p>
+          )
+        }
+        actions={<SubmitButton pendingText="Filtrando…">Filtrar</SubmitButton>}
+      >
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="anio">Año escolar</Label>
+          <Select
+            id="anio"
+            name="anio"
+            defaultValue={view.academicYear?.id}
+            options={view.years.map((y) => ({
+              value: y.id,
+              label: `${y.year}${y.isActive ? ' (activo)' : ''}`,
+            }))}
+          />
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="periodo">Período</Label>
+          <Select
+            id="periodo"
+            name="periodo"
+            defaultValue={periodId ?? ''}
+            options={
+              view.periods.length === 0
+                ? [{ value: '', label: 'Sin períodos' }]
+                : view.periods.map((p) => ({ value: p.id, label: p.label }))
+            }
+          />
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="nivel">Nivel</Label>
+          <Select
+            id="nivel"
+            name="nivel"
+            defaultValue={filters.level ?? ''}
+            options={[
+              { value: '', label: 'Todos' },
+              ...levelsOf(view.sections).map((l) => ({ value: l, label: LEVEL_LABELS[l] })),
+            ]}
+          />
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="grado">Grado</Label>
+          <Select
+            id="grado"
+            name="grado"
+            defaultValue={filters.gradeLevel === null ? '' : String(filters.gradeLevel)}
+            aria-describedby={filters.level ? undefined : 'grado-ayuda'}
+            options={[
+              { value: '', label: 'Todos' },
+              ...(filters.level
+                ? gradeLevels(view.sections, filters.level).map((g) => ({
+                    value: String(g),
+                    label: gradeLabel(filters.level as EducationLevel, g),
+                  }))
+                : []),
+            ]}
+          />
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="seccion">Sección</Label>
+          <Select
+            id="seccion"
+            name="seccion"
+            defaultValue={filters.sectionId ?? ''}
+            options={[
+              { value: '', label: 'Todas' },
+              ...view.sections.map((s) => ({
+                value: s.id,
+                label: sectionLabel(s.level, s.gradeLevel, s.code),
+              })),
+            ]}
+          />
+        </div>
+      </FilterBar>
     </Form>
   );
 }
@@ -273,7 +268,7 @@ function CourseSectionList({
     );
   }
   return (
-    <ul className="flex flex-col divide-y rounded-xl ring-1 ring-foreground/10">
+    <ul className="flex flex-col divide-y rounded-xl border border-line bg-surface">
       {view.items.map((cs) => {
         const name = `${cs.course.name} ${sectionLabel(cs.section.level, cs.section.gradeLevel, cs.section.code)}`;
         return (
@@ -401,7 +396,7 @@ async function Dashboard({
             {view.achievementRiskLiteral ?? '—'} (estudiantes distintos).
           </p>
           <div
-            className="overflow-x-auto rounded-xl ring-1 ring-foreground/10"
+            className="overflow-x-auto rounded-xl border border-line bg-surface"
             tabIndex={0}
             role="region"
             aria-labelledby="tabla-logros"
@@ -457,7 +452,7 @@ async function Dashboard({
             promedio con literal {view.riskLiteral ?? '—'} (estudiantes distintos).
           </p>
           <div
-            className="overflow-x-auto rounded-xl ring-1 ring-foreground/10"
+            className="overflow-x-auto rounded-xl border border-line bg-surface"
             tabIndex={0}
             role="region"
             aria-labelledby="tabla-promedios"
@@ -520,7 +515,7 @@ async function Dashboard({
       </dl>
 
       <div
-        className="overflow-x-auto rounded-xl ring-1 ring-foreground/10"
+        className="overflow-x-auto rounded-xl border border-line bg-surface"
         tabIndex={0}
         role="region"
         aria-labelledby="tabla-entregas"

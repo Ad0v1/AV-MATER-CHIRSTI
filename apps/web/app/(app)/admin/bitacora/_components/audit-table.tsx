@@ -1,6 +1,7 @@
 // Tabla de la bitácora (RF-62). Server Component: sin estado. El modo soporte (U9, RF-55/56) se
 // muestra con texto, no solo con color. beforeState/afterState van en un <details> como texto.
 import Link from 'next/link';
+import { Disclosure } from '@/components/ui/disclosure';
 import { Badge } from '@/components/ui/badge';
 import { formatInstant } from '../../_shared/lib/format';
 import {
@@ -15,7 +16,7 @@ import {
 export function AuditTable({ items, filters }: { items: AuditLogView[]; filters: AuditFilters }) {
   if (items.length === 0) {
     return (
-      <p className="rounded-xl p-4 text-sm ring-1 ring-foreground/10">
+      <p className="rounded-xl border border-line bg-surface p-4 text-sm">
         No hay registros con estos filtros.
       </p>
     );
@@ -26,7 +27,7 @@ export function AuditTable({ items, filters }: { items: AuditLogView[]; filters:
       role="region"
       aria-label="Registros de la bitácora (se desplaza en horizontal)"
       tabIndex={0}
-      className="overflow-x-auto rounded-xl ring-1 ring-foreground/10 focus-visible:outline-3 focus-visible:outline-foreground"
+      className="overflow-x-auto rounded-xl border border-line bg-surface focus-visible:outline-3 focus-visible:outline-foreground"
     >
       <table className="w-full min-w-[40rem] text-left text-sm">
         <caption className="sr-only">
@@ -83,7 +84,7 @@ export function AuditTable({ items, filters }: { items: AuditLogView[]; filters:
                     {row.supportMode ? (
                       <Badge
                         variant="outline"
-                        className="h-6 w-fit border-amber-700 px-2.5 text-xs text-amber-900 dark:border-amber-400 dark:text-amber-100"
+                        className="h-6 w-fit border-warning px-2.5 text-xs text-warning"
                       >
                         Modo soporte
                       </Badge>
@@ -98,10 +99,11 @@ export function AuditTable({ items, filters }: { items: AuditLogView[]; filters:
                     </p>
                   ) : null}
                   {before || after ? (
-                    <details className="mt-1">
-                      <summary className="inline-flex min-h-11 cursor-pointer items-center underline underline-offset-4 md:min-h-0">
-                        Ver cambios
-                      </summary>
+                    <Disclosure
+                      className="mt-1"
+                      summary="Ver cambios"
+                      summaryClassName="md:min-h-0"
+                    >
                       {before ? (
                         <>
                           <p className="mt-2 font-medium">Antes</p>
@@ -118,7 +120,7 @@ export function AuditTable({ items, filters }: { items: AuditLogView[]; filters:
                           </pre>
                         </>
                       ) : null}
-                    </details>
+                    </Disclosure>
                   ) : null}
                 </td>
               </tr>

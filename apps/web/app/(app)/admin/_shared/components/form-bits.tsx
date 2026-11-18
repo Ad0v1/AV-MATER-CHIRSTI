@@ -7,7 +7,7 @@ import { useFormStatus } from 'react-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select';
+import { Select } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
 import type { ActionState } from '../lib/action-state';
@@ -137,27 +137,27 @@ export function SelectField({
   ...select
 }: FieldProps & {
   options: { value: string; label: string }[];
-} & Omit<React.ComponentProps<'select'>, 'name' | 'size'>) {
+  value?: string;
+  defaultValue?: string;
+  onValueChange?: (value: string) => void;
+  required?: boolean;
+  disabled?: boolean;
+  placeholder?: string;
+}) {
   const id = useId();
   const hintId = hint ? `${id}-hint` : undefined;
   const errorId = error ? `${id}-error` : undefined;
   return (
     <div className={cn('flex flex-col gap-1.5', className)}>
       <Label htmlFor={id}>{label}</Label>
-      <NativeSelect
+      <Select
         id={id}
         name={name}
+        options={options}
         aria-invalid={error ? true : undefined}
         aria-describedby={describedBy(hintId, errorId)}
-        className="w-full [&_select]:h-11 md:[&_select]:h-9"
         {...select}
-      >
-        {options.map((o) => (
-          <NativeSelectOption key={o.value} value={o.value}>
-            {o.label}
-          </NativeSelectOption>
-        ))}
-      </NativeSelect>
+      />
       {hint ? (
         <p id={hintId} className="text-sm text-muted-foreground">
           {hint}
@@ -205,7 +205,7 @@ export function ReasonField({
       </Label>
       <p
         id={noticeId}
-        className="rounded-md border border-amber-300 bg-amber-50 px-2.5 py-2 text-sm text-amber-950 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-100"
+        className="rounded-md border border-warning/30 bg-warning-soft px-2.5 py-2 text-sm text-warning"
       >
         {REASON_NOTICE}
       </p>

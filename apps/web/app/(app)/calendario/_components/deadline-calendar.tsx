@@ -18,7 +18,7 @@ import listPlugin from '@fullcalendar/list';
 import esLocale from '@fullcalendar/core/locales/es';
 import type { EventMountArg, EventSourceFuncArg, EventInput } from '@fullcalendar/core';
 import { Label } from '@/components/ui/label';
-import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select';
+import { Select } from '@/components/ui/select';
 import { COURSE_ROUTES } from '@/lib/routes';
 import { limaTimeZonePlugin } from './lima-time-zone-plugin';
 import { LIMA_TIME_ZONE } from '../_lib/lima-time';
@@ -141,19 +141,15 @@ export function DeadlineCalendar({
       {isGuardian && students.length > 0 ? (
         <div className="flex max-w-sm flex-col gap-1.5">
           <Label htmlFor="calendario-estudiante">Estudiante</Label>
-          <NativeSelect
+          <Select
             id="calendario-estudiante"
             value={studentId}
-            onChange={(e) => setStudentId(e.target.value)}
-            className="w-full [&_select]:h-11 md:[&_select]:h-9"
-          >
-            <NativeSelectOption value={ALL}>Todos mis estudiantes</NativeSelectOption>
-            {students.map((s) => (
-              <NativeSelectOption key={s.studentId} value={s.studentId}>
-                {s.fullName}
-              </NativeSelectOption>
-            ))}
-          </NativeSelect>
+            onValueChange={setStudentId}
+            options={[
+              { value: ALL, label: 'Todos mis estudiantes' },
+              ...students.map((s) => ({ value: s.studentId, label: s.fullName })),
+            ]}
+          />
         </div>
       ) : null}
 

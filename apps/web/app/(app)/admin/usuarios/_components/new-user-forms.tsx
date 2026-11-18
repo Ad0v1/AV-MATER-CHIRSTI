@@ -136,7 +136,7 @@ export function NewStudentForm({ sections, year }: { sections: SectionOption[]; 
         />
       </div>
 
-      <fieldset className="flex flex-col gap-4 rounded-xl p-4 ring-1 ring-foreground/10">
+      <fieldset className="flex flex-col gap-4 rounded-xl border border-line bg-surface p-4">
         <legend className="px-1 font-semibold">Apoderado principal</legend>
         <p className="text-sm text-muted-foreground">
           Todo estudiante tiene al menos un apoderado. Si el apoderado ya está registrado (por
@@ -159,7 +159,7 @@ export function NewStudentForm({ sections, year }: { sections: SectionOption[]; 
       </fieldset>
 
       {second ? (
-        <fieldset className="flex flex-col gap-4 rounded-xl p-4 ring-1 ring-foreground/10">
+        <fieldset className="flex flex-col gap-4 rounded-xl border border-line bg-surface p-4">
           <legend className="px-1 font-semibold">Segundo apoderado (opcional)</legend>
           <DniFields
             state={state}

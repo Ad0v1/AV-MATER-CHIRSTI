@@ -1,6 +1,7 @@
 // /admin/anuncios — anuncios de la institución o de un grado (RF-32, Dev 5). Solo ADMIN (el layout
 // de admin lo exige y la API lo vuelve a validar). Muestra los del año activo.
 import { Suspense } from 'react';
+import { PageShell } from '@/components/layout/page-shell';
 import { ROUTE_META } from '@/lib/route-meta';
 import { toUserMessage } from '@/lib/api/errors';
 import { apiServer } from '@/lib/api/server';
@@ -15,14 +16,17 @@ type Search = Promise<Record<string, string | string[] | undefined>>;
 
 export default function Page({ searchParams }: { searchParams: Search }) {
   return (
-    <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 p-4 md:p-8">
+    <PageShell width="narrow">
       <div>
         <h1 className="text-2xl font-semibold">{ROUTE_META['/admin/anuncios'].title}</h1>
         <p className="mt-1 text-sm text-muted-foreground">
           {ROUTE_META['/admin/anuncios'].description}
         </p>
       </div>
-      <section aria-labelledby="new-announcement" className="rounded-lg border p-4">
+      <section
+        aria-labelledby="new-announcement"
+        className="rounded-xl border border-line bg-surface p-4"
+      >
         <h2 id="new-announcement" className="mb-3 text-base font-semibold">
           Nuevo anuncio
         </h2>
@@ -36,7 +40,7 @@ export default function Page({ searchParams }: { searchParams: Search }) {
           <List searchParams={searchParams} />
         </Suspense>
       </section>
-    </div>
+    </PageShell>
   );
 }
 

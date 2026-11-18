@@ -3,8 +3,11 @@
 // Campos comunes de crear y editar tarea (Dev 3, RF-28/29). Mismas validaciones
 // (assignment-format.ts) y accesibilidad (INFORME 15): aria-invalid + aria-describedby por campo.
 // `prefix` hace únicos los id cuando hay varios formularios en la página.
+import { Input } from '@/components/ui/input';
+import { Select } from '@/components/ui/select';
+import { Textarea } from '@/components/ui/textarea';
 import { onlyDecimal, onlyDigits } from '@/lib/digits';
-import { describedBy, FieldError, INVALID_FIELD } from '../_materials/form-feedback';
+import { describedBy, FieldError } from '../_materials/form-feedback';
 import {
   DEFAULT_MAX_MIB,
   MAX_MIB_CAP,
@@ -12,8 +15,6 @@ import {
   type AssignmentField,
   type NewAssignmentInput,
 } from './assignment-format';
-
-const field = `mt-1 block h-11 w-full rounded-md border px-3 text-sm md:h-9 ${INVALID_FIELD}`;
 
 export function AssignmentFields(props: {
   prefix: string;
@@ -38,19 +39,14 @@ export function AssignmentFields(props: {
           <label className="mt-3 block text-sm font-medium" htmlFor={`${p}-period`}>
             Período
           </label>
-          <select
+          <Select
             id={`${p}-period`}
-            className={field}
+            className="mt-1"
             value={v.periodId}
-            onChange={(e) => onChange({ periodId: e.target.value })}
+            onValueChange={(periodId) => onChange({ periodId })}
+            options={props.periods.map((o) => ({ value: o.id, label: o.label }))}
             {...a11y('periodId')}
-          >
-            {props.periods.map((o) => (
-              <option key={o.id} value={o.id}>
-                {o.label}
-              </option>
-            ))}
-          </select>
+          />
           <FieldError id={errorId('periodId')} message={errors.periodId} />
         </>
       )}
@@ -58,9 +54,9 @@ export function AssignmentFields(props: {
       <label className="mt-3 block text-sm font-medium" htmlFor={`${p}-title`}>
         Título
       </label>
-      <input
+      <Input
+        className="mt-1"
         id={`${p}-title`}
-        className={field}
         value={v.title}
         maxLength={200}
         required
@@ -72,9 +68,9 @@ export function AssignmentFields(props: {
       <label className="mt-3 block text-sm font-medium" htmlFor={`${p}-instructions`}>
         Instrucciones
       </label>
-      <textarea
+      <Textarea
         id={`${p}-instructions`}
-        className={`mt-1 block min-h-28 w-full rounded-md border px-3 py-2 text-sm ${INVALID_FIELD}`}
+        className="mt-1 min-h-28"
         value={v.instructions}
         required
         onChange={(e) => onChange({ instructions: e.target.value })}
@@ -85,10 +81,10 @@ export function AssignmentFields(props: {
       <label className="mt-3 block text-sm font-medium" htmlFor={`${p}-due`}>
         Plazo de entrega
       </label>
-      <input
+      <Input
+        className="mt-1"
         id={`${p}-due`}
         type="datetime-local"
-        className={field}
         value={v.dueLocal}
         required
         onChange={(e) => onChange({ dueLocal: e.target.value })}
@@ -105,20 +101,17 @@ export function AssignmentFields(props: {
             <label className="block text-sm font-medium" htmlFor={`${p}-literal`}>
               Calificación si no entrega (NE)
             </label>
-            <select
+            <Select
               id={`${p}-literal`}
-              className={field}
+              className="mt-1"
               value={v.noSubmissionLiteral ?? ''}
-              onChange={(e) => onChange({ noSubmissionLiteral: e.target.value })}
+              onValueChange={(noSubmissionLiteral) => onChange({ noSubmissionLiteral })}
+              options={[
+                { value: '', label: 'Sin calificación' },
+                ...NO_SUBMISSION_LITERALS.map((l) => ({ value: l, label: l })),
+              ]}
               {...a11y('noSubmissionGrade', `${p}-literal-hint`)}
-            >
-              <option value="">Sin calificación</option>
-              {NO_SUBMISSION_LITERALS.map((l) => (
-                <option key={l} value={l}>
-                  {l}
-                </option>
-              ))}
-            </select>
+            />
             <FieldError id={errorId('noSubmissionGrade')} message={errors.noSubmissionGrade} />
             <p id={`${p}-literal-hint`} className="mt-1 text-xs text-muted-foreground">
               NE = no entregó. Escala AD, A, B, C; es opcional.
@@ -129,11 +122,11 @@ export function AssignmentFields(props: {
             <label className="block text-sm font-medium" htmlFor={`${p}-grade`}>
               Nota si no entrega (NE)
             </label>
-            <input
+            <Input
+              className="mt-1"
               id={`${p}-grade`}
               inputMode="decimal"
               autoComplete="off"
-              className={field}
               value={v.noSubmissionGrade}
               onChange={(e) => onChange({ noSubmissionGrade: onlyDecimal(e.target.value) })}
               {...a11y('noSubmissionGrade', `${p}-grade-hint`)}
@@ -149,13 +142,13 @@ export function AssignmentFields(props: {
             <label className="block text-sm font-medium" htmlFor={`${p}-size`}>
               Tamaño máximo (MiB)
             </label>
-            <input
+            <Input
+              className="mt-1"
               id={`${p}-size`}
               inputMode="numeric"
               pattern="[0-9]*"
               maxLength={String(MAX_MIB_CAP).length}
               autoComplete="off"
-              className={field}
               value={v.maxSizeMiB}
               onChange={(e) =>
                 onChange({ maxSizeMiB: onlyDigits(e.target.value, String(MAX_MIB_CAP).length) })
@@ -174,7 +167,6 @@ export function AssignmentFields(props: {
         <label className="mt-3 flex min-h-11 items-center gap-2 text-sm">
           <input
             type="checkbox"
-            className="size-4"
             checked={v.allowLate}
             onChange={(e) => onChange({ allowLate: e.target.checked })}
           />

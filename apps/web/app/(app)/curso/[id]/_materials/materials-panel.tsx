@@ -4,12 +4,14 @@
 // Accesibilidad (INFORME 15): validación por campo con aria-invalid y aria-describedby, foco al
 // primer error, errores generales en role="alert" y éxito en role="status" enfocable.
 import { useRef, useState, useTransition } from 'react';
+import { FileField } from '@/components/ui/file-field';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { finishUpload, publishMaterial, startUpload } from './actions';
 import {
   describedBy,
   FieldError,
   FormAlert,
-  INVALID_FIELD,
   SUBMIT_BUTTON,
   SuccessRegion,
   useFocusFirstInvalid,
@@ -28,7 +30,6 @@ export type MaterialItem = {
 
 const MAX_BYTES = 20 * MIB;
 const KIND_LABEL = { CLASS: 'Clase', READING: 'Lectura' } as const;
-const field = `mt-1 block h-11 w-full rounded-md border px-3 text-sm md:h-9 ${INVALID_FIELD}`;
 
 type Field = 'title' | 'file';
 
@@ -125,14 +126,19 @@ export function MaterialsPanel(props: {
   return (
     <div className="grid gap-6 lg:grid-cols-2">
       {props.canWrite && (
-        <form ref={formRef} onSubmit={onSubmit} className="rounded-lg border p-4" noValidate>
+        <form
+          ref={formRef}
+          onSubmit={onSubmit}
+          className="rounded-xl border border-line bg-surface p-4"
+          noValidate
+        >
           <h2 className="text-base font-semibold">Subir {KIND_LABEL[props.kind].toLowerCase()}</h2>
           <label className="mt-3 block text-sm font-medium" htmlFor="m-title">
             Título
           </label>
-          <input
+          <Input
             id="m-title"
-            className={field}
+            className="mt-1"
             value={title}
             maxLength={200}
             onChange={(e) => setTitle(e.target.value)}
@@ -142,9 +148,9 @@ export function MaterialsPanel(props: {
           <label className="mt-3 block text-sm font-medium" htmlFor="m-desc">
             Descripción (opcional)
           </label>
-          <textarea
+          <Textarea
             id="m-desc"
-            className="mt-1 block min-h-20 w-full rounded-md border px-3 py-2 text-sm"
+            className="mt-1 min-h-20"
             value={description}
             maxLength={1000}
             onChange={(e) => setDescription(e.target.value)}
@@ -152,12 +158,11 @@ export function MaterialsPanel(props: {
           <label className="mt-3 block text-sm font-medium" htmlFor="m-file">
             Archivo PDF
           </label>
-          <input
+          <FileField
             ref={fileRef}
             id="m-file"
-            type="file"
             accept=".pdf,application/pdf"
-            className={`mt-1 block w-full rounded-md border border-transparent text-sm ${INVALID_FIELD}`}
+            buttonLabel="Elegir archivo PDF"
             onChange={(e) => onFile(e.target.files?.[0] ?? null)}
             {...a11y('file', 'm-file-hint')}
           />
@@ -180,7 +185,7 @@ export function MaterialsPanel(props: {
           </SuccessRegion>
         </form>
       )}
-      <section className="rounded-lg border p-4" aria-labelledby="m-list">
+      <section className="rounded-xl border border-line bg-surface p-4" aria-labelledby="m-list">
         <h2 id="m-list" className="text-base font-semibold">
           Materiales publicados
         </h2>

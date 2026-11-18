@@ -5,12 +5,12 @@
 // Accesibilidad (INFORME 15): error del archivo en el campo, errores generales en role="alert",
 // progreso y constancia en role="status" enfocable.
 import { useId, useRef, useState, useTransition } from 'react';
+import { FileField } from '@/components/ui/file-field';
 import { finishUpload, startUpload } from '../_materials/actions';
 import {
   describedBy,
   FieldError,
   FormAlert,
-  INVALID_FIELD,
   SUBMIT_BUTTON,
   SuccessRegion,
   useFocusFirstInvalid,
@@ -112,12 +112,11 @@ export function SubmitForm(props: {
       <label className="block text-sm font-medium" htmlFor={fileId}>
         {props.isResubmission ? 'Reemplazar mi entrega (PDF)' : 'Mi entrega (PDF)'}
       </label>
-      <input
+      <FileField
         ref={inputRef}
         id={fileId}
-        type="file"
         accept=".pdf,application/pdf"
-        className={`mt-1 block w-full rounded-md border border-transparent text-sm ${INVALID_FIELD}`}
+        buttonLabel="Elegir archivo PDF"
         aria-invalid={fileError ? true : undefined}
         aria-describedby={describedBy(fileError && errorId, hintId)}
         onChange={(e) => onFile(e.target.files?.[0] ?? null)}

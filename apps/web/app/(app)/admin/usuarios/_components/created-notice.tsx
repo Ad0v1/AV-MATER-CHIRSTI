@@ -36,7 +36,7 @@ export function CreatedNotice({ detail }: { detail: string }) {
       aria-describedby={`${CREATED_NOTICE_ID}-texto`}
       tabIndex={-1}
       // Recibe el foco por código: indicador visible siempre.
-      className="scroll-mt-4 border-emerald-700 outline-none focus:ring-3 focus:ring-ring/60 dark:border-emerald-400"
+      className="scroll-mt-4 border-success outline-none focus:ring-3 focus:ring-ring/60"
     >
       <AlertTitle id={`${CREATED_NOTICE_ID}-titulo`}>Cuenta creada</AlertTitle>
       <AlertDescription id={`${CREATED_NOTICE_ID}-texto`}>{detail}</AlertDescription>
