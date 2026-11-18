@@ -15,7 +15,6 @@ export function AppSidebar({ role }: { role: Role }) {
       <SidebarHeader className="border-b border-sidebar-border px-4 py-4 group-data-[collapsible=icon]:px-0">
         <Link
           href="/"
-          aria-label="Aula Virtual Mater Christi"
           className="flex min-h-14 min-w-0 items-center rounded-xl px-1.5 py-1 transition-colors hover:bg-white/8 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sidebar-ring"
         >
           <Suspense fallback={<BrandSkeleton subtitle={ROLE_LABELS[role]} />}>

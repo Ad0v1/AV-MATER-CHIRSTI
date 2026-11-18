@@ -62,7 +62,17 @@ const CALENDAR_CLASSES = [
   '[&_.fc-list-event-title_a:focus-visible]:outline-3 [&_.fc-list-event-title_a:focus-visible]:outline-foreground',
   '[&_.fc-button:focus-visible]:outline-3 [&_.fc-button:focus-visible]:outline-offset-2 [&_.fc-button:focus-visible]:outline-foreground',
   '[&_.fc-list-day-cushion]:text-foreground [&_.fc-list-event-time]:text-foreground [&_.fc-list-event-title_a]:text-foreground',
+  // Días de otros meses: FullCalendar los deja al 30 % (contraste 1,86:1); se usa el gris del tema (AA).
+  '[&_.fc-day-other_.fc-daygrid-day-top]:opacity-100! [&_.fc-day-other_.fc-daygrid-day-number]:text-muted-foreground',
 ].join(' ');
+
+/** Los íconos de las flechas son decorativos: el nombre lo da buttonHints en el botón. */
+function hideToolbarIcons(root: HTMLElement | null | undefined): void {
+  root?.querySelectorAll('.fc-icon[role="img"]').forEach((icon) => {
+    icon.removeAttribute('role');
+    icon.setAttribute('aria-hidden', 'true');
+  });
+}
 
 function subscribeNarrow(onChange: () => void): () => void {
   const media = window.matchMedia(NARROW);
@@ -86,6 +96,7 @@ export function DeadlineCalendar({
   const [status, setStatus] = useState('');
   const [error, setError] = useState('');
   const calendarRef = useRef<FullCalendar>(null);
+  const wrapRef = useRef<HTMLDivElement>(null);
   const isGuardian = role === 'GUARDIAN';
 
   // En pantalla angosta solo hay lista (sin botón "Mes"); al ensanchar vuelve a la vista de mes.
@@ -160,7 +171,7 @@ export function DeadlineCalendar({
         </p>
       ) : null}
 
-      <div className={CALENDAR_CLASSES} style={THEME}>
+      <div ref={wrapRef} className={CALENDAR_CLASSES} style={THEME}>
         {narrow !== null ? (
           <FullCalendar
             // Al cambiar de estudiante se vuelve a montar y vuelve a pedir el rango visible.
@@ -176,6 +187,8 @@ export function DeadlineCalendar({
               end: narrow ? 'listMonth' : 'dayGridMonth,listMonth',
             }}
             buttonText={{ today: 'Hoy', month: 'Mes', list: 'Lista' }}
+            buttonHints={{ prev: 'Período anterior', next: 'Período siguiente', today: 'Ir a hoy' }}
+            datesSet={() => hideToolbarIcons(wrapRef.current)}
             height="auto"
             dayMaxEvents={3}
             eventDisplay="block"

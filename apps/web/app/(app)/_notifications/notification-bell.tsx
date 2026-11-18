@@ -130,7 +130,7 @@ export function NotificationBell({ role }: { role: Role }) {
           render={
             <Button
               variant="ghost"
-              className="relative size-9 min-h-9 min-w-9 rounded-full p-0 text-ink-2 hover:bg-foreground/5 hover:text-foreground"
+              className="relative size-11 min-h-11 min-w-11 rounded-full md:size-9 md:min-h-9 md:min-w-9 p-0 text-ink-2 hover:bg-foreground/5 hover:text-foreground"
             />
           }
           aria-label={label.aria}

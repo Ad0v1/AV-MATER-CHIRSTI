@@ -1,15 +1,8 @@
 import Link from 'next/link';
-import { ArrowRight } from 'lucide-react';
+import { ArrowRight, BookOpen } from 'lucide-react';
 import { COURSE_ROUTES, ROUTES } from '@/lib/routes';
 import { type Role } from '@/lib/roles';
-import {
-  AVISOS_DEMO,
-  CURSOS_DEMO,
-  ENTREGAS_DEMO,
-  NOTAS_DEMO,
-  POR_CALIFICAR_DEMO,
-  type CursoDemo,
-} from './datos-demo';
+import type { CursoInicio, DatosInicio } from './datos';
 import { FechaHoy, Saludo } from './hora-local';
 
 type PanelRole = Extract<Role, 'TEACHER' | 'STUDENT'>;
@@ -27,26 +20,34 @@ const SUPERFICIE = 'rounded-2xl bg-surface/90 shadow-sm shadow-brand/5 backdrop-
 
 // Inicio de estudiantes y docentes. Banner, resumen, cursos en cuadrícula y una columna lateral;
 // la jerarquía la dan el espacio y el tamaño del texto, no los bordes.
-export function PanelInicio({ role, nombre }: { role: PanelRole; nombre: string | null }) {
+export function PanelInicio({
+  role,
+  nombre,
+  datos,
+}: {
+  role: PanelRole;
+  nombre: string | null;
+  datos: DatosInicio;
+}) {
   const esDocente = role === 'TEACHER';
-  const totalPorCalificar = POR_CALIFICAR_DEMO.reduce((s, p) => s + p.entregadas, 0);
+  const { cursos, entregas, avisos } = datos;
 
   const resumen: Dato[] = esDocente
     ? [
-        { label: 'Cursos a cargo', valor: String(CURSOS_DEMO.length) },
-        { label: 'Por calificar', valor: String(totalPorCalificar) },
-        { label: 'Entregas nuevas hoy', valor: '0' },
-        { label: 'Estudiantes', valor: '0' },
+        { label: 'Cursos a cargo', valor: cursos.error ? '—' : String(cursos.items.length) },
+        { label: 'Avisos recientes', valor: avisos.error ? '—' : String(avisos.items.length) },
       ]
     : [
-        { label: 'Tareas pendientes', valor: String(ENTREGAS_DEMO.length) },
+        {
+          label: 'Entregas en 14 días',
+          valor: entregas.error ? '—' : String(entregas.items.length),
+        },
         {
           label: 'Próxima entrega',
-          valor: ENTREGAS_DEMO.length > 0 ? etiquetaDias(ENTREGAS_DEMO[0].dias) : '—',
-          alerta: ENTREGAS_DEMO.length > 0,
+          valor: entregas.items.length > 0 ? etiquetaDias(entregas.items[0].dias) : '—',
+          alerta: entregas.items.length > 0 && entregas.items[0].dias <= 1,
         },
-        { label: 'Promedio actual', valor: '—' },
-        { label: 'Cursos', valor: String(CURSOS_DEMO.length) },
+        { label: 'Cursos', valor: cursos.error ? '—' : String(cursos.items.length) },
       ];
 
   return (
@@ -70,7 +71,9 @@ export function PanelInicio({ role, nombre }: { role: PanelRole; nombre: string 
       </header>
 
       {/* Resumen */}
-      <dl className="grid grid-cols-2 gap-3 lg:grid-cols-4 lg:gap-4">
+      <dl
+        className={`grid grid-cols-2 gap-3 lg:gap-4 ${resumen.length === 2 ? '' : 'lg:grid-cols-3'}`}
+      >
         {resumen.map((dato) => (
           <div key={dato.label} className={`flex flex-col-reverse px-6 py-5 ${SUPERFICIE}`}>
             <dt className="mt-1 text-sm text-ink-2">{dato.label}</dt>
@@ -92,14 +95,16 @@ export function PanelInicio({ role, nombre }: { role: PanelRole; nombre: string 
             <h2 id="titulo-cursos" className="font-heading text-xl font-semibold text-ink">
               Mis cursos
             </h2>
-            <span className="text-sm text-ink-2">{CURSOS_DEMO.length} este año</span>
+            <span className="text-sm text-ink-2">{cursos.items.length} este año</span>
           </div>
-          {CURSOS_DEMO.length === 0 ? (
+          {cursos.error ? (
+            <Vacio>No se pudieron cargar tus cursos. Vuelve a intentarlo en un momento.</Vacio>
+          ) : cursos.items.length === 0 ? (
             <Vacio>Aún no tienes cursos asignados.</Vacio>
           ) : (
             <ul className="grid gap-4 sm:grid-cols-2">
-              {CURSOS_DEMO.map((curso) => (
-                <li key={`${curso.nombre}-${curso.seccion}`}>
+              {cursos.items.map((curso) => (
+                <li key={curso.id}>
                   <TarjetaCurso curso={curso} esDocente={esDocente} />
                 </li>
               ))}
@@ -112,45 +117,22 @@ export function PanelInicio({ role, nombre }: { role: PanelRole; nombre: string 
           {esDocente ? (
             <>
               <Seccion titulo="Por calificar">
-                {POR_CALIFICAR_DEMO.length === 0 && <Vacio>No hay entregas por calificar.</Vacio>}
-                <ul className="grid gap-5">
-                  {POR_CALIFICAR_DEMO.map((p) => {
-                    const pct = Math.round((p.entregadas / p.total) * 100);
-                    return (
-                      <li key={p.titulo}>
-                        <p className="text-sm font-semibold text-ink">{p.titulo}</p>
-                        <p className="text-xs text-ink-2">{p.curso}</p>
-                        <div className="mt-2 flex items-center gap-3">
-                          <div
-                            role="progressbar"
-                            aria-label={`${p.entregadas} de ${p.total} entregas`}
-                            aria-valuenow={pct}
-                            aria-valuemin={0}
-                            aria-valuemax={100}
-                            className="h-1 flex-1 overflow-hidden rounded-full bg-line"
-                          >
-                            <div
-                              className="h-full rounded-full bg-brand"
-                              style={{ width: `${pct}%` }}
-                            />
-                          </div>
-                          <span className="text-xs text-ink-2 tabular-nums">
-                            {p.entregadas}/{p.total}
-                          </span>
-                        </div>
-                      </li>
-                    );
-                  })}
-                </ul>
+                <Vacio>
+                  Revisa las entregas en la pestaña Tareas de cada curso y califica desde el
+                  Registro auxiliar.
+                </Vacio>
               </Seccion>
             </>
           ) : (
             <>
               <Seccion titulo="Próximas entregas">
-                {ENTREGAS_DEMO.length === 0 && <Vacio>No tienes entregas pendientes.</Vacio>}
+                {entregas.error && <Vacio>No se pudieron cargar las entregas.</Vacio>}
+                {!entregas.error && entregas.items.length === 0 && (
+                  <Vacio>No tienes entregas en los próximos 14 días.</Vacio>
+                )}
                 <ul className="grid gap-5">
-                  {ENTREGAS_DEMO.map((e) => (
-                    <li key={e.titulo} className="flex items-start justify-between gap-4">
+                  {entregas.items.map((e) => (
+                    <li key={e.id} className="flex items-start justify-between gap-4">
                       <div className="min-w-0">
                         <p className="text-sm font-semibold text-ink">{e.titulo}</p>
                         <p className="text-xs text-ink-2">{e.curso}</p>
@@ -167,36 +149,20 @@ export function PanelInicio({ role, nombre }: { role: PanelRole; nombre: string 
                 </ul>
               </Seccion>
               <Seccion titulo="Últimas notas" href={ROUTES.misNotas} verTodo="Ver mis notas">
-                {NOTAS_DEMO.length === 0 && <Vacio>Aún no tienes notas.</Vacio>}
-                <ul className="grid gap-5">
-                  {NOTAS_DEMO.map((n) => (
-                    <li key={n.tarea} className="flex items-center justify-between gap-4">
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-semibold text-ink">{n.tarea}</p>
-                        <p className="text-xs text-ink-2">{n.curso}</p>
-                      </div>
-                      <span
-                        className={`shrink-0 font-heading text-xl font-semibold tabular-nums ${
-                          n.nota >= 11 ? 'text-success' : 'text-danger'
-                        }`}
-                      >
-                        {n.nota}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
+                <Vacio>Tus notas y logros de cada curso, por bimestre.</Vacio>
               </Seccion>
             </>
           )}
 
-          <Seccion titulo="Avisos">
-            {AVISOS_DEMO.length === 0 && <Vacio>No hay avisos.</Vacio>}
+          <Seccion titulo="Avisos" href={ROUTES.anuncios} verTodo="Ver todos los avisos">
+            {avisos.error && <Vacio>No se pudieron cargar los avisos.</Vacio>}
+            {!avisos.error && avisos.items.length === 0 && <Vacio>No hay avisos.</Vacio>}
             <ul className="grid gap-5">
-              {AVISOS_DEMO.map((a) => (
-                <li key={a.titulo}>
+              {avisos.items.map((a) => (
+                <li key={a.id}>
                   <div className="flex items-baseline justify-between gap-3">
                     <p className="text-sm font-semibold text-ink">{a.titulo}</p>
-                    <span className="shrink-0 text-xs text-ink-3">{a.fecha}</span>
+                    <span className="shrink-0 text-xs text-ink-2">{a.fecha}</span>
                   </div>
                   <p className="mt-1 text-sm leading-relaxed text-ink-2">{a.texto}</p>
                 </li>
@@ -213,8 +179,8 @@ function Vacio({ children }: { children: React.ReactNode }) {
   return <p className="text-sm text-ink-2">{children}</p>;
 }
 
-function TarjetaCurso({ curso, esDocente }: { curso: CursoDemo; esDocente: boolean }) {
-  const Icon = curso.icon;
+function TarjetaCurso({ curso, esDocente }: { curso: CursoInicio; esDocente: boolean }) {
+  const Icon = BookOpen;
   return (
     <article
       className={`relative flex h-full flex-col gap-5 p-6 transition-shadow hover:shadow-md motion-reduce:transition-none ${SUPERFICIE}`}
@@ -231,42 +197,10 @@ function TarjetaCurso({ curso, esDocente }: { curso: CursoDemo; esDocente: boole
             </Link>
           </h3>
           <p className="truncate text-sm text-ink-2">
-            {esDocente
-              ? `${curso.seccion} · ${curso.alumnos} estudiantes`
-              : `${curso.seccion} · ${curso.docente}`}
+            {esDocente || !curso.docente ? curso.seccion : `${curso.seccion} · ${curso.docente}`}
           </p>
         </div>
       </div>
-
-      {esDocente ? (
-        <p className="text-sm text-ink-2">
-          {curso.porCalificar > 0 ? (
-            <>
-              <span className="font-semibold text-ink tabular-nums">{curso.porCalificar}</span>{' '}
-              entregas por calificar
-            </>
-          ) : (
-            'Todo calificado'
-          )}
-        </p>
-      ) : (
-        <div>
-          <div className="mb-2 flex items-center justify-between text-xs text-ink-2">
-            <span>Avance</span>
-            <span className="font-semibold text-ink tabular-nums">{curso.avance}%</span>
-          </div>
-          <div
-            role="progressbar"
-            aria-label={`Avance de ${curso.nombre}`}
-            aria-valuenow={curso.avance}
-            aria-valuemin={0}
-            aria-valuemax={100}
-            className="h-1 overflow-hidden rounded-full bg-line"
-          >
-            <div className="h-full rounded-full bg-brand" style={{ width: `${curso.avance}%` }} />
-          </div>
-        </div>
-      )}
 
       <p className="relative z-10 mt-auto flex flex-wrap gap-x-4 gap-y-1 text-sm text-ink-2">
         <Atajo href={COURSE_ROUTES.clases(curso.id)}>Clases</Atajo>
