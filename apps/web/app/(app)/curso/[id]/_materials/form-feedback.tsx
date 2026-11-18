@@ -69,6 +69,6 @@ export function SuccessRegion({
 }
 
 export const SUBMIT_BUTTON =
-  'mt-4 min-h-11 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground aria-disabled:cursor-not-allowed aria-disabled:opacity-60';
+  'mt-4 min-h-11 md:min-h-9 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground aria-disabled:cursor-not-allowed aria-disabled:opacity-60';
 
 export const INVALID_FIELD = 'aria-[invalid=true]:border-destructive';

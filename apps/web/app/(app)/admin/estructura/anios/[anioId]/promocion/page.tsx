@@ -1,8 +1,8 @@
 // /admin/estructura/anios/[anioId]/promocion — promoción en bloque al año [anioId] (RF-16, RN-15).
+import { RouteLoading } from '@/components/layout/route-loading';
 import { Suspense } from 'react';
 import {
   LoadError,
-  LoadingBlock,
   PageHeader,
   PageShell,
   ReadOnlyNotice,
@@ -19,7 +19,7 @@ export const metadata = { title: 'Promoción de año' };
 export default function Page({ params }: PageProps<'/admin/estructura/anios/[anioId]/promocion'>) {
   return (
     <PageShell>
-      <Suspense fallback={<LoadingBlock rows={6} label="Preparando la propuesta de promoción…" />}>
+      <Suspense fallback={<RouteLoading bare />}>
         <PromotionView params={params} />
       </Suspense>
     </PageShell>

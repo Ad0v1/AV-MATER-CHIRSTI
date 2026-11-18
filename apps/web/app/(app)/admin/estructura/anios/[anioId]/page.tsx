@@ -1,25 +1,32 @@
 // /admin/estructura/anios/[anioId] — año, períodos y secciones (RF-10..13, RF-15, RF-16; RN-10, RN-11).
 import Link from 'next/link';
-import { Suspense } from 'react';
+import { RouteLoading } from '@/components/layout/route-loading';
+import { Suspense, type ReactNode } from 'react';
+import { ArrowRight } from 'lucide-react';
 import {
   LoadError,
-  LoadingBlock,
   PageHeader,
   PageShell,
   ReadOnlyNotice,
   Section,
   StatusBadge,
 } from '@/app/(app)/admin/_shared/components/page-bits';
-import { CreateSectionForm, SectionItem } from '../../_components/section-panels';
+import { LevelTabs } from '../../_components/level-tabs';
+import { SectionItem } from '../../_components/section-panels';
 import { PeriodPanel, YearActions } from '../../_components/year-panels';
 import { canOfferClone } from '../../_lib/clone';
 import { getYear, listSections } from '../../_lib/data';
 import { canOfferPromotion } from '../../_lib/promotion-machine';
 import { FOCUS_HEADING, focusIds } from '../../_lib/focus';
-import { formatInstant, sectionLabel, yearStatus } from '../../_lib/format';
+import { formatInstant, yearStatus } from '../../_lib/format';
 import type { List, SectionView, YearDetail } from '../../_lib/types';
 import { isUuid } from '../../_lib/validation';
-import type { EducationLevel } from '../../_lib/levels';
+import {
+  EDUCATION_LEVELS,
+  LEVEL_LABELS,
+  isEducationLevel,
+  type EducationLevel,
+} from '../../_lib/levels';
 import { ApiError } from '@/lib/api/errors';
 import { cn } from '@/lib/utils';
 
@@ -27,11 +34,14 @@ const LEVEL_ORDER: Record<EducationLevel, number> = { INICIAL: 0, PRIMARIA: 1, S
 
 export const metadata = { title: 'Año académico' };
 
-export default function Page({ params }: PageProps<'/admin/estructura/anios/[anioId]'>) {
+export default function Page({
+  params,
+  searchParams,
+}: PageProps<'/admin/estructura/anios/[anioId]'>) {
   return (
     <PageShell>
-      <Suspense fallback={<LoadingBlock rows={6} label="Cargando el año académico…" />}>
-        <YearView params={params} />
+      <Suspense fallback={<RouteLoading bare />}>
+        <YearView params={params} searchParams={searchParams} />
       </Suspense>
     </PageShell>
   );
@@ -39,8 +49,15 @@ export default function Page({ params }: PageProps<'/admin/estructura/anios/[ani
 
 const CRUMB_ROOT = { href: '/admin/estructura', label: 'Estructura académica' };
 
-async function YearView({ params }: { params: Promise<{ anioId: string }> }) {
+async function YearView({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ anioId: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const { anioId } = await params;
+  const rawLevel = (await searchParams).nivel;
   if (!isUuid(anioId)) {
     return (
       <>
@@ -74,6 +91,46 @@ async function YearView({ params }: { params: Promise<{ anioId: string }> }) {
       a.gradeLevel - b.gradeLevel ||
       a.code.localeCompare(b.code, 'es'),
   );
+
+  // Pestaña activa: la elegida en la URL o, si no hay, el primer nivel que tenga secciones.
+  const counts = Object.fromEntries(
+    EDUCATION_LEVELS.map((l) => [l, sorted.filter((s) => s.level === l).length]),
+  ) as Record<EducationLevel, number>;
+  const requested = Array.isArray(rawLevel) ? rawLevel[0] : rawLevel;
+  const activeLevel: EducationLevel = isEducationLevel(requested)
+    ? requested
+    : (EDUCATION_LEVELS.find((l) => counts[l] > 0) ?? 'INICIAL');
+  const lists = Object.fromEntries(
+    EDUCATION_LEVELS.map((l) => [
+      l,
+      <ul key={l} className="mt-2 flex flex-col">
+        {sorted
+          .filter((s) => s.level === l)
+          .map((s) => (
+            <li key={s.id} className="border-b border-line/60 py-4 first:pt-1 last:border-b-0">
+              <SectionItem
+                section={s}
+                yearId={year.id}
+                readOnly={year.readOnly}
+                badge={
+                  <StatusBadge tone={s.isActive ? 'active' : 'inactive'}>
+                    {s.isActive ? 'Activa' : 'Inactiva'}
+                  </StatusBadge>
+                }
+              />
+            </li>
+          ))}
+      </ul>,
+    ]),
+  ) as Record<EducationLevel, ReactNode>;
+  const emptyText = Object.fromEntries(
+    EDUCATION_LEVELS.map((l) => [
+      l,
+      sorted.length === 0
+        ? 'Este año aún no tiene secciones.'
+        : `Este año no tiene secciones de ${LEVEL_LABELS[l].toLowerCase()}.`,
+    ]),
+  ) as Record<EducationLevel, string>;
 
   return (
     <>
@@ -110,24 +167,24 @@ async function YearView({ params }: { params: Promise<{ anioId: string }> }) {
         title="Períodos"
         description="Con un período cerrado no se crean, editan ni califican actividades. Solo se reabren períodos del año activo."
       >
-        <ol className="grid gap-4 md:grid-cols-2">
+        <ol className="flex flex-col">
           {[...year.periods]
             .sort((a, b) => a.sequence - b.sequence)
             .map((p) => (
               <li
                 key={p.id}
-                className="flex flex-col gap-3 rounded-xl p-4 ring-1 ring-foreground/10"
+                className="flex flex-col gap-2 border-b border-line/60 py-5 first:pt-1 last:border-b-0"
               >
-                <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-3">
                   <h3
                     id={focusIds.period(p.id)}
                     tabIndex={-1}
-                    className={cn('font-semibold', FOCUS_HEADING)}
+                    className={cn('text-base font-semibold', FOCUS_HEADING)}
                   >
                     {p.label}
                   </h3>
                   <StatusBadge tone={p.closedAt ? 'closed' : p.isOpen ? 'active' : 'inactive'}>
-                    {p.closedAt ? 'Cerrado' : p.isOpen ? 'Abierto' : 'Sin cerrar (año no activo)'}
+                    {p.closedAt ? 'Cerrado' : p.isOpen ? 'Abierto' : 'Sin cerrar'}
                   </StatusBadge>
                 </div>
                 <PeriodPanel
@@ -146,56 +203,54 @@ async function YearView({ params }: { params: Promise<{ anioId: string }> }) {
         title="Secciones"
         description={`${sections.total} ${sections.total === 1 ? 'sección' : 'secciones'} en ${year.year}.`}
       >
-        {canOfferClone(year, sections.total) ? (
-          <p className="text-sm">
-            <Link
-              href={`/admin/estructura/anios/${encodeURIComponent(year.id)}/clonar`}
-              className="inline-flex min-h-11 items-center underline underline-offset-4"
-            >
-              Copiar la estructura de un año anterior
-            </Link>{' '}
-            <span className="text-muted-foreground">(secciones y cursos, sin matrículas).</span>
-          </p>
-        ) : null}
-        {canOfferPromotion(year, sections.items) ? (
-          <p className="text-sm">
-            <Link
-              href={`/admin/estructura/anios/${encodeURIComponent(year.id)}/promocion`}
-              className="inline-flex min-h-11 items-center underline underline-offset-4"
-            >
-              Promover estudiantes de {year.year - 1} a {year.year}
-            </Link>{' '}
-            <span className="text-muted-foreground">(propuesta que revisas y confirmas).</span>
-          </p>
-        ) : null}
-        {year.readOnly ? null : <CreateSectionForm yearId={year.id} />}
-        {sorted.length === 0 ? (
-          <p className="text-sm text-muted-foreground">Este año aún no tiene secciones.</p>
-        ) : (
-          <ul className="flex flex-col gap-3">
-            {sorted.map((s) => (
-              <li
-                key={s.id}
-                className="flex flex-col gap-3 rounded-xl p-4 ring-1 ring-foreground/10"
+        {canOfferClone(year, sections.total) || canOfferPromotion(year, sections.items) ? (
+          <div className="flex flex-col">
+            {canOfferClone(year, sections.total) ? (
+              <Shortcut
+                href={`/admin/estructura/anios/${encodeURIComponent(year.id)}/clonar`}
+                hint="Secciones y cursos, sin matrículas."
               >
-                <div className="flex items-center justify-between gap-2">
-                  <h3
-                    id={focusIds.section(s.id)}
-                    tabIndex={-1}
-                    className={cn('font-semibold', FOCUS_HEADING)}
-                  >
-                    Sección {sectionLabel(s.gradeLevel, s.code, s.level)}
-                  </h3>
-                  <StatusBadge tone={s.isActive ? 'active' : 'inactive'}>
-                    {s.isActive ? 'Activa' : 'Inactiva'}
-                  </StatusBadge>
-                </div>
-                <SectionItem section={s} yearId={year.id} readOnly={year.readOnly} />
-              </li>
-            ))}
-          </ul>
-        )}
+                Copiar la estructura de un año anterior
+              </Shortcut>
+            ) : null}
+            {canOfferPromotion(year, sections.items) ? (
+              <Shortcut
+                href={`/admin/estructura/anios/${encodeURIComponent(year.id)}/promocion`}
+                hint="Propuesta que revisas y confirmas."
+              >
+                Promover estudiantes de {year.year - 1} a {year.year}
+              </Shortcut>
+            ) : null}
+          </div>
+        ) : null}
+        <LevelTabs
+          yearId={year.id}
+          initial={activeLevel}
+          counts={counts}
+          canCreate={!year.readOnly}
+          emptyText={emptyText}
+          lists={lists}
+        />
       </Section>
     </>
+  );
+}
+
+/** Atajo hacia un asistente: enlace de texto con flecha y una frase que explica qué hace. */
+function Shortcut({ href, hint, children }: { href: string; hint: string; children: ReactNode }) {
+  return (
+    <div className="flex flex-wrap items-center gap-x-3">
+      <Link
+        href={href}
+        className="group/atajo inline-flex min-h-11 items-center md:min-h-9 gap-1.5 rounded-md text-sm font-medium text-brand hover:underline hover:underline-offset-4 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-line-active"
+      >
+        {children}
+        <ArrowRight
+          className="size-4 transition-transform group-hover/atajo:translate-x-0.5 motion-reduce:transition-none"
+          aria-hidden="true"
+        />
+      </Link>
+      <span className="text-sm text-muted-foreground">{hint}</span>
+    </div>
   );
 }

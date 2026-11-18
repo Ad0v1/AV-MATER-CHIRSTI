@@ -1,11 +1,7 @@
 // /admin/estructura/anios/[anioId]/clonar — copiar la estructura de un año anterior (RF-15).
+import { RouteLoading } from '@/components/layout/route-loading';
 import { Suspense } from 'react';
-import {
-  LoadError,
-  LoadingBlock,
-  PageHeader,
-  PageShell,
-} from '@/app/(app)/admin/_shared/components/page-bits';
+import { LoadError, PageHeader, PageShell } from '@/app/(app)/admin/_shared/components/page-bits';
 import { CloneStructure } from '../../../_components/clone-structure';
 import {
   cloneBlockReason,
@@ -23,7 +19,7 @@ export const metadata = { title: 'Copiar estructura' };
 export default function Page({ params }: PageProps<'/admin/estructura/anios/[anioId]/clonar'>) {
   return (
     <PageShell>
-      <Suspense fallback={<LoadingBlock rows={4} label="Cargando los años académicos…" />}>
+      <Suspense fallback={<RouteLoading bare />}>
         <CloneView params={params} />
       </Suspense>
     </PageShell>

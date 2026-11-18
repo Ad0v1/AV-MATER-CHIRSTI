@@ -100,6 +100,34 @@
   body {
     @apply bg-background text-foreground;
   }
+  /*
+   * REGLA DE DISEÑO: el fondo de todas las páginas (fondo_paginas.webp) es UNA capa fija a la
+   * ventana. Lo único que se desplaza es el contenido encima. Vive aquí, una sola vez:
+   *  - No se vuelve a importar la imagen ni se usa bg-fixed en páginas o layouts.
+   *  - Los contenedores de página NO llevan fondo opaco (bg-canvas, bg-background): dejan ver la capa.
+   *    Solo las superficies (tarjetas, sidebar, header) pintan su propio fondo.
+   * Se usa un pseudo-elemento fixed y no background-attachment: fixed, que iOS ignora y que se rompe
+   * dentro de ancestros con transform.
+   */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    /* Escritorio por defecto; móvil y tablet tienen su propia imagen vertical. */
+    background: var(--canvas) url('../assets/fondo_paginas.webp') center / cover no-repeat;
+  }
+  @media (max-width: 1023px) {
+    body::before {
+      background-image: url('../assets/fondo_paginas_tablet.webp');
+    }
+  }
+  @media (max-width: 639px) {
+    body::before {
+      background-image: url('../assets/fondo_paginas_mobil.webp');
+    }
+  }
   html {
     @apply font-sans;
   }
@@ -146,7 +174,9 @@
 }
 
 .route-enter {
-  animation: route-enter 140ms cubic-bezier(0.2, 0.75, 0.25, 1) both;
+  /* "backwards" (no "both"): al terminar no queda un transform activo, que haria que los
+     elementos fixed (el sidebar) se desplacen con la pagina en lugar de seguir la ventana. */
+  animation: route-enter 140ms cubic-bezier(0.2, 0.75, 0.25, 1) backwards;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -227,6 +257,11 @@
   animation: loading-appear 160ms var(--ease-enter) 350ms both;
 }
 
+/* Cambio de módulo: el skeleton se ve al instante (sin espera) para confirmar el clic. */
+.loading-instant {
+  animation: loading-appear 120ms var(--ease-enter) both;
+}
+
 /* Cierre de sesión: el contenido se va (ease-in) antes de volver al login. */
 @keyframes leave-app {
   to {
@@ -263,4 +298,49 @@ html[data-leaving] [data-app-shell] {
   html[data-leaving] [data-app-shell] {
     animation-duration: 100ms;
   }
+}
+
+/* Toasts de SweetAlert2: color sólido por tipo, texto e iconos blancos. */
+.swal2-popup.av-toast {
+  color: #fff;
+  border-radius: 0.5rem;
+}
+.swal2-popup.av-toast .swal2-title,
+.swal2-popup.av-toast .swal2-close {
+  color: #fff;
+}
+.swal2-popup.av-toast .swal2-close:hover {
+  color: #fff;
+  background: rgb(255 255 255 / 0.2);
+}
+.swal2-popup.av-toast .swal2-timer-progress-bar {
+  background: rgb(255 255 255 / 0.6);
+}
+.swal2-popup.av-toast .swal2-icon {
+  color: #fff;
+  border-color: #fff;
+}
+.swal2-popup.av-toast .swal2-icon .swal2-success-ring {
+  border-color: rgb(255 255 255 / 0.35);
+}
+.swal2-popup.av-toast .swal2-icon [class^='swal2-success-line'],
+.swal2-popup.av-toast .swal2-icon .swal2-x-mark-line-left,
+.swal2-popup.av-toast .swal2-icon .swal2-x-mark-line-right {
+  background-color: #fff;
+}
+.swal2-popup.av-toast .swal2-icon [class^='swal2-success-circular-line'],
+.swal2-popup.av-toast .swal2-icon .swal2-success-fix {
+  background: transparent;
+}
+.swal2-popup.av-toast-success {
+  background: #15803d;
+}
+.swal2-popup.av-toast-error {
+  background: #b91c1c;
+}
+.swal2-popup.av-toast-warning {
+  background: #d97706;
+}
+.swal2-popup.av-toast-info {
+  background: #1d4ed8;
 }

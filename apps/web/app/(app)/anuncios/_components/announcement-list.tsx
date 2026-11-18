@@ -65,7 +65,7 @@ export function AnnouncementList({
         <nav aria-label="Páginas de anuncios" className="mt-4 flex items-center gap-3 text-sm">
           {page.page > 1 ? (
             <Link
-              className="inline-flex min-h-11 items-center rounded-md border px-4"
+              className="inline-flex min-h-11 md:min-h-9 items-center rounded-md border px-4"
               href={hrefForPage(page.page - 1)}
             >
               Anterior
@@ -76,7 +76,7 @@ export function AnnouncementList({
           </span>
           {page.page < pages ? (
             <Link
-              className="inline-flex min-h-11 items-center rounded-md border px-4"
+              className="inline-flex min-h-11 md:min-h-9 items-center rounded-md border px-4"
               href={hrefForPage(page.page + 1)}
             >
               Siguiente

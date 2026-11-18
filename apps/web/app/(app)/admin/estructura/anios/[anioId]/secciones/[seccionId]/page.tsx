@@ -1,10 +1,12 @@
 // /admin/estructura/anios/[anioId]/secciones/[seccionId] — cursos de la sección y su docente
 // (RF-17, D-029; RN-11 solo lectura).
+import { RouteLoading } from '@/components/layout/route-loading';
 import { Suspense } from 'react';
+import { BookOpen } from 'lucide-react';
+import { EmptyState } from '@/app/(app)/admin/_shared/components/empty-state';
 import { CourseSectionItem, AddCourseForm } from '../../../../_components/course-section-panels';
 import {
   LoadError,
-  LoadingBlock,
   PageHeader,
   PageShell,
   ReadOnlyNotice,
@@ -18,7 +20,6 @@ import {
   listCourses,
   listSections,
 } from '../../../../_lib/data';
-import { FOCUS_HEADING, focusIds } from '../../../../_lib/focus';
 import { sectionLabel } from '../../../../_lib/format';
 import type {
   CourseSectionView,
@@ -30,7 +31,6 @@ import type {
 } from '../../../../_lib/types';
 import { isUuid } from '../../../../_lib/validation';
 import { ApiError } from '@/lib/api/errors';
-import { cn } from '@/lib/utils';
 
 export const metadata = { title: 'Sección' };
 
@@ -39,7 +39,7 @@ export default function Page({
 }: PageProps<'/admin/estructura/anios/[anioId]/secciones/[seccionId]'>) {
   return (
     <PageShell>
-      <Suspense fallback={<LoadingBlock rows={5} label="Cargando la sección…" />}>
+      <Suspense fallback={<RouteLoading bare />}>
         <SectionDetail params={params} />
       </Suspense>
     </PageShell>
@@ -145,31 +145,25 @@ async function SectionDetail({
         description={`${courseSections.total} ${courseSections.total === 1 ? 'curso' : 'cursos'}.`}
       >
         {items.length === 0 ? (
-          <p className="text-sm text-muted-foreground">La sección aún no tiene cursos.</p>
+          <EmptyState icon={BookOpen} title="La sección aún no tiene cursos">
+            {readOnly || !section.isActive
+              ? 'No se pueden agregar cursos en este momento.'
+              : 'Agrega el primero con el formulario de arriba y asígnale un docente.'}
+          </EmptyState>
         ) : (
-          <ul className="flex flex-col gap-3">
+          <ul className="mt-1 flex flex-col">
             {items.map((cs) => (
-              <li
-                key={cs.id}
-                className="flex flex-col gap-3 rounded-xl p-4 ring-1 ring-foreground/10"
-              >
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <h3
-                    id={focusIds.courseSection(cs.id)}
-                    tabIndex={-1}
-                    className={cn('font-semibold', FOCUS_HEADING)}
-                  >
-                    {cs.course.name}
-                  </h3>
-                  <StatusBadge tone={cs.isActive ? 'active' : 'inactive'}>
-                    {cs.isActive ? 'Activo' : 'Inactivo'}
-                  </StatusBadge>
-                </div>
-                <p className="text-sm">
-                  <span className="text-muted-foreground">Docente: </span>
-                  {cs.teacher ? cs.teacher.fullName : 'Sin docente asignado'}
-                </p>
-                <CourseSectionItem courseSection={cs} teachers={teachers} readOnly={readOnly} />
+              <li key={cs.id} className="border-b border-line/60 py-4 first:pt-1 last:border-b-0">
+                <CourseSectionItem
+                  courseSection={cs}
+                  teachers={teachers}
+                  readOnly={readOnly}
+                  badge={
+                    <StatusBadge tone={cs.isActive ? 'active' : 'inactive'}>
+                      {cs.isActive ? 'Activo' : 'Inactivo'}
+                    </StatusBadge>
+                  }
+                />
               </li>
             ))}
           </ul>

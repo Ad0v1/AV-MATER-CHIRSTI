@@ -63,6 +63,38 @@ describe('UsersService', () => {
     );
   });
 
+  describe('list: búsqueda por DNI', () => {
+    it('con 8 dígitos suma al usuario cuyo DNI coincide (por hash) y no descifra nada', async () => {
+      db.raw.searchIds = ['e1'];
+      db.prisma.user.findUnique.mockResolvedValue({ id: 'e9' });
+      db.prisma.user.count.mockResolvedValue(2);
+      db.prisma.user.findMany.mockResolvedValue([]);
+      db.prisma.enrollment.findMany.mockResolvedValue([]);
+
+      await service.list({ q: '12345678', page: 1, pageSize: 10 });
+
+      expect(issuer.hashDni).toHaveBeenCalledWith('12345678');
+      expect(db.prisma.user.findUnique).toHaveBeenCalledWith({
+        where: { dniHash: 'hash-12345678' },
+        select: { id: true },
+      });
+      expect(db.prisma.user.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: { in: ['e1', 'e9'] } } }),
+      );
+    });
+
+    it('con otro texto no consulta el hash del DNI', async () => {
+      db.raw.searchIds = [];
+      db.prisma.user.count.mockResolvedValue(0);
+      db.prisma.user.findMany.mockResolvedValue([]);
+      db.prisma.enrollment.findMany.mockResolvedValue([]);
+
+      await service.list({ q: 'maria', page: 1, pageSize: 10 });
+
+      expect(db.prisma.user.findUnique).not.toHaveBeenCalled();
+    });
+  });
+
   describe('list (RF-25)', () => {
     it('busca el texto con LOCATE (parámetro literal, sin comodines) y pagina', async () => {
       db.raw.searchIds = ['e1'];

@@ -44,3 +44,55 @@ describe('plantillas (Decisión 2)', () => {
     },
   );
 });
+
+describe('plantilla de estudiantes con secciones del sistema', () => {
+  const sections = [
+    { gradeLevel: 2, code: 'B' },
+    { gradeLevel: 1, code: 'A' },
+    { gradeLevel: 1, code: 'B' },
+    { gradeLevel: 2, code: 'A' },
+    { gradeLevel: 2, code: 'A' },
+  ];
+
+  it('agrega la hoja Listas, listas desplegables de grado y sección, y se sigue leyendo bien', async () => {
+    const t = await buildTemplate('students', 'xlsx', { sections });
+    expect(t.body.length).toBeLessThan(1024 * 1024);
+
+    // El importador sigue viendo solo los encabezados de la hoja Datos.
+    const rows = await readXlsx(t.body);
+    expect(rows).toEqual([{ row: 1, cells: [...IMPORT_COLUMNS.students] }]);
+
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.load(t.body as unknown as Parameters<typeof wb.xlsx.load>[0]);
+    expect(wb.worksheets.map((s) => s.name)).toEqual(['Datos', 'Instrucciones', 'Listas']);
+
+    const lists = wb.getWorksheet('Listas')!;
+    expect(lists.getCell('A1').value).toBe(1);
+    expect(lists.getCell('B1').value).toBe(2);
+    expect([lists.getCell('A2').value, lists.getCell('A3').value]).toEqual(['A', 'B']);
+    expect([lists.getCell('B2').value, lists.getCell('B3').value]).toEqual(['A', 'B']);
+    expect(lists.getCell('B4').value).toBeNull(); // sección repetida: una sola vez
+
+    const data = wb.getWorksheet('Datos')!;
+    const grade = IMPORT_COLUMNS.students.indexOf('grado') + 1;
+    const section = IMPORT_COLUMNS.students.indexOf('seccion') + 1;
+    expect(data.getCell(2, grade).dataValidation).toMatchObject({
+      type: 'list',
+      formulae: ['Listas!$A$1:$B$1'],
+    });
+    const f = data.getCell(5, section).dataValidation.formulae?.[0] as string;
+    expect(f).toContain('OFFSET(Listas!$A$2');
+    expect(f).toContain('$C5'); // depende del grado de su propia fila
+  });
+
+  it('sin secciones, la plantilla sigue como antes (grado 1 a 5, sección libre)', async () => {
+    const t = await buildTemplate('students', 'xlsx', { sections: [] });
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.load(t.body as unknown as Parameters<typeof wb.xlsx.load>[0]);
+    expect(wb.worksheets.map((s) => s.name)).toEqual(['Datos', 'Instrucciones']);
+    const grade = IMPORT_COLUMNS.students.indexOf('grado') + 1;
+    expect(wb.getWorksheet('Datos')!.getCell(2, grade).dataValidation).toMatchObject({
+      formulae: ['"1,2,3,4,5"'],
+    });
+  });
+});

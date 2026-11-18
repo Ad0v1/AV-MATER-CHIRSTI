@@ -93,9 +93,11 @@ describe('BrandView (A2)', () => {
     expect(texts).toContain('Colegio');
   });
 
-  it('sin logo: no hay img y se muestran nombre y subtitulo', () => {
+  it('sin logo: usa el escudo del colegio y se muestran nombre y subtitulo', () => {
     const tree = BrandView({ name: 'Colegio', logo: null, subtitle: 'Admin' });
-    expect(find(tree, (e) => e.type === 'img')).toHaveLength(0);
+    const imgs = find(tree, (e) => e.type === 'img');
+    expect(imgs).toHaveLength(1);
+    expect(imgs[0].props.src).toBe('/brand/escudo.webp');
     const texts = find(tree, (e) => typeof e.props.children === 'string').map(
       (e) => e.props.children,
     );

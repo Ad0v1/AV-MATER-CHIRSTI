@@ -19,7 +19,7 @@ import {
 
 export { SESSION_COOKIE };
 
-const API_BASE = `${(process.env.API_INTERNAL_URL ?? 'http://localhost:4000').replace(/\/+$/, '')}/api/v1`;
+const API_BASE = `${(process.env.API_INTERNAL_URL ?? 'http://127.0.0.1:4000').replace(/\/+$/, '')}/api/v1`;
 
 /** Opciones por petición. `timeoutMs`: 15 s por defecto (ver resolveTimeoutMs). */
 export type RequestOptions = { timeoutMs?: number };

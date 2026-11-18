@@ -48,6 +48,7 @@ const BASE_NAV: Record<Role, NavGroup[]> = {
       ],
     },
   ],
+  // Los cursos reales se agregan aquí cuando exista la lista de cursos (RF-14).
   TEACHER: [agenda],
   STUDENT: [
     {

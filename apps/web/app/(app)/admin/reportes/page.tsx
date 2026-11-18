@@ -10,6 +10,7 @@ import Form from 'next/form';
 import Link from 'next/link';
 import { ApiError } from '@/lib/api/errors';
 import { Suspense } from 'react';
+import { ROUTE_META } from '@/lib/route-meta';
 import {
   LoadError,
   LoadingBlock,
@@ -50,8 +51,8 @@ export default function Page({ searchParams }: PageProps<'/admin/reportes'>) {
   return (
     <PageShell>
       <PageHeader
-        title="Reportes"
-        description="Registro de cualquier curso, exportaciones en Excel o PDF y resumen del período por grado y sección."
+        title={ROUTE_META['/admin/reportes'].title}
+        description={ROUTE_META['/admin/reportes'].description}
       />
       <Suspense fallback={<LoadingBlock rows={6} label="Cargando reportes…" />}>
         <ReportsView searchParams={searchParams} />

@@ -57,7 +57,7 @@ export function DownloadFileButton({
         aria-label={ariaLabel}
         aria-disabled={pending || undefined}
         aria-busy={pending || undefined}
-        className="min-h-11 min-w-11 rounded-md border px-3 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring aria-disabled:opacity-60"
+        className="min-h-11 md:min-h-9 min-w-11 rounded-md border px-3 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring aria-disabled:opacity-60"
       >
         {label}
       </button>

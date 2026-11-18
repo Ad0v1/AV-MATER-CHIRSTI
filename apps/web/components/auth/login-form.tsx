@@ -7,7 +7,7 @@ import { CircleAlert, Loader2 } from 'lucide-react';
 import { PasswordField } from '@/components/auth/password-field';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { HOME_BY_ROLE, isRole } from '@/lib/roles';
+import { nextStepPath } from '@/lib/onboarding';
 import { isValidUserCode, USER_CODE_LENGTH } from '@/lib/user-code';
 
 type ApiError = { error?: { code?: string; message?: string } };
@@ -71,20 +71,7 @@ export function LoginForm() {
         // Pasos del primer ingreso, en orden: contraseña, política y correo (RF-71); el
         // administrador además activa el 2FA (RF-85). La API bloquea todo lo demás hasta
         // cumplirlos.
-        const target = data.mustChangePassword
-          ? '/cambiar-clave'
-          : data.mustAcceptPolicy
-            ? '/politica'
-            : data.mustVerifyEmail
-              ? '/verificar-correo'
-              : data.mustEnableTwoFactor
-                ? '/verificacion-dos-pasos'
-                : data.mustCompleteContact
-                  ? '/mi-perfil'
-                  : isRole(data.role)
-                    ? HOME_BY_ROLE[data.role]
-                    : '/';
-        router.replace(target);
+        router.replace(nextStepPath(data));
         router.refresh();
         return;
       }
@@ -234,7 +221,7 @@ export function LoginForm() {
       )}
 
       <Link
-        href="/recuperar"
+        href="/recuperar-contrasena"
         className="min-h-11 justify-self-end py-2 text-sm font-medium text-brand underline-offset-4 transition-colors hover:underline focus-visible:rounded-sm focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring"
       >
         ¿Olvidaste tu contraseña?

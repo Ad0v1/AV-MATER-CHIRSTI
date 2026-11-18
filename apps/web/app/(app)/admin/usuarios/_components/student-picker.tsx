@@ -64,7 +64,7 @@ export function StudentPicker({
 
   useEffect(() => {
     if (state.status === 'ok' && state.choices) announce(resultText(state));
-    else if (state.status === 'error' && state.message) announce(state.message);
+    else if (state.status === 'error' && state.message) announce(state.message, 'error');
     else if (state.status === 'error' && state.fieldError) inputRef.current?.focus();
   }, [state, announce]);
 
@@ -81,7 +81,7 @@ export function StudentPicker({
     if (next.error) {
       // Tope de estudiantes, repetido o retirado: se anuncia y el foco queda en el buscador
       // (MEDIO de UX, INFORME 13); el texto también se ve como error del grupo.
-      announce(next.error);
+      announce(next.error, 'warning');
       inputRef.current?.focus();
       return;
     }

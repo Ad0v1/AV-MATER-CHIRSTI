@@ -27,7 +27,7 @@ export function PdfViewer({ fileId, studentName }: { fileId: string; studentName
         type="button"
         onClick={open}
         aria-disabled={pending}
-        className="min-h-11 rounded-md border px-4 text-sm font-medium aria-disabled:opacity-60"
+        className="min-h-11 md:min-h-9 rounded-md border px-4 text-sm font-medium aria-disabled:opacity-60"
       >
         {pending ? 'Abriendo PDF…' : url ? 'Volver a cargar el PDF' : 'Ver PDF de la entrega'}
       </button>

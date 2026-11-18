@@ -1,6 +1,7 @@
 // /admin/configuracion — configuración institucional (RF-61, Dev 5): datos, tabla de literales,
 // plazo de purga y logo. Solo ADMIN (layout de /admin y la API).
 import { Suspense } from 'react';
+import { ROUTE_META } from '@/lib/route-meta';
 import {
   LoadError,
   LoadingBlock,
@@ -19,8 +20,8 @@ export default function Page() {
   return (
     <PageShell>
       <PageHeader
-        title="Configuración institucional"
-        description="Nombre, logo, tabla de literales y plazo de purga. Los cambios quedan en la bitácora."
+        title={ROUTE_META['/admin/configuracion'].title}
+        description={ROUTE_META['/admin/configuracion'].description}
       />
       <Suspense fallback={<LoadingBlock rows={4} label="Cargando configuración…" />}>
         <Content />

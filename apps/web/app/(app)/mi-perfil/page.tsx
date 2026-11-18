@@ -5,6 +5,7 @@ import { ProfileForm } from '@/components/auth/profile-form';
 import { TwoFactorPanel } from '@/components/auth/two-factor-panel';
 import { apiServer } from '@/lib/api/server';
 import { HOME_BY_ROLE, ROLE_LABELS } from '@/lib/roles';
+import { ONBOARDING_ROUTES } from '@/lib/onboarding';
 import { requireUser } from '@/lib/session';
 
 export const metadata = { title: 'Mi perfil' };
@@ -35,7 +36,7 @@ async function ProfileContent() {
   const user = await requireUser();
   // Los pasos anteriores del primer ingreso van antes: contraseña, política y correo.
   if (user.mustChangePassword) redirect('/cambiar-clave');
-  if (user.mustAcceptPolicy) redirect('/politica');
+  if (user.mustAcceptPolicy) redirect(ONBOARDING_ROUTES.politica);
   if (user.mustVerifyEmail) redirect('/verificar-correo');
   if (user.mustEnableTwoFactor) redirect('/verificacion-dos-pasos');
 

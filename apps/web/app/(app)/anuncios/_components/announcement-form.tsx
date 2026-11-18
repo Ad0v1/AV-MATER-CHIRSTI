@@ -221,11 +221,20 @@ export function AnnouncementForm({
       </div>
 
       <div className="flex flex-wrap gap-2">
-        <Button type="submit" className="min-h-11 px-4" aria-disabled={pending || undefined}>
+        <Button
+          type="submit"
+          className="min-h-11 md:min-h-9 px-4"
+          aria-disabled={pending || undefined}
+        >
           {editing ? 'Guardar cambios' : 'Publicar anuncio'}
         </Button>
         {onCancel ? (
-          <Button type="button" variant="outline" className="min-h-11 px-4" onClick={onCancel}>
+          <Button
+            type="button"
+            variant="outline"
+            className="min-h-11 md:min-h-9 px-4"
+            onClick={onCancel}
+          >
             Cancelar
           </Button>
         ) : null}

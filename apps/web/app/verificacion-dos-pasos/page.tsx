@@ -3,19 +3,14 @@ import Image from 'next/image';
 import { redirect } from 'next/navigation';
 import { EnableTwoFactorForm } from '@/components/auth/enable-two-factor-form';
 import { HOME_BY_ROLE } from '@/lib/roles';
+import { ONBOARDING_ROUTES } from '@/lib/onboarding';
 import { requireUser } from '@/lib/session';
-import pageBackground from '../../assets/fondo_paginas.webp';
 
 export const metadata = { title: 'Verificación en dos pasos' };
 
 export default function EnableTwoFactorPage() {
   return (
-    <main className="relative isolate flex min-h-dvh items-center justify-center overflow-hidden bg-canvas px-4 py-8 sm:px-8 sm:py-10">
-      <div className="absolute inset-0 -z-10 hidden overflow-hidden xl:block" aria-hidden="true">
-        <Image src={pageBackground} alt="" fill sizes="100vw" className="object-cover" />
-        <div className="absolute inset-0 bg-canvas/20" />
-      </div>
-
+    <main className="flex min-h-dvh items-center justify-center px-4 py-8 sm:px-8 sm:py-10">
       <article className="w-full max-w-xl overflow-hidden rounded-3xl border border-surface/80 bg-surface/92 shadow-xl shadow-brand/10 backdrop-blur-md">
         <header className="border-b border-line/70 bg-gradient-to-br from-brand-soft/80 via-surface/80 to-gold-soft/70 px-6 py-6 sm:px-9 sm:py-8">
           <div className="mb-5 flex items-center gap-3">
@@ -65,7 +60,7 @@ async function EnableTwoFactorContent() {
   const user = await requireUser();
   // Antes van la contraseña, la política y el correo (RF-71); la API lo exige igual.
   if (user.mustChangePassword) redirect('/cambiar-clave');
-  if (user.mustAcceptPolicy) redirect('/politica');
+  if (user.mustAcceptPolicy) redirect(ONBOARDING_ROUTES.politica);
   if (user.mustVerifyEmail) redirect('/verificar-correo');
   if (!user.mustEnableTwoFactor) {
     redirect(user.mustCompleteContact ? '/mi-perfil' : HOME_BY_ROLE[user.role]);

@@ -1,13 +1,18 @@
 'use client';
 
 // Cursos de una sección y su docente (RF-17, D-029).
-import { useActionState } from 'react';
+// Diseño limpio: el alta va en una sola línea y sin caja; cada curso es una fila con su docente y
+// acciones de texto, y el cambio de docente se abre en línea.
+import { useActionState, useId, useState, type ReactNode } from 'react';
+import { Button } from '@/components/ui/button';
+import { Label } from '@/components/ui/label';
+import { cn } from '@/lib/utils';
 import {
   assignTeacherAction,
   createCourseSectionAction,
   setCourseSectionActiveAction,
 } from '../_lib/actions';
-import { focusIds } from '../_lib/focus';
+import { FOCUS_HEADING, focusIds } from '../_lib/focus';
 import { IDLE, type CourseSectionView, type CourseView, type TeacherOption } from '../_lib/types';
 import { ConfirmAction, InlineAction } from '@/app/(app)/admin/_shared/components/confirm-action';
 import {
@@ -16,8 +21,12 @@ import {
   SubmitButton,
   useFormRefs,
 } from '@/app/(app)/admin/_shared/components/form-bits';
+import { CONTROL, SOFT_FIELDS, TOUCH } from '@/app/(app)/admin/_shared/components/styles';
 
 const NO_TEACHER = { value: '', label: 'Sin docente' };
+
+// Botones de texto: 44 px en móvil (táctil) y 36 px en escritorio.
+const QUIET = 'px-3 md:min-h-9 text-ink-2 hover:bg-foreground/5 hover:text-foreground';
 
 const teacherOptions = (teachers: TeacherOption[]) => [
   NO_TEACHER,
@@ -48,10 +57,10 @@ export function AddCourseForm({
       action={formAction}
       noValidate
       aria-label="Agregar curso a la sección"
-      className="flex flex-col gap-3 rounded-xl p-4 ring-1 ring-foreground/10"
+      className={`flex flex-col gap-4 ${SOFT_FIELDS}`}
     >
-      <p className="text-sm font-medium">Agregar curso</p>
-      <div className="grid gap-3 sm:grid-cols-2">
+      <h3 className="text-base font-semibold">Agregar curso</h3>
+      <div className="grid gap-3 sm:grid-cols-[1fr_1fr_auto] sm:items-start">
         <SelectField
           name="courseId"
           label="Curso"
@@ -71,11 +80,17 @@ export function AddCourseForm({
           hint="Puedes asignarlo después."
           options={teacherOptions(teachers)}
         />
+        {/* Misma estructura que un campo (etiqueta + control) para alinear el botón. */}
+        <div className="flex flex-col gap-1.5">
+          <Label aria-hidden="true" className="invisible hidden sm:flex">
+            Agregar
+          </Label>
+          <SubmitButton pendingText="Agregando…" className={CONTROL}>
+            Agregar curso
+          </SubmitButton>
+        </div>
       </div>
       <FormMessage state={state} alertRef={alertRef} />
-      <div>
-        <SubmitButton pendingText="Agregando…">Agregar curso</SubmitButton>
-      </div>
     </form>
   );
 }
@@ -84,50 +99,104 @@ export function CourseSectionItem({
   courseSection,
   teachers,
   readOnly,
+  badge,
 }: {
   courseSection: CourseSectionView;
   teachers: TeacherOption[];
   readOnly: boolean;
+  /** Estado del curso (lo arma el servidor, para no cargar page-bits en el cliente). */
+  badge: ReactNode;
 }) {
   const name = courseSection.course.name;
-  if (readOnly) return null;
+  const editId = useId();
+  const [editing, setEditing] = useState(false);
+  const forName = <span className="sr-only"> {name}</span>;
+
   // Si el docente actual ya no está activo, igual se muestra como opción para no perderlo.
   const options = teacherOptions(teachers);
   const current = courseSection.teacher;
   if (current && !teachers.some((t) => t.id === current.id)) {
     options.push({ value: current.id, label: `${current.fullName} (no activo)` });
   }
+
   return (
-    <div className="flex flex-col gap-3">
-      <AssignTeacherForm courseSection={courseSection} options={options} />
-      <div className="flex flex-wrap gap-2">
-        {courseSection.isActive ? (
-          <ConfirmAction
-            action={setCourseSectionActiveAction.bind(null, courseSection.id, false)}
-            triggerLabel={`Desactivar ${name}`}
-            title={`¿Desactivar ${name} en esta sección?`}
-            description="El curso quedará de solo lectura en la sección: no se podrán crear tareas, materiales ni notas. Se conserva todo lo registrado."
-            confirmLabel="Desactivar"
-            focusId={focusIds.courseSection(courseSection.id)}
-            destructive
-          />
-        ) : (
-          <InlineAction
-            action={setCourseSectionActiveAction.bind(null, courseSection.id, true)}
-            label={`Activar ${name}`}
-            pendingText="Activando…"
-            focusId={focusIds.courseSection(courseSection.id)}
-          />
+    <div className="flex flex-col gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
+        <div className="flex min-w-0 flex-col gap-1">
+          <div className="flex min-w-0 items-center gap-3">
+            <h3
+              id={focusIds.courseSection(courseSection.id)}
+              tabIndex={-1}
+              className={cn('text-base font-semibold break-words', FOCUS_HEADING)}
+            >
+              {name}
+            </h3>
+            {badge}
+          </div>
+          <p className="text-sm">
+            <span className="text-muted-foreground">Docente: </span>
+            {current ? current.fullName : 'Sin docente asignado'}
+          </p>
+        </div>
+        {readOnly ? null : (
+          <div className="-mr-3 flex flex-wrap items-center gap-1">
+            <Button
+              type="button"
+              variant="ghost"
+              className={cn(TOUCH, QUIET)}
+              aria-expanded={editing}
+              aria-controls={editId}
+              onClick={() => setEditing((v) => !v)}
+            >
+              Cambiar docente
+              {forName}
+            </Button>
+            {courseSection.isActive ? (
+              <ConfirmAction
+                action={setCourseSectionActiveAction.bind(null, courseSection.id, false)}
+                triggerLabel={
+                  <>
+                    Desactivar
+                    {forName}
+                  </>
+                }
+                appearance="quiet-destructive"
+                title={`¿Desactivar ${name} en esta sección?`}
+                description="El curso quedará de solo lectura en la sección: no se podrán crear tareas, materiales ni notas. Se conserva todo lo registrado."
+                confirmLabel="Desactivar"
+                focusId={focusIds.courseSection(courseSection.id)}
+                destructive
+              />
+            ) : (
+              <InlineAction
+                action={setCourseSectionActiveAction.bind(null, courseSection.id, true)}
+                label={
+                  <>
+                    Activar
+                    {forName}
+                  </>
+                }
+                appearance="quiet"
+                pendingText="Activando…"
+                focusId={focusIds.courseSection(courseSection.id)}
+              />
+            )}
+          </div>
         )}
       </div>
+      {!readOnly && editing ? (
+        <AssignTeacherForm id={editId} courseSection={courseSection} options={options} />
+      ) : null}
     </div>
   );
 }
 
 function AssignTeacherForm({
+  id,
   courseSection,
   options,
 }: {
+  id: string;
   courseSection: CourseSectionView;
   options: { value: string; label: string }[];
 }) {
@@ -138,10 +207,11 @@ function AssignTeacherForm({
   const { formRef, alertRef } = useFormRefs(state);
   return (
     <form
+      id={id}
       ref={formRef}
       action={formAction}
       noValidate
-      className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end"
+      className={`flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-start ${SOFT_FIELDS}`}
     >
       <SelectField
         name="teacherId"
@@ -153,7 +223,13 @@ function AssignTeacherForm({
         options={options}
         className="sm:min-w-72"
       />
-      <SubmitButton>Guardar docente</SubmitButton>
+      {/* Misma estructura que un campo (etiqueta + control) para alinear el botón. */}
+      <div className="flex flex-col gap-1.5">
+        <Label aria-hidden="true" className="invisible hidden sm:flex">
+          Guardar
+        </Label>
+        <SubmitButton className={CONTROL}>Guardar docente</SubmitButton>
+      </div>
       <div className="sm:basis-full">
         <FormMessage state={state} alertRef={alertRef} />
       </div>

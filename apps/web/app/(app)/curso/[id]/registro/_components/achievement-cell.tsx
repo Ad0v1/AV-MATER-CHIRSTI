@@ -90,7 +90,7 @@ export function AchievementCell(props: AchievementCellProps) {
         <button
           type="submit"
           aria-disabled={pending}
-          className="mt-2 inline-flex min-h-11 items-center rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground"
+          className="mt-2 inline-flex min-h-11 md:min-h-9 items-center rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground"
         >
           {pending ? 'Guardando…' : 'Guardar logro'}
         </button>

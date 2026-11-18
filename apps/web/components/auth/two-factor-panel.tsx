@@ -97,7 +97,11 @@ export function TwoFactorPanel({ recoveryCodesLeft }: { recoveryCodesLeft: numbe
             </p>
           )}
           <div className="flex flex-col gap-2 sm:flex-row">
-            <Button type="submit" className="min-h-11" disabled={pending || code.length !== 6}>
+            <Button
+              type="submit"
+              className="min-h-11 md:min-h-9"
+              disabled={pending || code.length !== 6}
+            >
               {pending && (
                 <Loader2 className="animate-spin motion-reduce:animate-none" aria-hidden="true" />
               )}
@@ -106,7 +110,7 @@ export function TwoFactorPanel({ recoveryCodesLeft }: { recoveryCodesLeft: numbe
             <Button
               type="button"
               variant="outline"
-              className="min-h-11"
+              className="min-h-11 md:min-h-9"
               disabled={pending}
               onClick={() => {
                 setOpen(false);
@@ -122,7 +126,7 @@ export function TwoFactorPanel({ recoveryCodesLeft }: { recoveryCodesLeft: numbe
         <Button
           type="button"
           variant="outline"
-          className="mt-3 min-h-11"
+          className="mt-3 min-h-11 md:min-h-9"
           onClick={() => setOpen(true)}
         >
           Generar códigos de recuperación nuevos
